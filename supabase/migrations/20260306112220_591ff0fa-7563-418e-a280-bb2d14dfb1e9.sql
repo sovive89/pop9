@@ -1,0 +1,1 @@
+ALTER TABLE public.payments ADD COLUMN cash_received numeric DEFAULT 0, ADD COLUMN change_given numeric DEFAULT 0;
