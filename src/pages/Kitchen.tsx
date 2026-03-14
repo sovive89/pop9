@@ -195,6 +195,8 @@ const KitchenDisplay = () => {
 
   // Track previous order IDs for new order sound
   const prevOrderIdsRef = useRef<Set<string>>(new Set());
+  const draggedOrderIdRef = useRef<string | null>(null);
+  const dropHandledRef = useRef(false);
 
   const logKdsDebug = useCallback((
     hypothesisId: string,
@@ -532,6 +534,80 @@ const KitchenDisplay = () => {
     setActionDialogOpen(false);
   };
 
+  const finalizeOrderDrop = useCallback(async (orderId: string, source: "drop" | "dragend-fallback") => {
+    // #region agent log
+    logKdsDebug("H6", "Kitchen.tsx:523", "finalizeOrderDrop entry", {
+      orderId,
+      source,
+      activeOrderCount: orders.length,
+    });
+    // #endregion
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) {
+      // #region agent log
+      logKdsDebug("H3", "Kitchen.tsx:531", "finalizeOrderDrop missing order in state", {
+        orderId,
+        source,
+        activeOrderIds: orders.map((o) => o.id),
+      });
+      // #endregion
+      return;
+    }
+
+    // #region agent log
+    logKdsDebug("H6", "Kitchen.tsx:541", "finalizeOrderDrop order resolved", {
+      orderId,
+      source,
+      itemCount: order.items.length,
+    });
+    // #endregion
+
+    for (const item of order.items) {
+      if (item.readyQuantity < item.quantity) {
+        const { error: itemUpdateError } = await supabase
+          .from("order_items")
+          .update({ ready_quantity: item.quantity })
+          .eq("id", item.id);
+        // #region agent log
+        logKdsDebug("H5", "Kitchen.tsx:553", "finalizeOrderDrop item update result", {
+          orderId,
+          source,
+          itemId: item.id,
+          itemUpdateError: itemUpdateError?.message ?? null,
+        });
+        // #endregion
+      }
+    }
+    const { error: orderUpdateError } = await supabase
+      .from("orders")
+      .update({ status: "ready", ready_at: new Date().toISOString() })
+      .eq("id", orderId);
+    // #region agent log
+    logKdsDebug("H5", "Kitchen.tsx:568", "finalizeOrderDrop order status update result", {
+      orderId,
+      source,
+      orderUpdateError: orderUpdateError?.message ?? null,
+    });
+    // #endregion
+
+    moveOrderToFinished({
+      ...order,
+      status: "ready",
+      items: order.items.map((item) => ({ ...item, readyQuantity: item.quantity })),
+    });
+    void Promise.all([loadOrders(), loadFinished()]);
+    if (soundEnabled) playReadySound();
+    toast.success(`✅ Pedido pronto! Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`);
+    supabase.functions.invoke("push-notify", {
+      body: {
+        action: "notify",
+        title: `🔔 Pedido Pronto!`,
+        message: `Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`,
+        url: "/",
+      },
+    }).catch(() => toast.error("Notificação não enviada"));
+  }, [loadFinished, loadOrders, logKdsDebug, moveOrderToFinished, orders, soundEnabled]);
+
   // Drag and drop to finalized
   const handleDragStart = (e: React.DragEvent, orderId: string) => {
     // #region agent log
@@ -545,6 +621,8 @@ const KitchenDisplay = () => {
     // #endregion
     e.dataTransfer.setData("text/plain", orderId);
     e.dataTransfer.effectAllowed = "move";
+    draggedOrderIdRef.current = orderId;
+    dropHandledRef.current = false;
     // #region agent log
     logKdsDebug("H1", "Kitchen.tsx:522", "handleDragStart after setData", {
       orderId,
@@ -552,6 +630,24 @@ const KitchenDisplay = () => {
       resultingTypes: Array.from(e.dataTransfer?.types ?? []),
     });
     // #endregion
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    const draggedOrderId = draggedOrderIdRef.current;
+    // #region agent log
+    logKdsDebug("H7", "Kitchen.tsx:528", "handleDragEnd entry", {
+      draggedOrderId,
+      dropHandled: dropHandledRef.current,
+      dragOverReady,
+      dropEffect: e.dataTransfer?.dropEffect ?? "unknown",
+    });
+    // #endregion
+    if (!dropHandledRef.current && dragOverReady && draggedOrderId) {
+      void finalizeOrderDrop(draggedOrderId, "dragend-fallback");
+    }
+    setDragOverReady(false);
+    draggedOrderIdRef.current = null;
+    dropHandledRef.current = false;
   };
 
   const handleReadyDragOver = (e: React.DragEvent) => {
@@ -583,68 +679,9 @@ const KitchenDisplay = () => {
       activeOrderIds: orders.map((o) => o.id),
     });
     // #endregion
-    const order = orders.find(o => o.id === orderId);
-    if (!order) {
-      // #region agent log
-      logKdsDebug("H3", "Kitchen.tsx:541", "handleDrop missing order in state", {
-        orderId,
-        activeOrderCount: orders.length,
-      });
-      // #endregion
-      return;
-    }
-
-    // #region agent log
-    logKdsDebug("H4", "Kitchen.tsx:549", "handleDrop order resolved", {
-      orderId,
-      itemCount: order.items.length,
-      readyItemCount: order.items.filter((i) => i.readyQuantity >= i.quantity).length,
-    });
-    // #endregion
-
-    // Mark all items as fully ready
-    for (const item of order.items) {
-      if (item.readyQuantity < item.quantity) {
-        const { error: itemUpdateError } = await supabase
-          .from("order_items")
-          .update({ ready_quantity: item.quantity })
-          .eq("id", item.id);
-        // #region agent log
-        logKdsDebug("H5", "Kitchen.tsx:560", "handleDrop item update result", {
-          orderId,
-          itemId: item.id,
-          itemUpdateError: itemUpdateError?.message ?? null,
-        });
-        // #endregion
-      }
-    }
-    const { error: orderUpdateError } = await supabase
-      .from("orders")
-      .update({ status: "ready", ready_at: new Date().toISOString() })
-      .eq("id", orderId);
-    // #region agent log
-    logKdsDebug("H5", "Kitchen.tsx:572", "handleDrop order status update result", {
-      orderId,
-      orderUpdateError: orderUpdateError?.message ?? null,
-    });
-    // #endregion
-    moveOrderToFinished({
-      ...order,
-      status: "ready",
-      items: order.items.map((item) => ({ ...item, readyQuantity: item.quantity })),
-    });
-    void Promise.all([loadOrders(), loadFinished()]);
-    if (soundEnabled) playReadySound();
-    toast.success(`✅ Pedido pronto! Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`);
-    // Send push notification to attendants
-    supabase.functions.invoke("push-notify", {
-      body: {
-        action: "notify",
-        title: `🔔 Pedido Pronto!`,
-        message: `Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`,
-        url: "/",
-      },
-    }).catch(() => toast.error("Notificação não enviada"));
+    dropHandledRef.current = true;
+    await finalizeOrderDrop(orderId, "drop");
+    draggedOrderIdRef.current = null;
   };
 
   const getOrderNumber = (id: string) => "#" + id.slice(0, 4).toUpperCase();
@@ -874,6 +911,7 @@ const KitchenDisplay = () => {
                               key={order.id}
                               draggable={!paused && !isReadOnly}
                               onDragStart={(e) => !isReadOnly && handleDragStart(e as any, order.id)}
+                              onDragEnd={(e) => !isReadOnly && handleDragEnd(e as any)}
                               onDoubleClick={() => !paused && !isReadOnly && order.status === "pending" && handleStartPreparing(order.id)}
                               className={`rounded-lg bg-black/10 p-2 transition-colors ${isReadOnly ? "" : "cursor-pointer hover:bg-black/15"}`}
                             >
