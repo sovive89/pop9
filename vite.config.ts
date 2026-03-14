@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
+import fs from "fs";
 import { componentTagger } from "lovable-tagger";
 import { VitePWA } from "vite-plugin-pwa";
 
@@ -14,6 +15,43 @@ export default defineConfig(({ mode }) => ({
     },
   },
   plugins: [
+    {
+      name: "agent-debug-log-endpoint",
+      apply: "serve",
+      configureServer(server) {
+        server.middlewares.use("/__agent_debug_log", (req, res) => {
+          if (req.method !== "POST") {
+            res.statusCode = 405;
+            res.end("Method Not Allowed");
+            return;
+          }
+          let raw = "";
+          req.on("data", (chunk) => {
+            raw += String(chunk);
+          });
+          req.on("end", () => {
+            try {
+              const payload = JSON.parse(raw || "{}");
+              fs.appendFileSync(
+                "/opt/cursor/logs/debug.log",
+                `${JSON.stringify({
+                  hypothesisId: payload?.hypothesisId ?? "unknown",
+                  location: payload?.location ?? "unknown",
+                  message: payload?.message ?? "unknown",
+                  data: payload?.data ?? {},
+                  timestamp: payload?.timestamp ?? Date.now(),
+                })}\n`,
+              );
+              res.statusCode = 204;
+              res.end();
+            } catch {
+              res.statusCode = 400;
+              res.end("Invalid JSON payload");
+            }
+          });
+        });
+      },
+    },
     react(),
     mode === "development" && componentTagger(),
     VitePWA({

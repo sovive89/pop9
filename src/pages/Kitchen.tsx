@@ -196,6 +196,22 @@ const KitchenDisplay = () => {
   // Track previous order IDs for new order sound
   const prevOrderIdsRef = useRef<Set<string>>(new Set());
 
+  const logKdsDebug = useCallback((
+    hypothesisId: string,
+    location: string,
+    message: string,
+    data: Record<string, unknown>,
+  ) => {
+    if (!import.meta.env.DEV) return;
+    void fetch("/__agent_debug_log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hypothesisId, location, message, data, timestamp: Date.now() }),
+    }).catch(() => {
+      // silent fail for temporary debug transport
+    });
+  }, []);
+
   // Group orders by table
   const tableGroups = useMemo((): TableGroup[] => {
     if (!Array.isArray(orders) || orders.length === 0) return [];
@@ -518,23 +534,100 @@ const KitchenDisplay = () => {
 
   // Drag and drop to finalized
   const handleDragStart = (e: React.DragEvent, orderId: string) => {
+    // #region agent log
+    logKdsDebug("H1", "Kitchen.tsx:520", "handleDragStart entry", {
+      orderId,
+      isReadOnly,
+      paused,
+      hasDataTransfer: Boolean(e.dataTransfer),
+      initialTypes: Array.from(e.dataTransfer?.types ?? []),
+    });
+    // #endregion
     e.dataTransfer.setData("text/plain", orderId);
+    e.dataTransfer.effectAllowed = "move";
+    // #region agent log
+    logKdsDebug("H1", "Kitchen.tsx:522", "handleDragStart after setData", {
+      orderId,
+      storedOrderId: e.dataTransfer.getData("text/plain"),
+      resultingTypes: Array.from(e.dataTransfer?.types ?? []),
+    });
+    // #endregion
+  };
+
+  const handleReadyDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverReady(true);
+    // #region agent log
+    logKdsDebug("H2", "Kitchen.tsx:526", "dropzone dragover", {
+      types: Array.from(e.dataTransfer?.types ?? []),
+      hasPlainTextType: Array.from(e.dataTransfer?.types ?? []).includes("text/plain"),
+    });
+    // #endregion
   };
 
   const handleDrop = async (e: React.DragEvent) => {
+    // #region agent log
+    logKdsDebug("H2", "Kitchen.tsx:530", "handleDrop entry", {
+      types: Array.from(e.dataTransfer?.types ?? []),
+      isReadOnly,
+      paused,
+      activeOrderCount: orders.length,
+    });
+    // #endregion
     e.preventDefault();
     setDragOverReady(false);
     const orderId = e.dataTransfer.getData("text/plain");
+    // #region agent log
+    logKdsDebug("H2", "Kitchen.tsx:536", "handleDrop extracted orderId", {
+      orderId,
+      activeOrderIds: orders.map((o) => o.id),
+    });
+    // #endregion
     const order = orders.find(o => o.id === orderId);
-    if (!order) return;
+    if (!order) {
+      // #region agent log
+      logKdsDebug("H3", "Kitchen.tsx:541", "handleDrop missing order in state", {
+        orderId,
+        activeOrderCount: orders.length,
+      });
+      // #endregion
+      return;
+    }
+
+    // #region agent log
+    logKdsDebug("H4", "Kitchen.tsx:549", "handleDrop order resolved", {
+      orderId,
+      itemCount: order.items.length,
+      readyItemCount: order.items.filter((i) => i.readyQuantity >= i.quantity).length,
+    });
+    // #endregion
 
     // Mark all items as fully ready
     for (const item of order.items) {
       if (item.readyQuantity < item.quantity) {
-        await supabase.from("order_items").update({ ready_quantity: item.quantity }).eq("id", item.id);
+        const { error: itemUpdateError } = await supabase
+          .from("order_items")
+          .update({ ready_quantity: item.quantity })
+          .eq("id", item.id);
+        // #region agent log
+        logKdsDebug("H5", "Kitchen.tsx:560", "handleDrop item update result", {
+          orderId,
+          itemId: item.id,
+          itemUpdateError: itemUpdateError?.message ?? null,
+        });
+        // #endregion
       }
     }
-    await supabase.from("orders").update({ status: "ready", ready_at: new Date().toISOString() }).eq("id", orderId);
+    const { error: orderUpdateError } = await supabase
+      .from("orders")
+      .update({ status: "ready", ready_at: new Date().toISOString() })
+      .eq("id", orderId);
+    // #region agent log
+    logKdsDebug("H5", "Kitchen.tsx:572", "handleDrop order status update result", {
+      orderId,
+      orderUpdateError: orderUpdateError?.message ?? null,
+    });
+    // #endregion
     moveOrderToFinished({
       ...order,
       status: "ready",
@@ -915,7 +1008,7 @@ const KitchenDisplay = () => {
           className={`sm:flex-none w-full sm:w-52 lg:w-64 shrink-0 border-t-2 sm:border-t-0 sm:border-l-2 pt-2 sm:pt-0 sm:pl-2 overflow-y-auto transition-colors ${
             kdsTab !== "prontos" ? "sm:block" : ""
           } ${dragOverReady ? "border-emerald-400 bg-emerald-500/5" : "border-white/10"}`}
-          onDragOver={isReadOnly ? undefined : (e) => { e.preventDefault(); setDragOverReady(true); }}
+          onDragOver={isReadOnly ? undefined : handleReadyDragOver}
           onDragLeave={isReadOnly ? undefined : () => setDragOverReady(false)}
           onDrop={isReadOnly ? undefined : handleDrop}
         >
