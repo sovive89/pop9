@@ -331,6 +331,14 @@ const KitchenDisplay = () => {
     setFinishedOrders(mapped);
   }, []);
 
+  const moveOrderToFinished = useCallback((order: KitchenOrder) => {
+    setOrders((prev) => prev.filter((o) => o.id !== order.id));
+    setFinishedOrders((prev) => {
+      const deduped = prev.filter((o) => o.id !== order.id);
+      return [order, ...deduped].slice(0, 20);
+    });
+  }, []);
+
   useEffect(() => {
     setLoading(true);
     Promise.all([loadOrders(), loadFinished()]).finally(() => setLoading(false));
@@ -486,6 +494,12 @@ const KitchenDisplay = () => {
             }
           }
           await supabase.from("orders").update({ status: "ready", ready_at: new Date().toISOString() }).eq("id", actionTargetId);
+          moveOrderToFinished({
+            ...order,
+            status: "ready",
+            items: order.items.map((item) => ({ ...item, readyQuantity: item.quantity })),
+          });
+          void Promise.all([loadOrders(), loadFinished()]);
           if (soundEnabled) playReadySound();
           toast.success(`✅ Pedido despachado! Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`);
           supabase.functions.invoke("push-notify", {
@@ -521,6 +535,12 @@ const KitchenDisplay = () => {
       }
     }
     await supabase.from("orders").update({ status: "ready", ready_at: new Date().toISOString() }).eq("id", orderId);
+    moveOrderToFinished({
+      ...order,
+      status: "ready",
+      items: order.items.map((item) => ({ ...item, readyQuantity: item.quantity })),
+    });
+    void Promise.all([loadOrders(), loadFinished()]);
     if (soundEnabled) playReadySound();
     toast.success(`✅ Pedido pronto! Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`);
     // Send push notification to attendants
