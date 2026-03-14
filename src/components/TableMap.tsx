@@ -44,6 +44,12 @@ const statusLabel: Record<TableStatus, string> = {
   reserved: "Reservada",
 };
 
+interface TableOrderStats {
+  pending: number;
+  preparing: number;
+  ready: number;
+}
+
 const TableMap = () => {
   const { sessions, loading: sessionsLoading, startSession, addClient, closeSession, placeOrder, updateLocalCart } = useSessionStore();
   const { zones, allTables, loading: zonesLoading, getZoneForTable } = useTableZones();
@@ -65,6 +71,19 @@ const TableMap = () => {
 
   const getTableOrders = (tableId: number): ClientOrder[] =>
     sessions[tableId]?.orders ?? [];
+
+  const getTableOrderStats = (tableId: number): TableOrderStats => {
+    const stats: TableOrderStats = { pending: 0, preparing: 0, ready: 0 };
+    const tableOrders = sessions[tableId]?.orders ?? [];
+    for (const clientOrder of tableOrders) {
+      for (const order of clientOrder.orders) {
+        if (order.status === "pending") stats.pending += 1;
+        if (order.status === "preparing") stats.preparing += 1;
+        if (order.status === "ready") stats.ready += 1;
+      }
+    }
+    return stats;
+  };
 
   const handleTableClick = (tableId: number) => {
     setSelectedTableId(tableId);
@@ -166,8 +185,9 @@ const TableMap = () => {
               {zoneTables.map((table, i) => {
                 const status = getTableStatus(table.id);
                 const session = getTableSession(table.id);
-                  const isReady = hasReadyOrders(table.id);
-                  return (
+                const isReady = hasReadyOrders(table.id);
+                const orderStats = getTableOrderStats(table.id);
+                return (
                     <motion.button
                       key={table.id}
                       initial={{ opacity: 0, scale: 0.9 }}
@@ -199,8 +219,27 @@ const TableMap = () => {
                           <span className="text-[10px] text-primary font-medium">{session.clients.length}</span>
                         </div>
                       )}
+                      {session && (
+                        <div className="mt-1.5 flex flex-wrap items-center justify-center gap-1">
+                          {orderStats.pending > 0 && (
+                            <span className="rounded-full border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-[9px] font-medium text-warning">
+                              P {orderStats.pending}
+                            </span>
+                          )}
+                          {orderStats.preparing > 0 && (
+                            <span className="rounded-full border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary">
+                              Prep {orderStats.preparing}
+                            </span>
+                          )}
+                          {orderStats.ready > 0 && (
+                            <span className="rounded-full border border-success/40 bg-success/10 px-1.5 py-0.5 text-[9px] font-medium text-success-foreground">
+                              R {orderStats.ready}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </motion.button>
-                  );
+                );
               })}
             </div>
           </motion.section>

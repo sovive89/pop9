@@ -14,10 +14,128 @@ interface SessionData {
   orders: ClientOrder[];
 }
 
+const SESSIONS_SNAPSHOT_KEY = "pop9_sessions_snapshot_v1";
+
+interface PersistedSessionData {
+  session: {
+    dbId: string;
+    startedAt: string;
+    endedAt?: string;
+    clients: Array<{
+      id: string;
+      name: string;
+      phone?: string;
+      addedAt: string;
+      email?: string;
+      cep?: string;
+      bairro?: string;
+      genero?: string;
+    }>;
+  };
+  orders: Array<{
+    clientId: string;
+    cart: OrderItem[];
+    orders: Array<{
+      id: string;
+      status: PlacedOrder["status"];
+      placedAt: string;
+      origin?: PlacedOrder["origin"];
+      items: OrderItem[];
+    }>;
+  }>;
+}
+
+const serializeSessions = (source: Record<number, SessionData>): Record<number, PersistedSessionData> => {
+  const result: Record<number, PersistedSessionData> = {};
+  for (const [tableNumber, sessionData] of Object.entries(source)) {
+    result[Number(tableNumber)] = {
+      session: {
+        dbId: sessionData.session.dbId,
+        startedAt: sessionData.session.startedAt.toISOString(),
+        endedAt: sessionData.session.endedAt?.toISOString(),
+        clients: sessionData.session.clients.map((client) => ({
+          id: client.id,
+          name: client.name,
+          phone: client.phone,
+          addedAt: client.addedAt.toISOString(),
+          email: client.email,
+          cep: client.cep,
+          bairro: client.bairro,
+          genero: client.genero,
+        })),
+      },
+      orders: sessionData.orders.map((clientOrder) => ({
+        clientId: clientOrder.clientId,
+        cart: clientOrder.cart,
+        orders: clientOrder.orders.map((order) => ({
+          id: order.id,
+          status: order.status,
+          placedAt: order.placedAt.toISOString(),
+          origin: order.origin,
+          items: order.items,
+        })),
+      })),
+    };
+  }
+  return result;
+};
+
+const restoreSessions = (payload: unknown): Record<number, SessionData> => {
+  if (!payload || typeof payload !== "object") return {};
+  const entries = Object.entries(payload as Record<string, PersistedSessionData>);
+  const restored: Record<number, SessionData> = {};
+  for (const [tableNumber, value] of entries) {
+    if (!value?.session?.dbId) continue;
+    const table = Number(tableNumber);
+    if (Number.isNaN(table)) continue;
+    restored[table] = {
+      session: {
+        dbId: value.session.dbId,
+        startedAt: new Date(value.session.startedAt),
+        endedAt: value.session.endedAt ? new Date(value.session.endedAt) : undefined,
+        clients: (value.session.clients ?? []).map((client) => ({
+          id: client.id,
+          name: client.name,
+          phone: client.phone,
+          addedAt: new Date(client.addedAt),
+          email: client.email,
+          cep: client.cep,
+          bairro: client.bairro,
+          genero: client.genero,
+        })),
+      },
+      orders: (value.orders ?? []).map((clientOrder) => ({
+        clientId: clientOrder.clientId,
+        cart: clientOrder.cart ?? [],
+        orders: (clientOrder.orders ?? []).map((order) => ({
+          id: order.id,
+          status: order.status,
+          placedAt: new Date(order.placedAt),
+          origin: order.origin,
+          items: order.items ?? [],
+        })),
+      })),
+    };
+  }
+  return restored;
+};
+
+const loadPersistedSessions = (): Record<number, SessionData> => {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(SESSIONS_SNAPSHOT_KEY);
+    if (!raw) return {};
+    return restoreSessions(JSON.parse(raw));
+  } catch {
+    return {};
+  }
+};
+
 export const useSessionStore = () => {
   const { user } = useAuth();
-  const [sessions, setSessions] = useState<Record<number, SessionData>>({});
-  const [loading, setLoading] = useState(true);
+  const initialSessionsRef = useRef<Record<number, SessionData>>(loadPersistedSessions());
+  const [sessions, setSessions] = useState<Record<number, SessionData>>(initialSessionsRef.current);
+  const [loading, setLoading] = useState(Object.keys(initialSessionsRef.current).length === 0);
 
   // Load active sessions on mount (select mínimo = GET mais rápido)
   const loadSessions = useCallback(async () => {
@@ -82,6 +200,16 @@ export const useSessionStore = () => {
   useEffect(() => {
     loadSessions();
   }, [loadSessions]);
+
+  // Persist local snapshot to survive hard refreshes while DB sync happens.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(SESSIONS_SNAPSHOT_KEY, JSON.stringify(serializeSessions(sessions)));
+    } catch {
+      // ignore storage quota/privacy mode failures
+    }
+  }, [sessions]);
 
   // Notification sound for ready orders
   const playReadySound = useCallback(() => {
@@ -173,6 +301,12 @@ export const useSessionStore = () => {
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "orders" }, () => {
         loadSessions();
       })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "orders" }, () => {
+        loadSessions();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, () => {
+        loadSessions();
+      })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -210,6 +344,11 @@ export const useSessionStore = () => {
       .single();
 
     if (cErr || !client) {
+      // Avoid orphan active sessions without any client when second insert fails.
+      await supabase
+        .from("sessions")
+        .update({ status: "closed", ended_at: new Date().toISOString() })
+        .eq("id", session.id);
       toast.error("Erro ao registrar cliente");
       console.error(cErr);
       return;
@@ -345,6 +484,10 @@ export const useSessionStore = () => {
     const { error: iErr } = await supabase.from("order_items").insert(itemsToInsert);
 
     if (iErr) {
+      await supabase
+        .from("orders")
+        .update({ status: "cancelled" })
+        .eq("id", order.id);
       toast.error("Erro ao salvar itens do pedido");
       return;
     }
