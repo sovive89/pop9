@@ -1,0 +1,16 @@
+{
+  "name": "local-print-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local network print server for multi-restaurant POS",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.97.0"
+  }
+}
