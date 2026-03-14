@@ -29,7 +29,7 @@ const normalizeForId = (value: string) =>
 
 const buildBaseId = (unitName: string) => {
   const normalized = normalizeForId(unitName);
-  return `db_${normalized || "unidade"}`;
+  return `db_${normalized || "empresa"}`;
 };
 
 const buildUniqueId = (unitName: string, current: EstablishmentConfig[]) => {
@@ -107,14 +107,14 @@ const ConfigTab = () => {
         }
       }
 
-      // Compatibilidade com versão anterior que armazenava apenas uma unidade.
+      // Compatibilidade com versão anterior que armazenava apenas uma empresa.
       if (
         parsedRegistry.length === 0 &&
         (values[CONFIG_KEYS.unitName] || values[CONFIG_KEYS.databaseName])
       ) {
         const legacyUnit = (values[CONFIG_KEYS.unitName] ?? "").trim();
         const legacyId = (values[CONFIG_KEYS.databaseName] ?? "").trim();
-        const resolvedUnit = legacyUnit || legacyId || "Unidade legada";
+        const resolvedUnit = legacyUnit || legacyId || "Empresa legada";
         parsedRegistry = [
           {
             id: legacyId || buildBaseId(resolvedUnit),
@@ -133,7 +133,7 @@ const ConfigTab = () => {
 
   const handleAddEstablishment = () => {
     if (!unitName.trim()) {
-      toast.error("Informe o nome da unidade.");
+      toast.error("Informe o nome da empresa.");
       return;
     }
 
@@ -243,7 +243,7 @@ const ConfigTab = () => {
             />
           </div>
           <p className="text-xs text-muted-foreground">
-            Regra: <span className="font-mono">db_</span> + nome da unidade em minúsculas, sem acentos e com <span className="font-mono">_</span>.
+            Regra: <span className="font-mono">db_</span> + nome da empresa em minúsculas, sem acentos e com <span className="font-mono">_</span>.
           </p>
         </div>
 
