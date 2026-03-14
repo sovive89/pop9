@@ -15,13 +15,37 @@ const CONFIG_KEYS = {
 interface EstablishmentConfig {
   id: string;
   unitName: string;
-  databaseName: string;
   createdAt: string;
 }
 
+const normalizeForId = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_+/g, "_");
+
+const buildBaseId = (unitName: string) => {
+  const normalized = normalizeForId(unitName);
+  return `db_${normalized || "unidade"}`;
+};
+
+const buildUniqueId = (unitName: string, current: EstablishmentConfig[]) => {
+  const usedIds = new Set(current.map((item) => item.id.toLowerCase()));
+  const base = buildBaseId(unitName);
+  let candidate = base;
+  let counter = 2;
+  while (usedIds.has(candidate.toLowerCase())) {
+    candidate = `${base}_${counter}`;
+    counter += 1;
+  }
+  return candidate;
+};
+
 const ConfigTab = () => {
   const [unitName, setUnitName] = useState("");
-  const [databaseName, setDatabaseName] = useState("");
   const [establishments, setEstablishments] = useState<EstablishmentConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -48,15 +72,35 @@ const ConfigTab = () => {
       let parsedRegistry: EstablishmentConfig[] = [];
       if (registryRaw) {
         try {
-          const parsed = JSON.parse(registryRaw) as EstablishmentConfig[];
+          const parsed = JSON.parse(registryRaw) as unknown;
           if (Array.isArray(parsed)) {
-            parsedRegistry = parsed.filter(
-              (item) =>
-                typeof item?.id === "string" &&
-                typeof item?.unitName === "string" &&
-                typeof item?.databaseName === "string" &&
-                typeof item?.createdAt === "string",
-            );
+            parsedRegistry = parsed
+              .map((item): EstablishmentConfig | null => {
+                if (!item || typeof item !== "object") return null;
+                const row = item as Record<string, unknown>;
+                const unit =
+                  typeof row.unitName === "string"
+                    ? row.unitName.trim()
+                    : "";
+                if (!unit) return null;
+
+                const idFromRow =
+                  typeof row.id === "string" && row.id.trim()
+                    ? row.id.trim()
+                    : typeof row.databaseName === "string" && row.databaseName.trim()
+                      ? row.databaseName.trim()
+                      : buildBaseId(unit);
+
+                return {
+                  id: idFromRow,
+                  unitName: unit,
+                  createdAt:
+                    typeof row.createdAt === "string" && row.createdAt.trim()
+                      ? row.createdAt
+                      : new Date().toISOString(),
+                };
+              })
+              .filter((item): item is EstablishmentConfig => item !== null);
           }
         } catch (parseError) {
           console.error("Falha ao ler estabelecimentos cadastrados:", parseError);
@@ -68,11 +112,13 @@ const ConfigTab = () => {
         parsedRegistry.length === 0 &&
         (values[CONFIG_KEYS.unitName] || values[CONFIG_KEYS.databaseName])
       ) {
+        const legacyUnit = (values[CONFIG_KEYS.unitName] ?? "").trim();
+        const legacyId = (values[CONFIG_KEYS.databaseName] ?? "").trim();
+        const resolvedUnit = legacyUnit || legacyId || "Unidade legada";
         parsedRegistry = [
           {
-            id: "legacy-unit",
-            unitName: values[CONFIG_KEYS.unitName] ?? "",
-            databaseName: values[CONFIG_KEYS.databaseName] ?? "",
+            id: legacyId || buildBaseId(resolvedUnit),
+            unitName: resolvedUnit,
             createdAt: new Date().toISOString(),
           },
         ];
@@ -91,18 +137,12 @@ const ConfigTab = () => {
       return;
     }
 
-    if (!databaseName.trim()) {
-      toast.error("Informe o nome do banco de dados.");
-      return;
-    }
-
     const normalizedUnit = unitName.trim();
-    const normalizedDb = databaseName.trim();
+    const generatedId = buildUniqueId(normalizedUnit, establishments);
 
     const duplicate = establishments.some(
       (item) =>
-        item.unitName.toLowerCase() === normalizedUnit.toLowerCase() &&
-        item.databaseName.toLowerCase() === normalizedDb.toLowerCase(),
+        item.unitName.toLowerCase() === normalizedUnit.toLowerCase(),
     );
 
     if (duplicate) {
@@ -111,18 +151,13 @@ const ConfigTab = () => {
     }
 
     const newEntry: EstablishmentConfig = {
-      id:
-        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      id: generatedId,
       unitName: normalizedUnit,
-      databaseName: normalizedDb,
       createdAt: new Date().toISOString(),
     };
 
     setEstablishments((prev) => [newEntry, ...prev]);
     setUnitName("");
-    setDatabaseName("");
     toast.success("Estabelecimento adicionado à lista.");
   };
 
@@ -142,7 +177,7 @@ const ConfigTab = () => {
     const rows = [
       { key: CONFIG_KEYS.registry, value: JSON.stringify(establishments), updated_at: now },
       { key: CONFIG_KEYS.unitName, value: main.unitName, updated_at: now },
-      { key: CONFIG_KEYS.databaseName, value: main.databaseName, updated_at: now },
+      { key: CONFIG_KEYS.databaseName, value: main.id, updated_at: now },
     ];
 
     const { error } = await supabase
@@ -164,6 +199,8 @@ const ConfigTab = () => {
     return <div className="text-sm text-muted-foreground">Carregando...</div>;
   }
 
+  const previewId = buildBaseId(unitName.trim());
+
   return (
     <div className="max-w-2xl space-y-4">
       <div className="rounded-lg border border-border bg-card p-4 space-y-4">
@@ -172,7 +209,7 @@ const ConfigTab = () => {
             Cadastro de estabelecimentos
           </h3>
           <p className="text-xs text-muted-foreground">
-            Cada novo estabelecimento repete a estrutura do banco; cadastre aqui o nome da unidade e o nome do banco de dados.
+            Cada novo estabelecimento repete a estrutura do banco; informe a unidade e o ID do banco será definido automaticamente por regra.
           </p>
         </div>
 
@@ -193,19 +230,21 @@ const ConfigTab = () => {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="database-name" className="text-muted-foreground">
-            Nome do banco de dados
+          <Label htmlFor="database-id-preview" className="text-muted-foreground">
+            ID do banco (gerado automaticamente)
           </Label>
           <div className="relative">
             <Database className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              id="database-name"
-              value={databaseName}
-              onChange={(event) => setDatabaseName(event.target.value)}
-              placeholder="Ex.: pop9_producao"
-              className="bg-muted pl-9"
+              id="database-id-preview"
+              value={previewId}
+              readOnly
+              className="bg-muted pl-9 font-mono text-sm"
             />
           </div>
+          <p className="text-xs text-muted-foreground">
+            Regra: <span className="font-mono">db_</span> + nome da unidade em minúsculas, sem acentos e com <span className="font-mono">_</span>.
+          </p>
         </div>
 
         <Button type="button" variant="outline" onClick={handleAddEstablishment} className="gap-2">
@@ -229,7 +268,7 @@ const ConfigTab = () => {
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-foreground">{item.unitName}</p>
                     <p className="truncate text-xs text-muted-foreground">
-                      Banco: {item.databaseName}
+                      ID do banco: <span className="font-mono">{item.id}</span>
                     </p>
                   </div>
                   <Button
