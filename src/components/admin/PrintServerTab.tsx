@@ -11,6 +11,7 @@ const CONFIG_KEYS = {
   baseUrl: "print_server_base_url",
   apiKey: "print_server_api_key",
   serversJson: "print_server_servers_json",
+  printersJson: "print_server_printers_json",
   routesJson: "print_server_routes_json",
   kitchenPrinter: "print_server_printer_kitchen",
   barPrinter: "print_server_printer_bar",
@@ -44,6 +45,18 @@ interface PrintRoute {
   enabled: boolean;
 }
 
+interface PrinterNode {
+  id: string;
+  printerName: string;
+  location: string;
+  serverId: string;
+  ipAddress: string;
+  port: string;
+  printerType: "ESC_POS" | "STAR" | "GENERIC";
+  enabled: boolean;
+  triggers: string[];
+}
+
 const createServerNode = (): PrintServerNode => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
   name: "Servidor",
@@ -60,6 +73,18 @@ const createRoute = (serverId: string, trigger = TRIGGER_OPTIONS[0].value, print
   printer,
   copies: 1,
   enabled: true,
+});
+
+const createPrinterNode = (serverId: string): PrinterNode => ({
+  id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+  printerName: "Impressora",
+  location: "kitchen",
+  serverId,
+  ipAddress: "192.168.0.50",
+  port: "9100",
+  printerType: "ESC_POS",
+  enabled: true,
+  triggers: [TRIGGER_OPTIONS[0].value],
 });
 
 const normalizeServerNode = (item: unknown): PrintServerNode => {
@@ -87,6 +112,30 @@ const normalizeRoute = (item: unknown, fallbackServerId: string): PrintRoute => 
   };
 };
 
+const normalizePrinterNode = (item: unknown, fallbackServerId: string): PrinterNode => {
+  const raw = (typeof item === "object" && item !== null) ? item as Record<string, unknown> : {};
+  const typeRaw = String(raw.printerType ?? "ESC_POS");
+  const printerType: PrinterNode["printerType"] =
+    typeRaw === "STAR" ? "STAR" : typeRaw === "GENERIC" ? "GENERIC" : "ESC_POS";
+
+  const triggersRaw = Array.isArray(raw.triggers) ? raw.triggers : [];
+  const triggers = triggersRaw
+    .map((trigger) => String(trigger))
+    .filter((trigger) => TRIGGER_OPTIONS.some((option) => option.value === trigger));
+
+  return {
+    id: String(raw.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`),
+    printerName: String(raw.printerName ?? "Impressora"),
+    location: String(raw.location ?? "kitchen"),
+    serverId: String(raw.serverId ?? fallbackServerId),
+    ipAddress: String(raw.ipAddress ?? "192.168.0.50"),
+    port: String(raw.port ?? "9100"),
+    printerType,
+    enabled: Boolean(raw.enabled ?? true),
+    triggers: triggers.length > 0 ? triggers : [TRIGGER_OPTIONS[0].value],
+  };
+};
+
 const PrintServerTab = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -94,18 +143,19 @@ const PrintServerTab = () => {
   const [enabled, setEnabled] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [servers, setServers] = useState<PrintServerNode[]>([]);
-  const [routes, setRoutes] = useState<PrintRoute[]>([]);
+  const [printers, setPrinters] = useState<PrinterNode[]>([]);
 
   const activeServerCount = useMemo(
     () => servers.filter((server) => server.enabled).length,
     [servers],
   );
 
-  const routesDescription = useMemo(() => {
-    const active = routes.filter((route) => route.enabled);
+  const printerDescription = useMemo(() => {
+    const active = printers.filter((printer) => printer.enabled);
     if (active.length === 0) return "Nenhum gatilho ativo.";
-    return `${active.length} gatilho(s) ativo(s)`;
-  }, [routes]);
+    const triggerCount = active.reduce((sum, printer) => sum + printer.triggers.length, 0);
+    return `${active.length} impressora(s) ativa(s) · ${triggerCount} gatilho(s)`;
+  }, [printers]);
 
   useEffect(() => {
     const loadConfig = async () => {
@@ -154,24 +204,64 @@ const PrintServerTab = () => {
 
       const firstServerId = loadedServers[0].id;
       try {
-        const parsedRoutes = JSON.parse(map[CONFIG_KEYS.routesJson] ?? "[]");
-        if (Array.isArray(parsedRoutes) && parsedRoutes.length > 0) {
-          setRoutes(parsedRoutes.map((item) => normalizeRoute(item, firstServerId)));
+        const parsedPrinters = JSON.parse(map[CONFIG_KEYS.printersJson] ?? "[]");
+        if (Array.isArray(parsedPrinters) && parsedPrinters.length > 0) {
+          setPrinters(parsedPrinters.map((item) => normalizePrinterNode(item, firstServerId)));
         } else {
-          const legacyRoutes: PrintRoute[] = [];
-          if (map[CONFIG_KEYS.kitchenPrinter]) {
-            legacyRoutes.push(createRoute(firstServerId, "order_sent_kitchen", map[CONFIG_KEYS.kitchenPrinter]));
+          const parsedRoutes = JSON.parse(map[CONFIG_KEYS.routesJson] ?? "[]");
+          if (Array.isArray(parsedRoutes) && parsedRoutes.length > 0) {
+            const grouped = new Map<string, PrinterNode>();
+            parsedRoutes
+              .map((item) => normalizeRoute(item, firstServerId))
+              .forEach((route) => {
+                const key = `${route.serverId}:${route.printer}`;
+                const existing = grouped.get(key);
+                if (existing) {
+                  if (!existing.triggers.includes(route.trigger)) {
+                    existing.triggers.push(route.trigger);
+                  }
+                } else {
+                  grouped.set(key, {
+                    ...createPrinterNode(route.serverId),
+                    printerName: route.printer || "Impressora",
+                    serverId: route.serverId,
+                    triggers: [route.trigger],
+                  });
+                }
+              });
+            const parsed = Array.from(grouped.values());
+            setPrinters(parsed.length > 0 ? parsed : [createPrinterNode(firstServerId)]);
+          } else {
+            const fallback: PrinterNode[] = [];
+            if (map[CONFIG_KEYS.kitchenPrinter]) {
+              fallback.push({
+                ...createPrinterNode(firstServerId),
+                printerName: map[CONFIG_KEYS.kitchenPrinter],
+                location: "kitchen",
+                triggers: ["order_sent_kitchen"],
+              });
+            }
+            if (map[CONFIG_KEYS.barPrinter]) {
+              fallback.push({
+                ...createPrinterNode(firstServerId),
+                printerName: map[CONFIG_KEYS.barPrinter],
+                location: "bar",
+                triggers: ["order_sent_bar"],
+              });
+            }
+            if (map[CONFIG_KEYS.cashierPrinter]) {
+              fallback.push({
+                ...createPrinterNode(firstServerId),
+                printerName: map[CONFIG_KEYS.cashierPrinter],
+                location: "cashier",
+                triggers: ["table_bill"],
+              });
+            }
+            setPrinters(fallback.length > 0 ? fallback : [createPrinterNode(firstServerId)]);
           }
-          if (map[CONFIG_KEYS.barPrinter]) {
-            legacyRoutes.push(createRoute(firstServerId, "order_sent_bar", map[CONFIG_KEYS.barPrinter]));
-          }
-          if (map[CONFIG_KEYS.cashierPrinter]) {
-            legacyRoutes.push(createRoute(firstServerId, "table_bill", map[CONFIG_KEYS.cashierPrinter]));
-          }
-          setRoutes(legacyRoutes.length > 0 ? legacyRoutes : [createRoute(firstServerId)]);
         }
       } catch {
-        setRoutes([createRoute(firstServerId)]);
+        setPrinters([createPrinterNode(firstServerId)]);
       }
 
       setLoading(false);
@@ -185,8 +275,8 @@ const PrintServerTab = () => {
       toast.error("Adicione ao menos um servidor.");
       return;
     }
-    if (routes.length === 0) {
-      toast.error("Adicione ao menos uma regra de roteamento.");
+    if (printers.length === 0) {
+      toast.error("Adicione ao menos uma impressora.");
       return;
     }
 
@@ -202,16 +292,18 @@ const PrintServerTab = () => {
     }
 
     const serverIds = new Set(servers.map((server) => server.id));
-    const invalidActiveRoute = routes.some((route) => (
-      route.enabled && (
-        !route.printer.trim()
-        || !route.trigger.trim()
-        || !route.serverId.trim()
-        || !serverIds.has(route.serverId)
+    const invalidActivePrinter = printers.some((printer) => (
+      printer.enabled && (
+        !printer.printerName.trim()
+        || !printer.serverId.trim()
+        || !printer.ipAddress.trim()
+        || !printer.port.trim()
+        || !serverIds.has(printer.serverId)
+        || printer.triggers.length === 0
       )
     ));
-    if (invalidActiveRoute) {
-      toast.error("Preencha servidor, impressora e gatilho em todas as regras ativas.");
+    if (invalidActivePrinter) {
+      toast.error("Preencha servidor, IP/porta e gatilhos em todas as impressoras ativas.");
       return;
     }
 
@@ -219,19 +311,31 @@ const PrintServerTab = () => {
 
     const firstActiveServer = servers.find((server) => server.enabled) ?? servers[0];
     const normalizedBaseUrl = `${firstActiveServer.protocol}://${firstActiveServer.host}:${firstActiveServer.port}`;
-    const kitchenLegacy = routes.find((route) => route.trigger === "order_sent_kitchen")?.printer ?? "";
-    const barLegacy = routes.find((route) => route.trigger === "order_sent_bar")?.printer ?? "";
+    const kitchenLegacy = printers.find((printer) => printer.triggers.includes("order_sent_kitchen"))?.printerName ?? "";
+    const barLegacy = printers.find((printer) => printer.triggers.includes("order_sent_bar"))?.printerName ?? "";
     const cashierLegacy =
-      routes.find((route) => route.trigger === "table_bill")?.printer
-      ?? routes.find((route) => route.trigger === "cash_close")?.printer
+      printers.find((printer) => printer.triggers.includes("table_bill"))?.printerName
+      ?? printers.find((printer) => printer.triggers.includes("cash_close"))?.printerName
       ?? "";
+
+    const routesFromPrinters: PrintRoute[] = printers.flatMap((printer) => (
+      printer.triggers.map((trigger) => ({
+        id: `${printer.id}-${trigger}`,
+        trigger,
+        serverId: printer.serverId,
+        printer: printer.printerName,
+        copies: 1,
+        enabled: printer.enabled,
+      }))
+    ));
 
     const rows = [
       { key: CONFIG_KEYS.enabled, value: String(enabled) },
       { key: CONFIG_KEYS.baseUrl, value: normalizedBaseUrl },
       { key: CONFIG_KEYS.apiKey, value: apiKey.trim() },
       { key: CONFIG_KEYS.serversJson, value: JSON.stringify(servers) },
-      { key: CONFIG_KEYS.routesJson, value: JSON.stringify(routes) },
+      { key: CONFIG_KEYS.printersJson, value: JSON.stringify(printers) },
+      { key: CONFIG_KEYS.routesJson, value: JSON.stringify(routesFromPrinters) },
       { key: CONFIG_KEYS.kitchenPrinter, value: kitchenLegacy.trim() },
       { key: CONFIG_KEYS.barPrinter, value: barLegacy.trim() },
       { key: CONFIG_KEYS.cashierPrinter, value: cashierLegacy.trim() },
@@ -394,44 +498,41 @@ const PrintServerTab = () => {
         <div className="space-y-3 rounded-md border border-border/70 bg-muted/20 p-3">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-foreground">Roteamento de impressoras por gatilho</p>
-              <p className="text-xs text-muted-foreground">{routesDescription}</p>
+              <p className="text-sm font-medium text-foreground">Impressoras e gatilhos</p>
+              <p className="text-xs text-muted-foreground">{printerDescription}</p>
             </div>
             <Button
               type="button"
               variant="outline"
               size="sm"
               className="gap-1"
-              onClick={() => setRoutes((prev) => [...prev, createRoute(servers[0]?.id ?? "")])}
+              onClick={() => setPrinters((prev) => [...prev, createPrinterNode(servers[0]?.id ?? "")])}
             >
               <Plus className="h-3.5 w-3.5" />
-              Adicionar regra
+              Adicionar impressora
             </Button>
           </div>
 
-          {routes.map((route) => (
-            <div key={route.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 rounded-md border border-border bg-card p-2">
+          {printers.map((printer) => (
+            <div key={printer.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 rounded-md border border-border bg-card p-2">
               <div className="md:col-span-3 space-y-1">
-                <Label className="text-xs text-muted-foreground">Gatilho</Label>
-                <select
-                  value={route.trigger}
-                  onChange={(e) => setRoutes((prev) => prev.map((item) => (
-                    item.id === route.id ? { ...item, trigger: e.target.value } : item
+                <Label className="text-xs text-muted-foreground">Nome da impressora</Label>
+                <Input
+                  value={printer.printerName}
+                  onChange={(e) => setPrinters((prev) => prev.map((item) => (
+                    item.id === printer.id ? { ...item, printerName: e.target.value } : item
                   )))}
-                  className="w-full h-9 rounded-md border border-border bg-muted px-2 text-sm text-foreground"
-                >
-                  {TRIGGER_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
+                  placeholder="Cozinha principal"
+                  className="bg-muted"
+                />
               </div>
 
               <div className="md:col-span-3 space-y-1">
                 <Label className="text-xs text-muted-foreground">Servidor</Label>
                 <select
-                  value={route.serverId}
-                  onChange={(e) => setRoutes((prev) => prev.map((item) => (
-                    item.id === route.id ? { ...item, serverId: e.target.value } : item
+                  value={printer.serverId}
+                  onChange={(e) => setPrinters((prev) => prev.map((item) => (
+                    item.id === printer.id ? { ...item, serverId: e.target.value } : item
                   )))}
                   className="w-full h-9 rounded-md border border-border bg-muted px-2 text-sm text-foreground"
                 >
@@ -444,29 +545,40 @@ const PrintServerTab = () => {
               </div>
 
               <div className="md:col-span-3 space-y-1">
-                <Label className="text-xs text-muted-foreground">Impressora</Label>
+                <Label className="text-xs text-muted-foreground">Localização</Label>
                 <Input
-                  value={route.printer}
-                  onChange={(e) => setRoutes((prev) => prev.map((item) => (
-                    item.id === route.id ? { ...item, printer: e.target.value } : item
+                  value={printer.location}
+                  onChange={(e) => setPrinters((prev) => prev.map((item) => (
+                    item.id === printer.id ? { ...item, location: e.target.value } : item
                   )))}
-                  placeholder="KITCHEN_01 / BAR_01"
+                  placeholder="kitchen / bar / cashier"
                   className="bg-muted"
                 />
               </div>
 
               <div className="md:col-span-1 space-y-1">
-                <Label className="text-xs text-muted-foreground">Cópias</Label>
+                <Label className="text-xs text-muted-foreground">Porta</Label>
                 <Input
                   type="number"
                   min="1"
-                  max="10"
-                  value={route.copies}
-                  onChange={(e) => setRoutes((prev) => prev.map((item) => (
-                    item.id === route.id
-                      ? { ...item, copies: Math.max(1, Math.min(10, Number(e.target.value) || 1)) }
+                  value={printer.port}
+                  onChange={(e) => setPrinters((prev) => prev.map((item) => (
+                    item.id === printer.id
+                      ? { ...item, port: String(Math.max(1, Number(e.target.value) || 9100)) }
                       : item
                   )))}
+                  className="bg-muted"
+                />
+              </div>
+
+              <div className="md:col-span-2 space-y-1">
+                <Label className="text-xs text-muted-foreground">IP da impressora</Label>
+                <Input
+                  value={printer.ipAddress}
+                  onChange={(e) => setPrinters((prev) => prev.map((item) => (
+                    item.id === printer.id ? { ...item, ipAddress: e.target.value } : item
+                  )))}
+                  placeholder="192.168.0.50"
                   className="bg-muted"
                 />
               </div>
@@ -475,9 +587,9 @@ const PrintServerTab = () => {
                 <label className="inline-flex items-center gap-2 text-xs text-muted-foreground h-9">
                   <input
                     type="checkbox"
-                    checked={route.enabled}
-                    onChange={(e) => setRoutes((prev) => prev.map((item) => (
-                      item.id === route.id ? { ...item, enabled: e.target.checked } : item
+                    checked={printer.enabled}
+                    onChange={(e) => setPrinters((prev) => prev.map((item) => (
+                      item.id === printer.id ? { ...item, enabled: e.target.checked } : item
                     )))}
                     className="h-4 w-4 rounded border-border bg-muted accent-primary"
                   />
@@ -491,12 +603,39 @@ const PrintServerTab = () => {
                   size="icon"
                   variant="ghost"
                   className="text-muted-foreground hover:text-destructive"
-                  onClick={() => setRoutes((prev) => prev.length > 1 ? prev.filter((item) => item.id !== route.id) : prev)}
-                  title="Remover regra"
-                  disabled={routes.length <= 1}
+                  onClick={() => setPrinters((prev) => prev.length > 1 ? prev.filter((item) => item.id !== printer.id) : prev)}
+                  title="Remover impressora"
+                  disabled={printers.length <= 1}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
+              </div>
+
+              <div className="md:col-span-12 space-y-2">
+                <Label className="text-xs text-muted-foreground">Gatilhos desta impressora</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {TRIGGER_OPTIONS.map((option) => {
+                    const checked = printer.triggers.includes(option.value);
+                    return (
+                      <label key={option.value} className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => setPrinters((prev) => prev.map((item) => {
+                            if (item.id !== printer.id) return item;
+                            if (e.target.checked) {
+                              return { ...item, triggers: Array.from(new Set([...item.triggers, option.value])) };
+                            }
+                            const next = item.triggers.filter((trigger) => trigger !== option.value);
+                            return { ...item, triggers: next };
+                          }))}
+                          className="h-4 w-4 rounded border-border bg-muted accent-primary"
+                        />
+                        {option.label}
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           ))}
@@ -515,8 +654,8 @@ const PrintServerTab = () => {
         </div>
         <ul className="text-xs text-muted-foreground list-disc list-inside space-y-1">
           <li>Cadastre quantos servidores precisar com IP/host e porta.</li>
-          <li>Em cada regra, selecione o gatilho, o servidor destino e a impressora.</li>
-          <li>Ative/desative regras e servidores sem perder o histórico de configuração.</li>
+          <li>Cadastre várias impressoras e configure gatilhos específicos para cada uma.</li>
+          <li>Cada impressora pode apontar para um servidor diferente na rede local.</li>
         </ul>
       </section>
     </div>
