@@ -1,19 +1,56 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Printer, Server, Save } from "lucide-react";
+import { Plus, Printer, Save, Server, Trash2 } from "lucide-react";
 
 const CONFIG_KEYS = {
   enabled: "print_server_enabled",
   baseUrl: "print_server_base_url",
   apiKey: "print_server_api_key",
+  routesJson: "print_server_routes_json",
   kitchenPrinter: "print_server_printer_kitchen",
   barPrinter: "print_server_printer_bar",
   cashierPrinter: "print_server_printer_cashier",
 } as const;
+
+const TRIGGER_OPTIONS = [
+  { value: "order_sent_kitchen", label: "Pedido enviado (Cozinha)" },
+  { value: "order_sent_bar", label: "Pedido enviado (Bar)" },
+  { value: "order_ready", label: "Pedido pronto" },
+  { value: "table_bill", label: "Imprimir conta da mesa" },
+  { value: "client_bill", label: "Imprimir conta individual" },
+  { value: "cash_close", label: "Fechamento de caixa" },
+] as const;
+
+interface PrintRoute {
+  id: string;
+  trigger: string;
+  printer: string;
+  copies: number;
+  enabled: boolean;
+}
+
+const normalizeRoute = (item: unknown): PrintRoute => {
+  const raw = (typeof item === "object" && item !== null) ? item as Record<string, unknown> : {};
+  return {
+    id: String(raw.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`),
+    trigger: String(raw.trigger ?? TRIGGER_OPTIONS[0].value),
+    printer: String(raw.printer ?? ""),
+    copies: Number(raw.copies ?? 1) > 0 ? Number(raw.copies ?? 1) : 1,
+    enabled: Boolean(raw.enabled ?? true),
+  };
+};
+
+const createRoute = (trigger = TRIGGER_OPTIONS[0].value, printer = ""): PrintRoute => ({
+  id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+  trigger,
+  printer,
+  copies: 1,
+  enabled: true,
+});
 
 const PrintServerTab = () => {
   const [loading, setLoading] = useState(true);
@@ -22,9 +59,13 @@ const PrintServerTab = () => {
   const [enabled, setEnabled] = useState(false);
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
-  const [kitchenPrinter, setKitchenPrinter] = useState("");
-  const [barPrinter, setBarPrinter] = useState("");
-  const [cashierPrinter, setCashierPrinter] = useState("");
+  const [routes, setRoutes] = useState<PrintRoute[]>([]);
+
+  const routesDescription = useMemo(() => {
+    const active = routes.filter((route) => route.enabled);
+    if (active.length === 0) return "Nenhum gatilho ativo.";
+    return `${active.length} gatilho(s) ativo(s)`;
+  }, [routes]);
 
   useEffect(() => {
     const loadConfig = async () => {
@@ -43,9 +84,26 @@ const PrintServerTab = () => {
       setEnabled(map[CONFIG_KEYS.enabled] === "true");
       setBaseUrl(map[CONFIG_KEYS.baseUrl] ?? "");
       setApiKey(map[CONFIG_KEYS.apiKey] ?? "");
-      setKitchenPrinter(map[CONFIG_KEYS.kitchenPrinter] ?? "");
-      setBarPrinter(map[CONFIG_KEYS.barPrinter] ?? "");
-      setCashierPrinter(map[CONFIG_KEYS.cashierPrinter] ?? "");
+      try {
+        const parsed = JSON.parse(map[CONFIG_KEYS.routesJson] ?? "[]");
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setRoutes(parsed.map(normalizeRoute));
+        } else {
+          const legacyRoutes: PrintRoute[] = [];
+          if (map[CONFIG_KEYS.kitchenPrinter]) {
+            legacyRoutes.push(createRoute("order_sent_kitchen", map[CONFIG_KEYS.kitchenPrinter]));
+          }
+          if (map[CONFIG_KEYS.barPrinter]) {
+            legacyRoutes.push(createRoute("order_sent_bar", map[CONFIG_KEYS.barPrinter]));
+          }
+          if (map[CONFIG_KEYS.cashierPrinter]) {
+            legacyRoutes.push(createRoute("table_bill", map[CONFIG_KEYS.cashierPrinter]));
+          }
+          setRoutes(legacyRoutes.length > 0 ? legacyRoutes : [createRoute()]);
+        }
+      } catch {
+        setRoutes([createRoute()]);
+      }
       setLoading(false);
     };
 
@@ -57,15 +115,32 @@ const PrintServerTab = () => {
       toast.error("Informe a URL do Print Server para ativar o módulo.");
       return;
     }
+    const invalidActiveRoute = routes.some((route) => route.enabled && (!route.printer.trim() || !route.trigger.trim()));
+    if (invalidActiveRoute) {
+      toast.error("Preencha impressora e gatilho em todas as regras ativas.");
+      return;
+    }
+    if (routes.length === 0) {
+      toast.error("Adicione ao menos uma regra de roteamento.");
+      return;
+    }
 
     setSaving(true);
+    const kitchenLegacy = routes.find((route) => route.trigger === "order_sent_kitchen")?.printer ?? "";
+    const barLegacy = routes.find((route) => route.trigger === "order_sent_bar")?.printer ?? "";
+    const cashierLegacy =
+      routes.find((route) => route.trigger === "table_bill")?.printer
+      ?? routes.find((route) => route.trigger === "cash_close")?.printer
+      ?? "";
+
     const rows = [
       { key: CONFIG_KEYS.enabled, value: String(enabled) },
       { key: CONFIG_KEYS.baseUrl, value: baseUrl.trim() },
       { key: CONFIG_KEYS.apiKey, value: apiKey.trim() },
-      { key: CONFIG_KEYS.kitchenPrinter, value: kitchenPrinter.trim() },
-      { key: CONFIG_KEYS.barPrinter, value: barPrinter.trim() },
-      { key: CONFIG_KEYS.cashierPrinter, value: cashierPrinter.trim() },
+      { key: CONFIG_KEYS.routesJson, value: JSON.stringify(routes) },
+      { key: CONFIG_KEYS.kitchenPrinter, value: kitchenLegacy.trim() },
+      { key: CONFIG_KEYS.barPrinter, value: barLegacy.trim() },
+      { key: CONFIG_KEYS.cashierPrinter, value: cashierLegacy.trim() },
     ];
 
     for (const row of rows) {
@@ -129,34 +204,98 @@ const PrintServerTab = () => {
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="space-y-2">
-            <Label className="text-muted-foreground">Impressora Cozinha</Label>
-            <Input
-              value={kitchenPrinter}
-              onChange={(e) => setKitchenPrinter(e.target.value)}
-              placeholder="KITCHEN_01"
-              className="bg-muted"
-            />
+        <div className="space-y-3 rounded-md border border-border/70 bg-muted/20 p-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">Roteamento de impressoras por gatilho</p>
+              <p className="text-xs text-muted-foreground">{routesDescription}</p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1"
+              onClick={() => setRoutes((prev) => [...prev, createRoute()])}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Adicionar regra
+            </Button>
           </div>
-          <div className="space-y-2">
-            <Label className="text-muted-foreground">Impressora Bar</Label>
-            <Input
-              value={barPrinter}
-              onChange={(e) => setBarPrinter(e.target.value)}
-              placeholder="BAR_01"
-              className="bg-muted"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-muted-foreground">Impressora Caixa</Label>
-            <Input
-              value={cashierPrinter}
-              onChange={(e) => setCashierPrinter(e.target.value)}
-              placeholder="CAIXA_01"
-              className="bg-muted"
-            />
-          </div>
+
+          {routes.map((route) => (
+            <div key={route.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 rounded-md border border-border bg-card p-2">
+              <div className="md:col-span-3 space-y-1">
+                <Label className="text-xs text-muted-foreground">Gatilho</Label>
+                <select
+                  value={route.trigger}
+                  onChange={(e) => setRoutes((prev) => prev.map((item) => (
+                    item.id === route.id ? { ...item, trigger: e.target.value } : item
+                  )))}
+                  className="w-full h-9 rounded-md border border-border bg-muted px-2 text-sm text-foreground"
+                >
+                  {TRIGGER_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="md:col-span-4 space-y-1">
+                <Label className="text-xs text-muted-foreground">Impressora</Label>
+                <Input
+                  value={route.printer}
+                  onChange={(e) => setRoutes((prev) => prev.map((item) => (
+                    item.id === route.id ? { ...item, printer: e.target.value } : item
+                  )))}
+                  placeholder="KITCHEN_01 / BAR_01 / IP da impressora"
+                  className="bg-muted"
+                />
+              </div>
+
+              <div className="md:col-span-2 space-y-1">
+                <Label className="text-xs text-muted-foreground">Cópias</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={route.copies}
+                  onChange={(e) => setRoutes((prev) => prev.map((item) => (
+                    item.id === route.id
+                      ? { ...item, copies: Math.max(1, Math.min(10, Number(e.target.value) || 1)) }
+                      : item
+                  )))}
+                  className="bg-muted"
+                />
+              </div>
+
+              <div className="md:col-span-2 flex items-end">
+                <label className="inline-flex items-center gap-2 text-xs text-muted-foreground h-9">
+                  <input
+                    type="checkbox"
+                    checked={route.enabled}
+                    onChange={(e) => setRoutes((prev) => prev.map((item) => (
+                      item.id === route.id ? { ...item, enabled: e.target.checked } : item
+                    )))}
+                    className="h-4 w-4 rounded border-border bg-muted accent-primary"
+                  />
+                  Ativo
+                </label>
+              </div>
+
+              <div className="md:col-span-1 flex items-end justify-end">
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="text-muted-foreground hover:text-destructive"
+                  onClick={() => setRoutes((prev) => prev.length > 1 ? prev.filter((item) => item.id !== route.id) : prev)}
+                  title="Remover regra"
+                  disabled={routes.length <= 1}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          ))}
         </div>
 
         <Button onClick={save} disabled={saving} className="gap-2">
@@ -172,8 +311,8 @@ const PrintServerTab = () => {
         </div>
         <ul className="text-xs text-muted-foreground list-disc list-inside space-y-1">
           <li>Ative o módulo e informe a URL do serviço de impressão na rede local.</li>
-          <li>Cadastre os nomes/IDs das impressoras para cozinha, bar e caixa.</li>
-          <li>Salve para deixar a configuração disponível para os demais módulos.</li>
+          <li>Crie regras com gatilho + impressora (ex.: pedido cozinha -&gt; KITCHEN_01).</li>
+          <li>Use múltiplas regras para distribuir impressão entre cozinhas, bar e caixa.</li>
         </ul>
       </section>
     </div>
