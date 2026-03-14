@@ -209,13 +209,13 @@ const ConfigTab = () => {
             Cadastro de estabelecimentos
           </h3>
           <p className="text-xs text-muted-foreground">
-            Cada novo estabelecimento repete a estrutura do banco; informe a unidade e o ID do banco será definido automaticamente por regra.
+            Cada novo estabelecimento repete a estrutura do banco; informe o nome da empresa e o ID do banco será definido automaticamente por regra.
           </p>
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="unit-name" className="text-muted-foreground">
-            Nome da unidade
+            Nome da empresa
           </Label>
           <div className="relative">
             <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -223,7 +223,7 @@ const ConfigTab = () => {
               id="unit-name"
               value={unitName}
               onChange={(event) => setUnitName(event.target.value)}
-              placeholder="Ex.: Unidade Centro"
+              placeholder="Ex.: Empresa Centro"
               className="bg-muted pl-9"
             />
           </div>
