@@ -11,6 +11,7 @@ import ResetPasswordTab from "@/components/admin/ResetPasswordTab";
 import TablesTab from "@/components/admin/TablesTab";
 import WhatsAppTab from "@/components/admin/WhatsAppTab";
 import CRMTab from "@/components/admin/CRMTab";
+import QuickFinancialSummary from "@/components/admin/QuickFinancialSummary";
 
 /** Links úteis (configurável no Admin). */
 const ADMIN_LINKS: { label: string; href: string; external?: boolean }[] = [
@@ -123,7 +124,10 @@ const Admin = () => {
         </div>
       </motion.header>
 
-      <main className="mx-auto max-w-4xl p-4">
+      <main className="mx-auto max-w-4xl p-4 space-y-4">
+        {/* Quick Financial Summary */}
+        <QuickFinancialSummary />
+        
         <Tabs defaultValue="menu" className="space-y-4">
           <TabsList className="flex flex-wrap h-auto gap-1 p-1">
             <TabsTrigger value="menu" className="gap-2 text-xs sm:text-sm">

@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Navigate, useNavigate } from "react-router-dom";
-import { Flame, LogOut, Settings, Map, ClipboardList, ChefHat, Bell, Package } from "lucide-react";
+import { Flame, LogOut, Settings, Map, ClipboardList, ChefHat, Bell, Package, BarChart3, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import TableMap from "@/components/TableMap";
 import ActiveOrdersPanel from "@/components/ActiveOrdersPanel";
+import DashboardStats from "@/components/DashboardStats";
+import NotificationBell from "@/components/NotificationBell";
 import { useSessionStore } from "@/hooks/useSessionStore";
 import { supabase } from "@/integrations/supabase/client";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
@@ -121,6 +123,7 @@ const Index = () => {
             </AnimatePresence>
           </div>
           <div className="flex items-center gap-3">
+            <NotificationBell />
             {profileName && (
               <div className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold uppercase">
@@ -156,15 +159,26 @@ const Index = () => {
                   </Button>
                 )}
                 {roles.admin && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => navigate("/admin")}
-                    className="gap-1.5 border-border text-muted-foreground hover:text-foreground"
-                  >
-                    <Settings className="h-4 w-4" />
-                    <span className="hidden sm:inline">Admin</span>
-                  </Button>
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigate("/relatorios")}
+                      className="gap-1.5 border-border text-muted-foreground hover:text-foreground"
+                    >
+                      <BarChart3 className="h-4 w-4" />
+                      <span className="hidden sm:inline">Relatorios</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigate("/admin")}
+                      className="gap-1.5 border-border text-muted-foreground hover:text-foreground"
+                    >
+                      <Settings className="h-4 w-4" />
+                      <span className="hidden sm:inline">Admin</span>
+                    </Button>
+                  </>
                 )}
               </div>
             )}
@@ -206,6 +220,10 @@ const Index = () => {
 
       {/* Content */}
       <main className="mx-auto max-w-7xl p-4 pb-6">
+        {/* Dashboard Stats - sempre visivel */}
+        <DashboardStats />
+        
+        {/* Tab content */}
         {tab === "mesas" ? <TableMap /> : <ActiveOrdersPanel />}
       </main>
     </div>

@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, CheckCircle2, ChefHat, AlertTriangle, Bell, Package, HandPlatter, Truck } from "lucide-react";
+import { Clock, CheckCircle2, ChefHat, AlertTriangle, Bell, Package, HandPlatter, Truck, Timer, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useSessionStore } from "@/hooks/useSessionStore";
@@ -37,6 +37,13 @@ const statusBadge: Record<OrderStatus, string> = {
 const ActiveOrdersPanel = () => {
   const { sessions, markDelivered } = useSessionStore();
   const [deliveringId, setDeliveringId] = useState<string | null>(null);
+  const [, setTick] = useState(0);
+
+  // Update elapsed times every second
+  useEffect(() => {
+    const interval = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const flatOrders = useMemo<FlatOrder[]>(() => {
     const result: FlatOrder[] = [];
@@ -72,10 +79,19 @@ const ActiveOrdersPanel = () => {
   const preparingCount = activeOrders.filter((o) => o.order.status === "preparing").length;
 
   const elapsed = (date: Date) => {
-    const mins = Math.floor((Date.now() - date.getTime()) / 60000);
-    if (mins < 1) return "agora";
-    if (mins < 60) return `${mins}min`;
+    const diff = Date.now() - date.getTime();
+    const mins = Math.floor(diff / 60000);
+    const secs = Math.floor((diff % 60000) / 1000);
+    if (mins < 1) return `${secs}s`;
+    if (mins < 60) return `${mins}:${String(secs).padStart(2, "0")}`;
     return `${Math.floor(mins / 60)}h${mins % 60}min`;
+  };
+
+  const getElapsedColor = (date: Date) => {
+    const mins = Math.floor((Date.now() - date.getTime()) / 60000);
+    if (mins >= 15) return "text-destructive";
+    if (mins >= 10) return "text-warning";
+    return "text-muted-foreground";
   };
 
   const orderTotal = (order: PlacedOrder) =>
@@ -201,8 +217,8 @@ const ActiveOrdersPanel = () => {
 
                 {/* Footer */}
                 <div className="flex items-center justify-between pt-2 border-t border-border">
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Clock className="h-3 w-3" />
+                  <div className={`flex items-center gap-1.5 text-xs font-mono font-medium ${getElapsedColor(fo.order.placedAt)}`}>
+                    <Timer className="h-3 w-3" />
                     {elapsed(fo.order.placedAt)}
                   </div>
                   <div className="flex items-center gap-3">

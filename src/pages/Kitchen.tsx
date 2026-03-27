@@ -641,6 +641,36 @@ const KitchenDisplay = () => {
         </div>
       </header>
 
+      {/* KDS Quick Stats */}
+      <div className="border-b border-white/10 bg-[hsl(220,20%,10%)]/50 px-2 sm:px-3 py-2">
+        <div className="flex items-center gap-2 sm:gap-4 overflow-x-auto">
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20 shrink-0">
+            <span className="text-yellow-400 text-xs">Pendentes</span>
+            <span className="text-sm font-bold text-yellow-400">{orders.filter(o => o.status === "pending").length}</span>
+          </div>
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-primary/10 border border-primary/20 shrink-0">
+            <span className="text-primary text-xs">Preparando</span>
+            <span className="text-sm font-bold text-primary">{orders.filter(o => o.status === "preparing").length}</span>
+          </div>
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 shrink-0">
+            <span className="text-emerald-400 text-xs">Prontos</span>
+            <span className="text-sm font-bold text-emerald-400">{finishedOrders.length}</span>
+          </div>
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 shrink-0">
+            <span className="text-white/60 text-xs">Mesas</span>
+            <span className="text-sm font-bold text-white/80">{tableGroups.length}</span>
+          </div>
+          {orders.filter(o => o.status !== "ready" && o.status !== "delivered" && Date.now() - o.placedAt.getTime() > 15 * 60 * 1000).length > 0 && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-500/15 border border-red-500/30 animate-pulse shrink-0">
+              <span className="text-red-400 text-xs">Atrasados</span>
+              <span className="text-sm font-bold text-red-400">
+                {orders.filter(o => o.status !== "ready" && o.status !== "delivered" && Date.now() - o.placedAt.getTime() > 15 * 60 * 1000).length}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Mobile tab switcher */}
       <div className="flex sm:hidden border-b border-white/10">
         <button
