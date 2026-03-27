@@ -291,7 +291,6 @@ const KitchenDisplay = () => {
   });
 
   const loadOrders = useCallback(async () => {
-    console.log("[v0] Loading active orders...");
     const { data, error } = await supabase
       .from("orders")
       .select("id, status, placed_at, order_items(*), sessions!inner(table_number), session_clients!inner(name)")
@@ -299,13 +298,11 @@ const KitchenDisplay = () => {
       .order("placed_at", { ascending: true });
 
     if (error) {
-      console.error("[v0] Error loading kitchen orders:", error);
+      console.error("Error loading kitchen orders:", error);
       return { error: true };
     }
 
-    console.log("[v0] Raw orders data:", data?.map(o => ({ id: o.id, status: o.status })));
     const mapped = (data ?? []).map(mapOrder).filter((o) => o.items.length > 0);
-    console.log("[v0] Mapped active orders:", mapped.length);
 
     if (soundEnabled) {
       const currentIds = new Set(mapped.map(o => o.id));
@@ -321,7 +318,6 @@ const KitchenDisplay = () => {
   }, [soundEnabled]);
 
   const loadFinished = useCallback(async () => {
-    console.log("[v0] Loading finished orders...");
     const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
     const { data, error } = await supabase
       .from("orders")
@@ -332,13 +328,11 @@ const KitchenDisplay = () => {
       .limit(20);
 
     if (error) {
-      console.error("[v0] Error loading finished orders:", error);
+      console.error("Error loading finished orders:", error);
       return;
     }
 
-    console.log("[v0] Finished orders data:", data?.map(o => ({ id: o.id, status: o.status })));
     const mapped = (data ?? []).map(mapOrder).filter((o) => o.items.length > 0);
-    console.log("[v0] Mapped finished orders:", mapped.length);
     setFinishedOrders(mapped);
   }, []);
 
@@ -348,26 +342,18 @@ const KitchenDisplay = () => {
   }, [loadOrders, loadFinished]);
 
   useEffect(() => {
-    console.log("[v0] Setting up realtime subscription...");
     const channel = supabase
       .channel("kitchen-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, (payload) => {
-        console.log("[v0] Orders table changed:", payload.eventType, payload.new);
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => {
         loadOrders();
         loadFinished();
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, (payload) => {
-        console.log("[v0] Order items changed:", payload.eventType);
+      .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, () => {
         loadOrders();
       })
-      .subscribe((status) => {
-        console.log("[v0] Realtime subscription status:", status);
-      });
+      .subscribe();
 
-    return () => { 
-      console.log("[v0] Cleaning up realtime subscription");
-      supabase.removeChannel(channel); 
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [loadOrders, loadFinished]);
 
   const handleStartPreparing = async (orderId: string) => {
@@ -384,11 +370,7 @@ const KitchenDisplay = () => {
   };
 
   const handleItemReady = async (order: KitchenOrder, item: KitchenItem) => {
-    console.log("[v0] handleItemReady called:", { orderId: order.id, itemId: item.id, readyQty: item.readyQuantity, totalQty: item.quantity });
-    if (item.readyQuantity >= item.quantity) {
-      console.log("[v0] Item already fully ready, skipping");
-      return;
-    }
+    if (item.readyQuantity >= item.quantity) return;
 
     const { data: { user } } = await supabase.auth.getUser();
     const currentUserId = user?.id;
@@ -427,23 +409,32 @@ const KitchenDisplay = () => {
       i.id === item.id ? { ...i, readyQuantity: newReadyQty } : i
     );
     const allReady = updatedItems.every((i) => i.readyQuantity >= i.quantity);
-    console.log("[v0] All items ready check:", { allReady, items: updatedItems.map(i => ({ name: i.name, ready: i.readyQuantity, total: i.quantity })) });
 
     if (allReady) {
-      console.log("[v0] Marking order as ready:", order.id);
-      const { error: updateError } = await supabase.from("orders").update({ status: "ready", ready_at: new Date().toISOString() }).eq("id", order.id);
-      console.log("[v0] Order update result:", updateError ? updateError : "success");
+      await supabase.from("orders").update({ status: "ready", ready_at: new Date().toISOString() }).eq("id", order.id);
+      
+      // Immediately update local state to remove from active orders
+      setOrders(prev => prev.filter(o => o.id !== order.id));
+      // Reload finished orders to add this one
+      await loadFinished();
+      
       if (soundEnabled) playReadySound();
-      toast.success(`✅ Pedido pronto! Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`);
+      toast.success(`Pedido pronto! Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`);
       supabase.functions.invoke("push-notify", {
         body: {
           action: "notify",
-          title: `🔔 Pedido Pronto!`,
+          title: `Pedido Pronto!`,
           message: `Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`,
           url: "/",
         },
-      }).catch(() => toast.error("Notificação não enviada"));
+      }).catch(() => toast.error("Notificacao nao enviada"));
     } else {
+      // Update local state for partial ready
+      setOrders(prev => prev.map(o => 
+        o.id === order.id 
+          ? { ...o, items: updatedItems }
+          : o
+      ));
       toast.success(`${item.name}: ${newReadyQty}/${item.quantity} pronto(s)`);
     }
   };
@@ -495,13 +486,21 @@ const KitchenDisplay = () => {
       for (const id of ids) {
         await supabase.from("orders").update({ status: "cancelled" }).eq("id", id);
       }
+      // Clear all orders from local state
+      setOrders([]);
       toast.success(`${ids.length} pedido(s) cancelado(s)`);
     } else if (actionTargetId) {
       if (actionType === "cancel") {
         await supabase.from("orders").update({ status: "cancelled" }).eq("id", actionTargetId);
+        // Remove from local state
+        setOrders(prev => prev.filter(o => o.id !== actionTargetId));
         toast.success(`Pedido ${getOrderNumber(actionTargetId)} cancelado`);
       } else if (actionType === "pause") {
         await supabase.from("orders").update({ status: "pending" }).eq("id", actionTargetId);
+        // Update local state to pending
+        setOrders(prev => prev.map(o => 
+          o.id === actionTargetId ? { ...o, status: "pending" as const } : o
+        ));
         toast.success(`Pedido ${getOrderNumber(actionTargetId)} pausado`);
       } else if (actionType === "dispatch") {
         const order = orders.find(o => o.id === actionTargetId);
@@ -512,16 +511,21 @@ const KitchenDisplay = () => {
             }
           }
           await supabase.from("orders").update({ status: "ready", ready_at: new Date().toISOString() }).eq("id", actionTargetId);
+          
+          // Immediately update local state
+          setOrders(prev => prev.filter(o => o.id !== actionTargetId));
+          await loadFinished();
+          
           if (soundEnabled) playReadySound();
-          toast.success(`✅ Pedido despachado! Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`);
+          toast.success(`Pedido despachado! Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`);
           supabase.functions.invoke("push-notify", {
             body: {
               action: "notify",
-              title: `🔔 Pedido Pronto!`,
+              title: `Pedido Pronto!`,
               message: `Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`,
               url: "/",
             },
-          }).catch(() => toast.error("Notificação não enviada"));
+          }).catch(() => toast.error("Notificacao nao enviada"));
         }
       }
     }
