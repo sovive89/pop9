@@ -370,7 +370,11 @@ const KitchenDisplay = () => {
   };
 
   const handleItemReady = async (order: KitchenOrder, item: KitchenItem) => {
-    if (item.readyQuantity >= item.quantity) return;
+    console.log("[v0] handleItemReady START", { orderId: order.id, itemId: item.id, readyQty: item.readyQuantity, totalQty: item.quantity });
+    if (item.readyQuantity >= item.quantity) {
+      console.log("[v0] Item already complete, skipping");
+      return;
+    }
 
     const { data: { user } } = await supabase.auth.getUser();
     const currentUserId = user?.id;
