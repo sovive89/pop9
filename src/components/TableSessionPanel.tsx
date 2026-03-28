@@ -47,9 +47,9 @@ interface Props {
   zoneName: string;
   session: (TableSession & { dbId: string }) | null;
   orders: ClientOrder[];
-  onStartSession: (client: Omit<ClientInfo, "id" | "addedAt">) => void;
-  onAddClient: (client: Omit<ClientInfo, "id" | "addedAt">) => void;
-  onCloseSession: () => void;
+  onStartSession: (client: Omit<ClientInfo, "id" | "addedAt">) => Promise<boolean>;
+  onAddClient: (client: Omit<ClientInfo, "id" | "addedAt">) => Promise<boolean>;
+  onCloseSession: () => Promise<boolean>;
   onClose: () => void;
   onSelectClient: (client: ClientInfo) => void;
 }
@@ -104,6 +104,7 @@ const TableSessionPanel = ({
   const [closePassword, setClosePassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isSubmittingClient, setIsSubmittingClient] = useState(false);
   const [showCloseAccount, setShowCloseAccount] = useState(false);
 
   const tableTotal = getTableTotal(orders);
@@ -132,9 +133,11 @@ const TableSessionPanel = ({
         toast.error("Senha incorreta");
         return;
       }
-      onCloseSession();
-      setShowCloseConfirm(false);
-      setClosePassword("");
+      const closed = await onCloseSession();
+      if (closed) {
+        setShowCloseConfirm(false);
+        setClosePassword("");
+      }
     } catch {
       toast.error("Erro ao verificar senha");
     } finally {
@@ -142,7 +145,7 @@ const TableSessionPanel = ({
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const error = validateFullName(clientName);
     if (error) {
       setNameError(error);
@@ -163,18 +166,27 @@ const TableSessionPanel = ({
       bairro: clientBairro.trim() || undefined,
       genero: clientGenero || undefined,
     };
-    if (session) {
-      onAddClient(clientData);
-      setShowAddForm(false);
-    } else {
-      onStartSession(clientData);
+    setIsSubmittingClient(true);
+    try {
+      const ok = session
+        ? await onAddClient(clientData)
+        : await onStartSession(clientData);
+
+      if (!ok) return;
+
+      if (session) {
+        setShowAddForm(false);
+      }
+
+      setClientName("");
+      setClientPhone("");
+      setClientEmail("");
+      setClientCep("");
+      setClientBairro("");
+      setClientGenero("");
+    } finally {
+      setIsSubmittingClient(false);
     }
-    setClientName("");
-    setClientPhone("");
-    setClientEmail("");
-    setClientCep("");
-    setClientBairro("");
-    setClientGenero("");
   };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -379,9 +391,9 @@ const TableSessionPanel = ({
                     Cancelar
                   </Button>
                 )}
-                <Button className="flex-1 gap-2" onClick={handleSubmit}>
+                <Button className="flex-1 gap-2" onClick={handleSubmit} disabled={isSubmittingClient}>
                   <UserPlus className="h-4 w-4" />
-                  {session ? "Adicionar" : "Iniciar Sessão"}
+                  {isSubmittingClient ? "Salvando..." : session ? "Adicionar" : "Iniciar Sessão"}
                 </Button>
                 {!session && (
                   <Button variant="outline" className="flex-1" onClick={onClose}>
@@ -586,9 +598,11 @@ const TableSessionPanel = ({
           sessionId={session.dbId}
           clients={session.clients}
           orders={orders}
-          onCloseSession={() => {
-            onCloseSession();
-            setShowCloseAccount(false);
+          onCloseSession={async () => {
+            const closed = await onCloseSession();
+            if (closed) {
+              setShowCloseAccount(false);
+            }
           }}
           onBack={() => setShowCloseAccount(false)}
         />

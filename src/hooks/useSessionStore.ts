@@ -14,73 +14,107 @@ interface SessionData {
   orders: ClientOrder[];
 }
 
+interface LoadSessionsOptions {
+  silent?: boolean;
+}
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim().length > 0) {
+      return message;
+    }
+  }
+  return fallback;
+};
+
 export const useSessionStore = () => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [sessions, setSessions] = useState<Record<number, SessionData>>({});
   const [loading, setLoading] = useState(true);
 
-  // Load active sessions on mount (select mínimo = GET mais rápido)
-  const loadSessions = useCallback(async () => {
-    const { data: dbSessions, error } = await supabase
-      .from("sessions")
-      .select("id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, origin, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))")
-      .eq("status", "active");
+  // Load active sessions only after auth is ready.
+  const loadSessions = useCallback(async ({ silent = false }: LoadSessionsOptions = {}): Promise<Record<number, SessionData> | null> => {
+    if (authLoading) {
+      return null;
+    }
 
-    if (error) {
-      console.error("Error loading sessions:", error);
+    if (!user) {
+      setSessions({});
       setLoading(false);
-      return;
+      return {};
     }
 
-    const map: Record<number, SessionData> = {};
+    setLoading(true);
+    try {
+      const { data: dbSessions, error } = await supabase
+        .from("sessions")
+        .select("id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, origin, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))")
+        .eq("status", "active")
+        .order("started_at", { ascending: true });
 
-    for (const s of dbSessions ?? []) {
-      const clients: ClientInfo[] = ((s as any).session_clients ?? []).map((c: any) => ({
-        id: c.id,
-        name: c.name,
-        phone: c.phone ?? undefined,
-        addedAt: new Date(c.added_at),
-        email: c.email ?? undefined,
-        cep: c.cep ?? undefined,
-        bairro: c.bairro ?? undefined,
-        genero: c.genero ?? undefined,
-      }));
+      if (error) {
+        throw error;
+      }
 
-      const clientOrders: ClientOrder[] = clients.map((c) => {
-        const dbOrders = ((s as any).orders ?? []).filter((o: any) => o.client_id === c.id && o.status !== "cancelled");
-        const placedOrders: PlacedOrder[] = dbOrders.map((o: any) => ({
-          id: o.id,
-          status: o.status,
-          placedAt: new Date(o.placed_at),
-          origin: o.origin === "pwa" ? "pwa" : "mesa",
-          items: (o.order_items ?? []).map((oi: any) => ({
-            menuItemId: oi.menu_item_id,
-            name: oi.name,
-            price: Number(oi.price),
-            quantity: oi.quantity,
-            observation: oi.observation ?? undefined,
-            ingredientMods: (oi.ingredient_mods as IngredientMod[]) ?? undefined,
-          })),
+      const map: Record<number, SessionData> = {};
+
+      for (const s of dbSessions ?? []) {
+        const clients: ClientInfo[] = ((s as any).session_clients ?? []).map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          phone: c.phone ?? undefined,
+          addedAt: new Date(c.added_at),
+          email: c.email ?? undefined,
+          cep: c.cep ?? undefined,
+          bairro: c.bairro ?? undefined,
+          genero: c.genero ?? undefined,
         }));
-        return { clientId: c.id, cart: [], orders: placedOrders };
-      });
 
-      map[s.table_number] = {
-        session: {
-          dbId: s.id,
-          startedAt: new Date(s.started_at),
-          clients,
-        },
-        orders: clientOrders,
-      };
+        const clientOrders: ClientOrder[] = clients.map((c) => {
+          const dbOrders = ((s as any).orders ?? []).filter((o: any) => o.client_id === c.id && o.status !== "cancelled");
+          const placedOrders: PlacedOrder[] = dbOrders.map((o: any) => ({
+            id: o.id,
+            status: o.status,
+            placedAt: new Date(o.placed_at),
+            origin: o.origin === "pwa" ? "pwa" : "mesa",
+            items: (o.order_items ?? []).map((oi: any) => ({
+              menuItemId: oi.menu_item_id,
+              name: oi.name,
+              price: Number(oi.price),
+              quantity: oi.quantity,
+              observation: oi.observation ?? undefined,
+              ingredientMods: (oi.ingredient_mods as IngredientMod[]) ?? undefined,
+            })),
+          }));
+          return { clientId: c.id, cart: [], orders: placedOrders };
+        });
+
+        map[s.table_number] = {
+          session: {
+            dbId: s.id,
+            startedAt: new Date(s.started_at),
+            clients,
+          },
+          orders: clientOrders,
+        };
+      }
+
+      setSessions(map);
+      return map;
+    } catch (error) {
+      console.error("Error loading sessions:", error);
+      if (!silent) {
+        toast.error(`Erro ao carregar sessões ativas: ${getErrorMessage(error, "verifique autenticação e políticas RLS")}`);
+      }
+      return null;
+    } finally {
+      setLoading(false);
     }
-
-    setSessions(map);
-    setLoading(false);
-  }, []);
+  }, [authLoading, user]);
 
   useEffect(() => {
-    loadSessions();
+    void loadSessions();
   }, [loadSessions]);
 
   // Notification sound for ready orders
@@ -116,10 +150,10 @@ export const useSessionStore = () => {
     const channel = supabase
       .channel("sessions-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "sessions" }, () => {
-        loadSessions();
+        void loadSessions({ silent: true });
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "session_clients" }, () => {
-        loadSessions();
+        void loadSessions({ silent: true });
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders" }, async (payload) => {
         const newRecord = payload.new as any;
@@ -168,10 +202,10 @@ export const useSessionStore = () => {
             duration: 20000,
           });
         }
-        loadSessions();
+        void loadSessions({ silent: true });
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "orders" }, () => {
-        loadSessions();
+        void loadSessions({ silent: true });
       })
       .subscribe();
 
@@ -183,60 +217,61 @@ export const useSessionStore = () => {
     zone: Zone,
     clientData: { name: string; phone?: string; email?: string; cep?: string; bairro?: string; genero?: string }
   ) => {
-    const { data: session, error: sErr } = await supabase
-      .from("sessions")
-      .insert({ table_number: tableNumber, zone, created_by: user?.id })
-      .select()
-      .single();
-
-    if (sErr || !session) {
-      toast.error("Erro ao criar sessão");
-      console.error(sErr);
-      return;
+    if (authLoading) {
+      toast.error("Aguarde a autenticação concluir antes de iniciar a sessão.");
+      return false;
     }
 
-    const { data: client, error: cErr } = await supabase
-      .from("session_clients")
-      .insert({
-        session_id: session.id,
-        name: clientData.name,
-        phone: clientData.phone,
-        email: clientData.email,
-        cep: clientData.cep,
-        bairro: clientData.bairro,
-        genero: clientData.genero,
-      })
-      .select()
-      .single();
-
-    if (cErr || !client) {
-      toast.error("Erro ao registrar cliente");
-      console.error(cErr);
-      return;
+    if (!user?.id) {
+      toast.error("Usuário não autenticado. Faça login novamente.");
+      return false;
     }
 
-    setSessions((prev) => ({
-      ...prev,
-      [tableNumber]: {
-        session: {
-          dbId: session.id,
-          startedAt: new Date(session.started_at),
-          clients: [{
-            id: client.id,
-            name: client.name,
-            phone: client.phone ?? undefined,
-            addedAt: new Date(client.added_at),
-            email: client.email ?? undefined,
-            cep: client.cep ?? undefined,
-            bairro: client.bairro ?? undefined,
-            genero: client.genero ?? undefined,
-          }],
-        },
-        orders: [{ clientId: client.id, cart: [], orders: [] }],
-      },
-    }));
+    try {
+      const { data: session, error: sErr } = await supabase
+        .from("sessions")
+        .insert({ table_number: tableNumber, zone, created_by: user.id })
+        .select()
+        .single();
 
-    toast.success(`Sessão iniciada — Mesa ${String(tableNumber).padStart(2, "0")}`);
+      if (sErr || !session) {
+        throw sErr ?? new Error("Falha ao criar sessão");
+      }
+
+      const { error: cErr } = await supabase
+        .from("session_clients")
+        .insert({
+          session_id: session.id,
+          name: clientData.name,
+          phone: clientData.phone,
+          email: clientData.email,
+          cep: clientData.cep,
+          bairro: clientData.bairro,
+          genero: clientData.genero,
+        });
+
+      if (cErr) {
+        console.error("Erro ao registrar cliente inicial. Encerrando sessão órfã:", cErr);
+        await supabase
+          .from("sessions")
+          .update({ status: "closed", ended_at: new Date().toISOString() })
+          .eq("id", session.id);
+        throw cErr;
+      }
+
+      const refreshed = await loadSessions({ silent: true });
+      if (!refreshed?.[tableNumber]) {
+        toast.error("Sessão criada, mas não pôde ser recarregada. Verifique política SELECT (RLS) da tabela sessions.");
+        return false;
+      }
+
+      toast.success(`Sessão iniciada — Mesa ${String(tableNumber).padStart(2, "0")}`);
+      return true;
+    } catch (error) {
+      console.error("Erro ao iniciar sessão:", error);
+      toast.error(`Erro ao criar sessão no banco: ${getErrorMessage(error, "verifique autenticação e RLS")}`);
+      return false;
+    }
   };
 
   const addClient = async (
@@ -244,9 +279,9 @@ export const useSessionStore = () => {
     clientData: { name: string; phone?: string; email?: string; cep?: string; bairro?: string; genero?: string }
   ) => {
     const sessionData = sessions[tableNumber];
-    if (!sessionData) return;
+    if (!sessionData) return false;
 
-    const { data: client, error } = await supabase
+    const { error } = await supabase
       .from("session_clients")
       .insert({
         session_id: sessionData.session.dbId,
@@ -256,46 +291,26 @@ export const useSessionStore = () => {
         cep: clientData.cep,
         bairro: clientData.bairro,
         genero: clientData.genero,
-      })
-      .select()
-      .single();
+      });
 
-    if (error || !client) {
-      toast.error("Erro ao adicionar cliente");
-      return;
+    if (error) {
+      toast.error(`Erro ao adicionar cliente: ${getErrorMessage(error, "falha de gravação no Supabase")}`);
+      return false;
     }
 
-    setSessions((prev) => {
-      const curr = prev[tableNumber];
-      if (!curr) return prev;
-      return {
-        ...prev,
-        [tableNumber]: {
-          ...curr,
-          session: {
-            ...curr.session,
-            clients: [...curr.session.clients, {
-              id: client.id,
-              name: client.name,
-              phone: client.phone ?? undefined,
-              addedAt: new Date(client.added_at),
-              email: client.email ?? undefined,
-              cep: client.cep ?? undefined,
-              bairro: client.bairro ?? undefined,
-              genero: client.genero ?? undefined,
-            }],
-          },
-          orders: [...curr.orders, { clientId: client.id, cart: [], orders: [] }],
-        },
-      };
-    });
+    const refreshed = await loadSessions({ silent: true });
+    if (!refreshed?.[tableNumber]) {
+      toast.error("Cliente adicionado, mas a sessão ativa não pôde ser recarregada.");
+      return false;
+    }
 
     toast.success(`${clientData.name} adicionado à Mesa ${String(tableNumber).padStart(2, "0")}`);
+    return true;
   };
 
   const closeSession = async (tableNumber: number) => {
     const sessionData = sessions[tableNumber];
-    if (!sessionData) return;
+    if (!sessionData) return false;
 
     const { error } = await supabase
       .from("sessions")
@@ -304,16 +319,13 @@ export const useSessionStore = () => {
 
     if (error) {
       toast.error("Erro ao encerrar sessão");
-      return;
+      return false;
     }
 
-    setSessions((prev) => {
-      const next = { ...prev };
-      delete next[tableNumber];
-      return next;
-    });
+    await loadSessions({ silent: true });
 
     toast.success(`Sessão encerrada — Mesa ${String(tableNumber).padStart(2, "0")}`);
+    return true;
   };
 
   const placeOrder = async (tableNumber: number, clientId: string, cartItems: OrderItem[]) => {

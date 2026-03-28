@@ -71,18 +71,19 @@ const TableMap = () => {
     setSelectedClient(null);
   };
 
-  const handleStartSession = async (tableId: number, zone: string, input: ClientInput) => {
-    await startSession(tableId, zone, input);
-  };
+  const handleStartSession = async (tableId: number, zone: string, input: ClientInput) =>
+    startSession(tableId, zone, input);
 
-  const handleAddClient = async (tableId: number, input: ClientInput) => {
-    await addClient(tableId, input);
-  };
+  const handleAddClient = async (tableId: number, input: ClientInput) =>
+    addClient(tableId, input);
 
   const handleCloseSession = async (tableId: number) => {
-    await closeSession(tableId);
-    setSelectedTableId(null);
-    setSelectedClient(null);
+    const closed = await closeSession(tableId);
+    if (closed) {
+      setSelectedTableId(null);
+      setSelectedClient(null);
+    }
+    return closed;
   };
 
   const handleUpdateOrder = (tableId: number, updated: ClientOrder) => {
@@ -216,7 +217,7 @@ const TableMap = () => {
           orders={getTableOrders(selectedTableId)}
           onStartSession={(input) => {
             const zone = getZoneForTable(selectedTableId);
-            handleStartSession(selectedTableId, zone?.key ?? "salao", input);
+            return handleStartSession(selectedTableId, zone?.key ?? "salao", input);
           }}
           onAddClient={(input) => handleAddClient(selectedTableId, input)}
           onCloseSession={() => handleCloseSession(selectedTableId)}
