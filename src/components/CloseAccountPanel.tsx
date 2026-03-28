@@ -93,11 +93,31 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onCloseSession
 
   // Load existing payments
   const loadPayments = useCallback(async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("payments")
       .select("id, client_id, amount, service_charge, method, cash_received, change_given, paid_at")
       .eq("session_id", sessionId);
 
+    if (error) {
+      // Fallback: query without cash columns in case migration hasn't run yet
+      const { data: fallbackData } = await supabase
+        .from("payments")
+        .select("id, client_id, amount, service_charge, method, paid_at")
+        .eq("session_id", sessionId);
+      if (fallbackData) {
+        setPayments(fallbackData.map((p: any) => ({
+          id: p.id,
+          clientId: p.client_id,
+          amount: Number(p.amount),
+          serviceCharge: Number(p.service_charge),
+          method: p.method as PaymentMethod,
+          cashReceived: 0,
+          changeGiven: 0,
+          paidAt: new Date(p.paid_at),
+        })));
+      }
+      return;
+    }
     if (data) {
       setPayments(data.map((p: any) => ({
         id: p.id,
@@ -189,7 +209,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onCloseSession
       const totalPaying = Math.round((payAmount + payServiceCharge) * 100) / 100;
       const changeVal = paymentMethod === "dinheiro" && cashVal > totalPaying ? Math.round((cashVal - totalPaying) * 100) / 100 : 0;
 
-      const { error } = await supabase.from("payments").insert({
+      let { error } = await supabase.from("payments").insert({
         session_id: sessionId,
         client_id: clientId,
         amount: Math.round(payAmount * 100) / 100,
@@ -199,6 +219,19 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onCloseSession
         change_given: changeVal,
         created_by: user?.id,
       });
+
+      if (error) {
+        // Fallback: insert without cash columns if migration hasn't run yet
+        const fallback = await supabase.from("payments").insert({
+          session_id: sessionId,
+          client_id: clientId,
+          amount: Math.round(payAmount * 100) / 100,
+          service_charge: Math.round(payServiceCharge * 100) / 100,
+          method: paymentMethod,
+          created_by: user?.id,
+        });
+        error = fallback.error;
+      }
 
       if (error) {
         toast.error("Erro ao registrar pagamento");
