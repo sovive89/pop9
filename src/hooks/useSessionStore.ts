@@ -14,6 +14,12 @@ interface SessionData {
   orders: ClientOrder[];
 }
 
+const SESSIONS_SELECT_WITH_ORIGIN =
+  "id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, origin, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))";
+
+const SESSIONS_SELECT_LEGACY =
+  "id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))";
+
 export const useSessionStore = () => {
   const { user, loading: authLoading } = useAuth();
   const [sessions, setSessions] = useState<Record<number, SessionData>>({});
@@ -34,10 +40,20 @@ export const useSessionStore = () => {
     }
 
     setLoading(true);
-    const { data: dbSessions, error } = await supabase
+    let { data: dbSessions, error } = await supabase
       .from("sessions")
-      .select("id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, origin, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))")
+      .select(SESSIONS_SELECT_WITH_ORIGIN)
       .eq("status", "active");
+
+    // Compatibility fallback for environments where orders.origin migration was not applied yet.
+    if (error?.code === "42703" && /orders_1\.origin/.test(error.message ?? "")) {
+      const fallback = await supabase
+        .from("sessions")
+        .select(SESSIONS_SELECT_LEGACY)
+        .eq("status", "active");
+      dbSessions = fallback.data;
+      error = fallback.error;
+    }
 
     if (error) {
       console.error("Error loading sessions:", error);
