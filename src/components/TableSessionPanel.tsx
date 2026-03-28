@@ -47,9 +47,9 @@ interface Props {
   zoneName: string;
   session: (TableSession & { dbId: string }) | null;
   orders: ClientOrder[];
-  onStartSession: (client: Omit<ClientInfo, "id" | "addedAt">) => void;
-  onAddClient: (client: Omit<ClientInfo, "id" | "addedAt">) => void;
-  onCloseSession: () => void;
+  onStartSession: (client: Omit<ClientInfo, "id" | "addedAt">) => Promise<boolean>;
+  onAddClient: (client: Omit<ClientInfo, "id" | "addedAt">) => Promise<boolean>;
+  onCloseSession: () => Promise<void>;
   onClose: () => void;
   onSelectClient: (client: ClientInfo) => void;
 }
@@ -132,7 +132,7 @@ const TableSessionPanel = ({
         toast.error("Senha incorreta");
         return;
       }
-      onCloseSession();
+      await onCloseSession();
       setShowCloseConfirm(false);
       setClosePassword("");
     } catch {
@@ -142,7 +142,7 @@ const TableSessionPanel = ({
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const error = validateFullName(clientName);
     if (error) {
       setNameError(error);
@@ -163,11 +163,17 @@ const TableSessionPanel = ({
       bairro: clientBairro.trim() || undefined,
       genero: clientGenero || undefined,
     };
+    let ok = false;
     if (session) {
-      onAddClient(clientData);
-      setShowAddForm(false);
+      ok = await onAddClient(clientData);
+      if (ok) {
+        setShowAddForm(false);
+      }
     } else {
-      onStartSession(clientData);
+      ok = await onStartSession(clientData);
+    }
+    if (!ok) {
+      return;
     }
     setClientName("");
     setClientPhone("");

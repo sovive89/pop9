@@ -15,12 +15,19 @@ interface SessionData {
 }
 
 export const useSessionStore = () => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [sessions, setSessions] = useState<Record<number, SessionData>>({});
   const [loading, setLoading] = useState(true);
 
-  // Load active sessions on mount (select mínimo = GET mais rápido)
+  // Load active sessions only after auth session is restored
   const loadSessions = useCallback(async () => {
+    if (!user) {
+      setSessions({});
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
     const { data: dbSessions, error } = await supabase
       .from("sessions")
       .select("id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, origin, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))")
@@ -77,11 +84,12 @@ export const useSessionStore = () => {
 
     setSessions(map);
     setLoading(false);
-  }, []);
+  }, [user]);
 
   useEffect(() => {
-    loadSessions();
-  }, [loadSessions]);
+    if (authLoading) return;
+    void loadSessions();
+  }, [authLoading, loadSessions]);
 
   // Notification sound for ready orders
   const playReadySound = useCallback(() => {
@@ -113,6 +121,8 @@ export const useSessionStore = () => {
 
   // Realtime subscription for sessions
   useEffect(() => {
+    if (authLoading || !user) return;
+
     const channel = supabase
       .channel("sessions-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "sessions" }, () => {
@@ -176,75 +186,90 @@ export const useSessionStore = () => {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [loadSessions, playReadySound]);
+  }, [authLoading, user, loadSessions, playReadySound]);
 
   const startSession = async (
     tableNumber: number,
     zone: Zone,
     clientData: { name: string; phone?: string; email?: string; cep?: string; bairro?: string; genero?: string }
-  ) => {
-    const { data: session, error: sErr } = await supabase
-      .from("sessions")
-      .insert({ table_number: tableNumber, zone, created_by: user?.id })
-      .select()
-      .single();
+  ): Promise<boolean> => {
+    try {
+      const currentUser = user ?? (await supabase.auth.getUser()).data.user;
+      if (!currentUser) {
+        toast.error("Usuário não autenticado. Faça login novamente.");
+        return false;
+      }
 
-    if (sErr || !session) {
-      toast.error("Erro ao criar sessão");
-      console.error(sErr);
-      return;
-    }
+      const { data: session, error: sErr } = await supabase
+        .from("sessions")
+        .insert({ table_number: tableNumber, zone, created_by: currentUser.id })
+        .select()
+        .single();
 
-    const { data: client, error: cErr } = await supabase
-      .from("session_clients")
-      .insert({
-        session_id: session.id,
-        name: clientData.name,
-        phone: clientData.phone,
-        email: clientData.email,
-        cep: clientData.cep,
-        bairro: clientData.bairro,
-        genero: clientData.genero,
-      })
-      .select()
-      .single();
+      if (sErr || !session) {
+        toast.error("Erro ao criar sessão");
+        console.error("sessions.insert failed:", sErr);
+        return false;
+      }
 
-    if (cErr || !client) {
-      toast.error("Erro ao registrar cliente");
-      console.error(cErr);
-      return;
-    }
+      const { data: client, error: cErr } = await supabase
+        .from("session_clients")
+        .insert({
+          session_id: session.id,
+          name: clientData.name,
+          phone: clientData.phone,
+          email: clientData.email,
+          cep: clientData.cep,
+          bairro: clientData.bairro,
+          genero: clientData.genero,
+        })
+        .select()
+        .single();
 
-    setSessions((prev) => ({
-      ...prev,
-      [tableNumber]: {
-        session: {
-          dbId: session.id,
-          startedAt: new Date(session.started_at),
-          clients: [{
-            id: client.id,
-            name: client.name,
-            phone: client.phone ?? undefined,
-            addedAt: new Date(client.added_at),
-            email: client.email ?? undefined,
-            cep: client.cep ?? undefined,
-            bairro: client.bairro ?? undefined,
-            genero: client.genero ?? undefined,
-          }],
+      if (cErr || !client) {
+        console.error("session_clients.insert failed:", cErr);
+        // Avoid orphan active sessions when client creation fails.
+        await supabase.from("sessions").delete().eq("id", session.id);
+        toast.error("Erro ao registrar cliente na sessão");
+        return false;
+      }
+
+      setSessions((prev) => ({
+        ...prev,
+        [tableNumber]: {
+          session: {
+            dbId: session.id,
+            startedAt: new Date(session.started_at),
+            clients: [{
+              id: client.id,
+              name: client.name,
+              phone: client.phone ?? undefined,
+              addedAt: new Date(client.added_at),
+              email: client.email ?? undefined,
+              cep: client.cep ?? undefined,
+              bairro: client.bairro ?? undefined,
+              genero: client.genero ?? undefined,
+            }],
+          },
+          orders: [{ clientId: client.id, cart: [], orders: [] }],
         },
-        orders: [{ clientId: client.id, cart: [], orders: [] }],
-      },
-    }));
+      }));
 
-    toast.success(`Sessão iniciada — Mesa ${String(tableNumber).padStart(2, "0")}`);
+      toast.success(`Sessão iniciada — Mesa ${String(tableNumber).padStart(2, "0")}`);
+      return true;
+    } catch (err) {
+      console.error("Unexpected error creating session:", err);
+      toast.error("Falha inesperada ao iniciar sessão");
+      return false;
+    }
   };
 
   const addClient = async (
     tableNumber: number,
     clientData: { name: string; phone?: string; email?: string; cep?: string; bairro?: string; genero?: string }
-  ) => {
+  ): Promise<boolean> => {
     const sessionData = sessions[tableNumber];
-    if (!sessionData) return;
+    if (!sessionData) return false;
 
     const { data: client, error } = await supabase
       .from("session_clients")
@@ -262,7 +287,7 @@ export const useSessionStore = () => {
 
     if (error || !client) {
       toast.error("Erro ao adicionar cliente");
-      return;
+      return false;
     }
 
     setSessions((prev) => {
@@ -291,6 +316,7 @@ export const useSessionStore = () => {
     });
 
     toast.success(`${clientData.name} adicionado à Mesa ${String(tableNumber).padStart(2, "0")}`);
+    return true;
   };
 
   const closeSession = async (tableNumber: number) => {
