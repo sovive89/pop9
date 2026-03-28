@@ -201,6 +201,7 @@ export type Database = {
         Row: {
           client_id: string
           id: string
+          origin?: string
           placed_at: string
           session_id: string
           status: string
@@ -208,6 +209,7 @@ export type Database = {
         Insert: {
           client_id: string
           id?: string
+          origin?: string
           placed_at?: string
           session_id: string
           status?: string
@@ -215,6 +217,7 @@ export type Database = {
         Update: {
           client_id?: string
           id?: string
+          origin?: string
           placed_at?: string
           session_id?: string
           status?: string
