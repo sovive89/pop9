@@ -19,22 +19,27 @@ export const useSessionStore = () => {
   const [sessions, setSessions] = useState<Record<number, SessionData>>({});
   const [loading, setLoading] = useState(true);
 
-  // Load active sessions on mount (select mínimo = GET mais rápido)
+  // Load active sessions on mount
   const loadSessions = useCallback(async () => {
     const { data: dbSessions, error } = await supabase
       .from("sessions")
       .select("id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, origin, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))")
-      .eq("status", "active");
+      .eq("status", "active")
+      .order("started_at", { ascending: false });
 
     if (error) {
-      console.error("Error loading sessions:", error);
+      console.error("Erro ao carregar sessões:", error);
+      toast.error("Erro ao carregar mesas. Verifique sua conexão.");
       setLoading(false);
       return;
     }
 
     const map: Record<number, SessionData> = {};
 
+    // Sessions are ordered by started_at DESC, so the first entry per table
+    // is the most recent. Duplicates (if any) are skipped.
     for (const s of dbSessions ?? []) {
+      if (map[s.table_number]) continue; // keep only the most recent
       const clients: ClientInfo[] = ((s as any).session_clients ?? []).map((c: any) => ({
         id: c.id,
         name: c.name,
@@ -183,6 +188,32 @@ export const useSessionStore = () => {
     zone: Zone,
     clientData: { name: string; phone?: string; email?: string; cep?: string; bairro?: string; genero?: string }
   ) => {
+    // Guard: require authenticated user (RLS requires created_by = auth.uid())
+    if (!user?.id) {
+      toast.error("Usuário não autenticado. Faça login novamente.");
+      return;
+    }
+
+    // Guard: prevent creating duplicate sessions if one already exists locally
+    if (sessions[tableNumber]) {
+      toast.warning(`Mesa ${String(tableNumber).padStart(2, "0")} já possui uma sessão ativa`);
+      return;
+    }
+
+    // Guard: check the DB for an active session for this table
+    const { data: existing } = await supabase
+      .from("sessions")
+      .select("id")
+      .eq("table_number", tableNumber)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (existing) {
+      toast.warning(`Mesa ${String(tableNumber).padStart(2, "0")} já possui uma sessão ativa no banco`);
+      await loadSessions();
+      return;
+    }
+
     const { data: session, error: sErr } = await supabase
       .from("sessions")
       .insert({ table_number: tableNumber, zone, created_by: user?.id })
@@ -190,8 +221,12 @@ export const useSessionStore = () => {
       .single();
 
     if (sErr || !session) {
-      toast.error("Erro ao criar sessão");
-      console.error(sErr);
+      console.error("Erro ao criar sessão:", sErr);
+      if (sErr?.code === "42501") {
+        toast.error("Sem permissão para criar sessão. Verifique suas permissões de atendente.");
+      } else {
+        toast.error(`Erro ao criar sessão: ${sErr?.message ?? "erro desconhecido"}`);
+      }
       return;
     }
 
@@ -210,8 +245,14 @@ export const useSessionStore = () => {
       .single();
 
     if (cErr || !client) {
-      toast.error("Erro ao registrar cliente");
-      console.error(cErr);
+      console.error("Erro ao registrar cliente:", cErr);
+      // Rollback: close the session that was just created
+      await supabase.from("sessions").update({ status: "closed", ended_at: new Date().toISOString() }).eq("id", session.id);
+      if (cErr?.code === "42501") {
+        toast.error("Sem permissão para registrar cliente. Verifique suas permissões de atendente.");
+      } else {
+        toast.error(`Erro ao registrar cliente: ${cErr?.message ?? "erro desconhecido"}`);
+      }
       return;
     }
 
