@@ -8,6 +8,10 @@ import type { ClientOrder, PlacedOrder, OrderItem, IngredientMod } from "@/utils
 import { buildKitchenReceipts, printReceipt } from "@/utils/thermal-print";
 
 type Zone = string;
+const SESSION_SELECT_WITH_ORIGIN =
+  "id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, origin, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))";
+const SESSION_SELECT_LEGACY =
+  "id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))";
 
 interface SessionData {
   session: TableSession & { dbId: string };
@@ -34,10 +38,20 @@ export const useSessionStore = () => {
     }
 
     setLoading(true);
-    const { data: dbSessions, error } = await supabase
+    let { data: dbSessions, error } = await supabase
       .from("sessions")
-      .select("id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, origin, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))")
+      .select(SESSION_SELECT_WITH_ORIGIN)
       .eq("status", "active");
+
+    if (error?.code === "42703" && error.message?.toLowerCase().includes("origin")) {
+      // Compat mode for environments where the orders.origin migration was not applied yet.
+      const legacyResult = await supabase
+        .from("sessions")
+        .select(SESSION_SELECT_LEGACY)
+        .eq("status", "active");
+      dbSessions = legacyResult.data;
+      error = legacyResult.error;
+    }
 
     if (error) {
       console.error("Error loading sessions:", error);
