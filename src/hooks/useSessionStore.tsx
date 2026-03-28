@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, createContext, useContext, type ReactNode } from "react";
 import { isKitchenItem } from "@/data/menu";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -14,12 +14,32 @@ interface SessionData {
   orders: ClientOrder[];
 }
 
-export const useSessionStore = () => {
+interface SessionStoreValue {
+  sessions: Record<number, SessionData>;
+  loading: boolean;
+  startSession: (tableNumber: number, zone: Zone, clientData: { name: string; phone?: string; email?: string; cep?: string; bairro?: string; genero?: string }) => Promise<void>;
+  addClient: (tableNumber: number, clientData: { name: string; phone?: string; email?: string; cep?: string; bairro?: string; genero?: string }) => Promise<void>;
+  closeSession: (tableNumber: number) => Promise<void>;
+  placeOrder: (tableNumber: number, clientId: string, cartItems: OrderItem[]) => Promise<void>;
+  updateLocalCart: (tableNumber: number, clientId: string, cart: OrderItem[]) => void;
+  markDelivered: (orderId: string) => Promise<void>;
+}
+
+const SessionStoreContext = createContext<SessionStoreValue | null>(null);
+
+export const useSessionStore = (): SessionStoreValue => {
+  const ctx = useContext(SessionStoreContext);
+  if (!ctx) {
+    throw new Error("useSessionStore must be used within a SessionStoreProvider");
+  }
+  return ctx;
+};
+
+const useSessionStoreInternal = () => {
   const { user } = useAuth();
   const [sessions, setSessions] = useState<Record<number, SessionData>>({});
   const [loading, setLoading] = useState(true);
 
-  // Load active sessions on mount (select mínimo = GET mais rápido)
   const loadSessions = useCallback(async () => {
     const { data: dbSessions, error } = await supabase
       .from("sessions")
@@ -79,9 +99,15 @@ export const useSessionStore = () => {
     setLoading(false);
   }, []);
 
+  // Only load sessions after auth is ready (user available)
   useEffect(() => {
-    loadSessions();
-  }, [loadSessions]);
+    if (user) {
+      loadSessions();
+    } else {
+      setSessions({});
+      setLoading(false);
+    }
+  }, [user, loadSessions]);
 
   // Notification sound for ready orders
   const playReadySound = useCallback(() => {
@@ -439,4 +465,13 @@ export const useSessionStore = () => {
     updateLocalCart,
     markDelivered,
   };
+};
+
+export const SessionStoreProvider = ({ children }: { children: ReactNode }) => {
+  const store = useSessionStoreInternal();
+  return (
+    <SessionStoreContext.Provider value={store}>
+      {children}
+    </SessionStoreContext.Provider>
+  );
 };

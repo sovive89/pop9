@@ -6,12 +6,34 @@ import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import TableMap from "@/components/TableMap";
 import ActiveOrdersPanel from "@/components/ActiveOrdersPanel";
-import { useSessionStore } from "@/hooks/useSessionStore";
+import { useSessionStore, SessionStoreProvider } from "@/hooks/useSessionStore";
 import { supabase } from "@/integrations/supabase/client";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 const Index = () => {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Flame className="h-10 w-10 animate-pulse text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return (
+    <SessionStoreProvider>
+      <IndexContent />
+    </SessionStoreProvider>
+  );
+};
+
+const IndexContent = () => {
+  const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const { sessions } = useSessionStore();
   const [roles, setRoles] = useState<{ admin: boolean; attendant: boolean; kitchen: boolean }>({
@@ -59,18 +81,6 @@ const Index = () => {
       .maybeSingle()
       .then(({ data }) => setProfileName(data?.full_name ?? ""));
   }, [user]);
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <Flame className="h-10 w-10 animate-pulse text-primary" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
 
   return (
     <div className="min-h-screen bg-background">
