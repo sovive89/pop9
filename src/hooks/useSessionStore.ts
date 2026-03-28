@@ -20,6 +20,9 @@ const SESSIONS_SELECT_WITH_ORIGIN =
 const SESSIONS_SELECT_LEGACY =
   "id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))";
 
+export const shouldFallbackSessionsSelect = (error?: { code?: string | null; message?: string | null }) =>
+  error?.code === "42703" && /orders_1\.origin/.test(error.message ?? "");
+
 export const useSessionStore = () => {
   const { user, loading: authLoading } = useAuth();
   const [sessions, setSessions] = useState<Record<number, SessionData>>({});
@@ -46,7 +49,7 @@ export const useSessionStore = () => {
       .eq("status", "active");
 
     // Compatibility fallback for environments where orders.origin migration was not applied yet.
-    if (error?.code === "42703" && /orders_1\.origin/.test(error.message ?? "")) {
+    if (shouldFallbackSessionsSelect(error)) {
       const fallback = await supabase
         .from("sessions")
         .select(SESSIONS_SELECT_LEGACY)
