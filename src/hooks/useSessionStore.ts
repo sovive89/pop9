@@ -15,12 +15,20 @@ interface SessionData {
 }
 
 export const useSessionStore = () => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [sessions, setSessions] = useState<Record<number, SessionData>>({});
   const [loading, setLoading] = useState(true);
 
   // Load active sessions on mount (select mínimo = GET mais rápido)
   const loadSessions = useCallback(async () => {
+    if (authLoading) return;
+
+    if (!user) {
+      setSessions({});
+      setLoading(false);
+      return;
+    }
+
     const { data: dbSessions, error } = await supabase
       .from("sessions")
       .select("id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, origin, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))")
@@ -77,7 +85,7 @@ export const useSessionStore = () => {
 
     setSessions(map);
     setLoading(false);
-  }, []);
+  }, [authLoading, user]);
 
   useEffect(() => {
     loadSessions();
@@ -113,6 +121,8 @@ export const useSessionStore = () => {
 
   // Realtime subscription for sessions
   useEffect(() => {
+    if (authLoading || !user) return;
+
     const channel = supabase
       .channel("sessions-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "sessions" }, () => {
@@ -176,67 +186,53 @@ export const useSessionStore = () => {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [loadSessions, playReadySound]);
+  }, [authLoading, user, loadSessions, playReadySound]);
 
   const startSession = async (
     tableNumber: number,
     zone: Zone,
     clientData: { name: string; phone?: string; email?: string; cep?: string; bairro?: string; genero?: string }
   ) => {
-    const { data: session, error: sErr } = await supabase
-      .from("sessions")
-      .insert({ table_number: tableNumber, zone, created_by: user?.id })
-      .select()
-      .single();
-
-    if (sErr || !session) {
-      toast.error("Erro ao criar sessão");
-      console.error(sErr);
+    if (!user?.id) {
+      toast.error("Usuário não autenticado para abrir sessão");
       return;
     }
 
-    const { data: client, error: cErr } = await supabase
-      .from("session_clients")
-      .insert({
-        session_id: session.id,
-        name: clientData.name,
-        phone: clientData.phone,
-        email: clientData.email,
-        cep: clientData.cep,
-        bairro: clientData.bairro,
-        genero: clientData.genero,
-      })
-      .select()
-      .single();
+    try {
+      const { data: session, error: sErr } = await supabase
+        .from("sessions")
+        .insert({ table_number: tableNumber, zone, created_by: user.id })
+        .select()
+        .single();
 
-    if (cErr || !client) {
-      toast.error("Erro ao registrar cliente");
-      console.error(cErr);
-      return;
+      if (sErr || !session) {
+        throw sErr ?? new Error("Falha ao criar sessão");
+      }
+
+      const { error: cErr } = await supabase
+        .from("session_clients")
+        .insert({
+          session_id: session.id,
+          name: clientData.name,
+          phone: clientData.phone,
+          email: clientData.email,
+          cep: clientData.cep,
+          bairro: clientData.bairro,
+          genero: clientData.genero,
+        });
+
+      if (cErr) {
+        throw cErr;
+      }
+
+      // Fonte da verdade = banco: recarrega o mapa após INSERTs confirmados.
+      await loadSessions();
+      toast.success(`Sessão iniciada — Mesa ${String(tableNumber).padStart(2, "0")}`);
+    } catch (err: any) {
+      console.error("Error starting session:", err);
+      const reason = err?.message ?? "Erro desconhecido";
+      toast.error("Falha ao iniciar sessão no Supabase", { description: reason });
     }
-
-    setSessions((prev) => ({
-      ...prev,
-      [tableNumber]: {
-        session: {
-          dbId: session.id,
-          startedAt: new Date(session.started_at),
-          clients: [{
-            id: client.id,
-            name: client.name,
-            phone: client.phone ?? undefined,
-            addedAt: new Date(client.added_at),
-            email: client.email ?? undefined,
-            cep: client.cep ?? undefined,
-            bairro: client.bairro ?? undefined,
-            genero: client.genero ?? undefined,
-          }],
-        },
-        orders: [{ clientId: client.id, cart: [], orders: [] }],
-      },
-    }));
-
-    toast.success(`Sessão iniciada — Mesa ${String(tableNumber).padStart(2, "0")}`);
   };
 
   const addClient = async (
