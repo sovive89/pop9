@@ -18,10 +18,23 @@ export const useSessionStore = () => {
   const { user, loading: authLoading } = useAuth();
   const [sessions, setSessions] = useState<Record<number, SessionData>>({});
   const [loading, setLoading] = useState(true);
+  const supportsOrderOriginRef = useRef<boolean | null>(null);
+
+  const sessionsSelectBase =
+    "id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at";
+  const sessionsSelectSuffix =
+    ", order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))";
 
   const getSupabaseErrorMessage = useCallback((fallback: string, error?: { message?: string | null; code?: string | null }) => {
     const details = [error?.code, error?.message].filter(Boolean).join(" - ");
     return details ? `${fallback}: ${details}` : fallback;
+  }, []);
+
+  const isMissingOrderOriginError = useCallback((error?: { message?: string | null; code?: string | null }) => {
+    if (!error) return false;
+    if (error.code !== "42703") return false;
+    const message = (error.message ?? "").toLowerCase();
+    return message.includes("origin");
   }, []);
 
   // Load active sessions after auth is ready
@@ -34,10 +47,25 @@ export const useSessionStore = () => {
     }
 
     setLoading(true);
-    const { data: dbSessions, error } = await supabase
+    const tryWithOrigin = supportsOrderOriginRef.current !== false;
+    const selectColumns = tryWithOrigin
+      ? `${sessionsSelectBase}, origin${sessionsSelectSuffix}`
+      : `${sessionsSelectBase}${sessionsSelectSuffix}`;
+
+    let { data: dbSessions, error } = await supabase
       .from("sessions")
-      .select("id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, origin, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))")
+      .select(selectColumns)
       .eq("status", "active");
+
+    if (error && tryWithOrigin && isMissingOrderOriginError(error)) {
+      supportsOrderOriginRef.current = false;
+      ({ data: dbSessions, error } = await supabase
+        .from("sessions")
+        .select(`${sessionsSelectBase}${sessionsSelectSuffix}`)
+        .eq("status", "active"));
+    } else if (!error && tryWithOrigin) {
+      supportsOrderOriginRef.current = true;
+    }
 
     if (error) {
       console.error("Error loading sessions:", error);
@@ -91,7 +119,7 @@ export const useSessionStore = () => {
 
     setSessions(map);
     setLoading(false);
-  }, [authLoading, getSupabaseErrorMessage, user]);
+  }, [authLoading, getSupabaseErrorMessage, isMissingOrderOriginError, user]);
 
   useEffect(() => {
     loadSessions();
