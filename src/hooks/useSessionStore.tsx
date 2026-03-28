@@ -1,4 +1,12 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  createContext,
+  useContext,
+  type ReactNode,
+} from "react";
 import { isKitchenItem } from "@/data/menu";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -14,20 +22,49 @@ interface SessionData {
   orders: ClientOrder[];
 }
 
-export const useSessionStore = () => {
-  const { user } = useAuth();
+type SessionStoreValue = {
+  sessions: Record<number, SessionData>;
+  loading: boolean;
+  startSession: (
+    tableNumber: number,
+    zone: Zone,
+    clientData: { name: string; phone?: string; email?: string; cep?: string; bairro?: string; genero?: string }
+  ) => Promise<void>;
+  addClient: (
+    tableNumber: number,
+    clientData: { name: string; phone?: string; email?: string; cep?: string; bairro?: string; genero?: string }
+  ) => Promise<void>;
+  closeSession: (tableNumber: number) => Promise<void>;
+  placeOrder: (tableNumber: number, clientId: string, cartItems: OrderItem[]) => Promise<void>;
+  updateLocalCart: (tableNumber: number, clientId: string, cart: OrderItem[]) => void;
+  markDelivered: (orderId: string) => Promise<void>;
+};
+
+const SessionStoreContext = createContext<SessionStoreValue | null>(null);
+
+function formatSupabaseError(err: { message?: string; code?: string } | null): string {
+  if (!err) return "Erro desconhecido";
+  const code = err.code ? ` (${err.code})` : "";
+  return `${err.message ?? "Erro desconhecido"}${code}`;
+}
+
+function useSessionStoreImpl(userId: string | null, authLoading: boolean): SessionStoreValue {
   const [sessions, setSessions] = useState<Record<number, SessionData>>({});
   const [loading, setLoading] = useState(true);
 
-  // Load active sessions on mount (select mínimo = GET mais rápido)
   const loadSessions = useCallback(async () => {
     const { data: dbSessions, error } = await supabase
       .from("sessions")
-      .select("id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, origin, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))")
+      .select(
+        "id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, origin, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))"
+      )
       .eq("status", "active");
 
     if (error) {
       console.error("Error loading sessions:", error);
+      toast.error("Não foi possível carregar as mesas", {
+        description: formatSupabaseError(error),
+      });
       setLoading(false);
       return;
     }
@@ -80,16 +117,23 @@ export const useSessionStore = () => {
   }, []);
 
   useEffect(() => {
+    if (authLoading) {
+      setLoading(true);
+      return;
+    }
+    if (!userId) {
+      setSessions({});
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     loadSessions();
-  }, [loadSessions]);
+  }, [userId, authLoading, loadSessions]);
 
-  // Notification sound for ready orders
   const playReadySound = useCallback(() => {
-    // Vibration
     if (navigator.vibrate) {
       navigator.vibrate([200, 100, 200]);
     }
-    // Audio
     try {
       const ctx = new AudioContext();
       [0, 0.15].forEach((delay, i) => {
@@ -102,17 +146,19 @@ export const useSessionStore = () => {
         osc.start(ctx.currentTime + delay);
         osc.stop(ctx.currentTime + delay + 0.15);
       });
-    } catch { /* audio not available */ }
+    } catch {
+      /* audio not available */
+    }
   }, []);
 
-  // Use ref for sessions to avoid re-subscribing on every state change
   const sessionsRef = useRef<Record<number, SessionData>>({});
   useEffect(() => {
     sessionsRef.current = sessions;
   }, [sessions]);
 
-  // Realtime subscription for sessions
   useEffect(() => {
+    if (!userId || authLoading) return;
+
     const channel = supabase
       .channel("sessions-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "sessions" }, () => {
@@ -124,14 +170,12 @@ export const useSessionStore = () => {
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders" }, async (payload) => {
         const newRecord = payload.new as any;
         if (newRecord?.status === "ready") {
-          // Find table number for this order
           const entry = Object.entries(sessionsRef.current).find(([_, sd]) =>
             sd.orders.some((o) => o.orders.some((po) => po.id === newRecord.id))
           );
           const tableNum = entry ? Number(entry[0]) : 0;
           const tableLabel = tableNum ? `Mesa ${String(tableNum).padStart(2, "0")}` : "Mesa";
 
-          // Fetch full order items to show kitchen vs bar breakdown
           const { data: orderItems } = await supabase
             .from("order_items")
             .select("name, quantity, destination")
@@ -140,7 +184,6 @@ export const useSessionStore = () => {
           const kitchenItems = (orderItems ?? []).filter((i: any) => i.destination === "kitchen");
           const barItems = (orderItems ?? []).filter((i: any) => i.destination === "bar");
 
-          // Find client name
           const clientName = entry
             ? (() => {
                 const sd = entry[1];
@@ -175,22 +218,29 @@ export const useSessionStore = () => {
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, [loadSessions, playReadySound]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, authLoading, loadSessions, playReadySound]);
 
   const startSession = async (
     tableNumber: number,
     zone: Zone,
     clientData: { name: string; phone?: string; email?: string; cep?: string; bairro?: string; genero?: string }
   ) => {
+    if (!userId) {
+      toast.error("Sessão expirada", { description: "Faça login novamente para abrir uma mesa." });
+      return;
+    }
+
     const { data: session, error: sErr } = await supabase
       .from("sessions")
-      .insert({ table_number: tableNumber, zone, created_by: user?.id })
+      .insert({ table_number: tableNumber, zone, created_by: userId })
       .select()
       .single();
 
     if (sErr || !session) {
-      toast.error("Erro ao criar sessão");
+      toast.error("Erro ao criar sessão", { description: formatSupabaseError(sErr) });
       console.error(sErr);
       return;
     }
@@ -210,7 +260,7 @@ export const useSessionStore = () => {
       .single();
 
     if (cErr || !client) {
-      toast.error("Erro ao registrar cliente");
+      toast.error("Erro ao registrar cliente", { description: formatSupabaseError(cErr) });
       console.error(cErr);
       return;
     }
@@ -221,16 +271,18 @@ export const useSessionStore = () => {
         session: {
           dbId: session.id,
           startedAt: new Date(session.started_at),
-          clients: [{
-            id: client.id,
-            name: client.name,
-            phone: client.phone ?? undefined,
-            addedAt: new Date(client.added_at),
-            email: client.email ?? undefined,
-            cep: client.cep ?? undefined,
-            bairro: client.bairro ?? undefined,
-            genero: client.genero ?? undefined,
-          }],
+          clients: [
+            {
+              id: client.id,
+              name: client.name,
+              phone: client.phone ?? undefined,
+              addedAt: new Date(client.added_at),
+              email: client.email ?? undefined,
+              cep: client.cep ?? undefined,
+              bairro: client.bairro ?? undefined,
+              genero: client.genero ?? undefined,
+            },
+          ],
         },
         orders: [{ clientId: client.id, cart: [], orders: [] }],
       },
@@ -261,7 +313,7 @@ export const useSessionStore = () => {
       .single();
 
     if (error || !client) {
-      toast.error("Erro ao adicionar cliente");
+      toast.error("Erro ao adicionar cliente", { description: formatSupabaseError(error) });
       return;
     }
 
@@ -274,16 +326,19 @@ export const useSessionStore = () => {
           ...curr,
           session: {
             ...curr.session,
-            clients: [...curr.session.clients, {
-              id: client.id,
-              name: client.name,
-              phone: client.phone ?? undefined,
-              addedAt: new Date(client.added_at),
-              email: client.email ?? undefined,
-              cep: client.cep ?? undefined,
-              bairro: client.bairro ?? undefined,
-              genero: client.genero ?? undefined,
-            }],
+            clients: [
+              ...curr.session.clients,
+              {
+                id: client.id,
+                name: client.name,
+                phone: client.phone ?? undefined,
+                addedAt: new Date(client.added_at),
+                email: client.email ?? undefined,
+                cep: client.cep ?? undefined,
+                bairro: client.bairro ?? undefined,
+                genero: client.genero ?? undefined,
+              },
+            ],
           },
           orders: [...curr.orders, { clientId: client.id, cart: [], orders: [] }],
         },
@@ -303,7 +358,7 @@ export const useSessionStore = () => {
       .eq("id", sessionData.session.dbId);
 
     if (error) {
-      toast.error("Erro ao encerrar sessão");
+      toast.error("Erro ao encerrar sessão", { description: formatSupabaseError(error) });
       return;
     }
 
@@ -327,7 +382,7 @@ export const useSessionStore = () => {
       .single();
 
     if (oErr || !order) {
-      toast.error("Erro ao enviar pedido");
+      toast.error("Erro ao enviar pedido", { description: formatSupabaseError(oErr) });
       return;
     }
 
@@ -345,7 +400,7 @@ export const useSessionStore = () => {
     const { error: iErr } = await supabase.from("order_items").insert(itemsToInsert);
 
     if (iErr) {
-      toast.error("Erro ao salvar itens do pedido");
+      toast.error("Erro ao salvar itens do pedido", { description: formatSupabaseError(iErr) });
       return;
     }
 
@@ -364,16 +419,12 @@ export const useSessionStore = () => {
         [tableNumber]: {
           ...curr,
           orders: curr.orders.map((o) =>
-            o.clientId === clientId
-              ? { ...o, cart: [], orders: [...o.orders, placed] }
-              : o
+            o.clientId === clientId ? { ...o, cart: [], orders: [...o.orders, placed] } : o
           ),
         },
       };
     });
 
-    // Gatilho único ao enviar pedido: KDS atualiza (realtime) + comandas imprimem ao mesmo tempo.
-    // Comandas = só neste gatilho. Conta da mesa / conta individual = só por comando (botão Imprimir).
     const clientInfo = sessions[tableNumber]?.session.clients.find((c) => c.id === clientId);
     const clientName = clientInfo?.name ?? "Cliente";
     const kitchenReceipts = buildKitchenReceipts(tableNumber, clientName, cartItems, order.id);
@@ -382,7 +433,6 @@ export const useSessionStore = () => {
     toast.success("Pedido enviado!");
   };
 
-  // Update local cart (not persisted — cart is local until order is placed)
   const updateLocalCart = (tableNumber: number, clientId: string, cart: OrderItem[]) => {
     setSessions((prev) => {
       const curr = prev[tableNumber];
@@ -391,22 +441,17 @@ export const useSessionStore = () => {
         ...prev,
         [tableNumber]: {
           ...curr,
-          orders: curr.orders.map((o) =>
-            o.clientId === clientId ? { ...o, cart } : o
-          ),
+          orders: curr.orders.map((o) => (o.clientId === clientId ? { ...o, cart } : o)),
         },
       };
     });
   };
 
   const markDelivered = async (orderId: string) => {
-    const { error } = await supabase
-      .from("orders")
-      .update({ status: "delivered" })
-      .eq("id", orderId);
+    const { error } = await supabase.from("orders").update({ status: "delivered" }).eq("id", orderId);
 
     if (error) {
-      toast.error("Erro ao marcar como entregue");
+      toast.error("Erro ao marcar como entregue", { description: formatSupabaseError(error) });
       return;
     }
 
@@ -439,4 +484,19 @@ export const useSessionStore = () => {
     updateLocalCart,
     markDelivered,
   };
-};
+}
+
+export function SessionStoreProvider({ children }: { children: ReactNode }) {
+  const { user, loading: authLoading } = useAuth();
+  const store = useSessionStoreImpl(user?.id ?? null, authLoading);
+
+  return <SessionStoreContext.Provider value={store}>{children}</SessionStoreContext.Provider>;
+}
+
+export function useSessionStore(): SessionStoreValue {
+  const ctx = useContext(SessionStoreContext);
+  if (!ctx) {
+    throw new Error("useSessionStore must be used within SessionStoreProvider");
+  }
+  return ctx;
+}

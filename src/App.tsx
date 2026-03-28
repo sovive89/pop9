@@ -11,6 +11,7 @@ import Kitchen from "./pages/Kitchen";
 import Admin from "./pages/Admin";
 import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound";
+import { SessionStoreProvider } from "@/hooks/useSessionStore";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -18,6 +19,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
+      <SessionStoreProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
@@ -31,6 +33,7 @@ const App = () => (
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
+      </SessionStoreProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );
