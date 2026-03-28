@@ -228,9 +228,11 @@ export const useSessionStore = () => {
       // Fonte da verdade = banco: recarrega o mapa após INSERTs confirmados.
       await loadSessions();
       toast.success(`Sessão iniciada — Mesa ${String(tableNumber).padStart(2, "0")}`);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error starting session:", err);
-      const reason = err?.message ?? "Erro desconhecido";
+      const reason = err && typeof err === "object" && "message" in err
+        ? String((err as { message: string }).message)
+        : "Erro desconhecido";
       toast.error("Falha ao iniciar sessão no Supabase", { description: reason });
     }
   };
