@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
     }
 
     /** Senha absoluta: mínimo único para create/update de usuários pelo admin. */
-    const SENHA_ABSOLUTA_MIN = 12;
+    const SENHA_ABSOLUTA_MIN = 8;
 
     if (action === "create") {
       const { full_name, cpf, password, roles } = body;

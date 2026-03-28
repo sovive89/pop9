@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, Flame, Users, UtensilsCrossed, KeyRound, LayoutGrid, BarChart3, Package, Map, ChefHat, Settings, Link2, Webhook, ExternalLink, MessageCircle, Contact } from "lucide-react";
+import { Flame, Users, UtensilsCrossed, KeyRound, LayoutGrid, BarChart3, Package, Map, ChefHat, Settings, Link2, Webhook, ExternalLink, MessageCircle, Contact, Building2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -11,6 +11,7 @@ import ResetPasswordTab from "@/components/admin/ResetPasswordTab";
 import TablesTab from "@/components/admin/TablesTab";
 import WhatsAppTab from "@/components/admin/WhatsAppTab";
 import CRMTab from "@/components/admin/CRMTab";
+import ConfigTab from "@/components/admin/ConfigTab";
 
 /** Links úteis (configurável no Admin). */
 const ADMIN_LINKS: { label: string; href: string; external?: boolean }[] = [
@@ -124,7 +125,7 @@ const Admin = () => {
       </motion.header>
 
       <main className="mx-auto max-w-4xl p-4">
-        <Tabs defaultValue="menu" className="space-y-4">
+        <Tabs defaultValue="config" className="space-y-4">
           <TabsList className="flex flex-wrap h-auto gap-1 p-1">
             <TabsTrigger value="menu" className="gap-2 text-xs sm:text-sm">
               <UtensilsCrossed className="h-4 w-4" />
@@ -150,6 +151,10 @@ const Admin = () => {
               <Contact className="h-4 w-4" />
               <span className="hidden sm:inline">CRM</span>
             </TabsTrigger>
+            <TabsTrigger value="config" className="gap-2 text-xs sm:text-sm">
+              <Building2 className="h-4 w-4" />
+              <span className="hidden sm:inline">Configuração</span>
+            </TabsTrigger>
             <TabsTrigger value="links" className="gap-2 text-xs sm:text-sm">
               <Link2 className="h-4 w-4" />
               <span className="hidden sm:inline">Links e APIs</span>
@@ -171,6 +176,7 @@ const Admin = () => {
           <TabsContent value="password"><ResetPasswordTab /></TabsContent>
           <TabsContent value="whatsapp"><WhatsAppTab /></TabsContent>
           <TabsContent value="crm"><CRMTab /></TabsContent>
+          <TabsContent value="config"><ConfigTab /></TabsContent>
           <TabsContent value="links" className="space-y-6">
             <section className="rounded-lg border border-border bg-card p-4">
               <div className="flex items-center gap-2 text-muted-foreground text-sm mb-3">
