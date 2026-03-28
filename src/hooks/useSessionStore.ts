@@ -30,7 +30,7 @@ export const useSessionStore = () => {
     setLoading(true);
     const { data: dbSessions, error } = await supabase
       .from("sessions")
-      .select("id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, origin, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))")
+      .select("id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))")
       .eq("status", "active");
 
     if (error) {
@@ -59,7 +59,7 @@ export const useSessionStore = () => {
           id: o.id,
           status: o.status,
           placedAt: new Date(o.placed_at),
-          origin: o.origin === "pwa" ? "pwa" : "mesa",
+          origin: "mesa",
           items: (o.order_items ?? []).map((oi: any) => ({
             menuItemId: oi.menu_item_id,
             name: oi.name,
@@ -81,7 +81,6 @@ export const useSessionStore = () => {
         orders: clientOrders,
       };
     }
-
     setSessions(map);
     setLoading(false);
   }, [user]);
