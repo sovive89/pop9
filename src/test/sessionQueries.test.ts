@@ -6,12 +6,14 @@ const selectWithOrigin =
 const selectLegacy =
   "id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))";
 
+type SupabaseLikeClient = Parameters<typeof fetchActiveSessionsWithOriginFallback>[0];
+
 describe("fetchActiveSessionsWithOriginFallback", () => {
   it("returns first query result when origin is available", async () => {
     const eqMock = vi.fn().mockResolvedValue({ data: [{ id: "s1" }], error: null });
     const selectMock = vi.fn().mockReturnValue({ eq: eqMock });
     const fromMock = vi.fn().mockReturnValue({ select: selectMock });
-    const supabaseLike = { from: fromMock } as any;
+    const supabaseLike = { from: fromMock } as unknown as SupabaseLikeClient;
 
     const result = await fetchActiveSessionsWithOriginFallback(supabaseLike);
 
@@ -33,7 +35,7 @@ describe("fetchActiveSessionsWithOriginFallback", () => {
       .mockReturnValueOnce({ eq: firstEq })
       .mockReturnValueOnce({ eq: secondEq });
     const fromMock = vi.fn().mockReturnValue({ select: selectMock });
-    const supabaseLike = { from: fromMock } as any;
+    const supabaseLike = { from: fromMock } as unknown as SupabaseLikeClient;
 
     const result = await fetchActiveSessionsWithOriginFallback(supabaseLike);
 
@@ -51,7 +53,7 @@ describe("fetchActiveSessionsWithOriginFallback", () => {
     });
     const selectMock = vi.fn().mockReturnValue({ eq: firstEq });
     const fromMock = vi.fn().mockReturnValue({ select: selectMock });
-    const supabaseLike = { from: fromMock } as any;
+    const supabaseLike = { from: fromMock } as unknown as SupabaseLikeClient;
 
     const result = await fetchActiveSessionsWithOriginFallback(supabaseLike);
 

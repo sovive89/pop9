@@ -14,10 +14,10 @@ type ActiveSessionsResult<TData> = {
   error: SupabaseLikeError;
 };
 
-type SessionsQueryClient = {
+export type SessionsQueryClient = {
   from: (table: string) => {
     select: (query: string) => {
-      eq: (column: string, value: string) => Promise<ActiveSessionsResult<any[]>>;
+      eq: (column: string, value: string) => Promise<ActiveSessionsResult<unknown[]>>;
     };
   };
 };
