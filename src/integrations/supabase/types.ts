@@ -201,21 +201,30 @@ export type Database = {
         Row: {
           client_id: string
           id: string
+          origin: string
           placed_at: string
+          preparing_at: string | null
+          ready_at: string | null
           session_id: string
           status: string
         }
         Insert: {
           client_id: string
           id?: string
+          origin?: string
           placed_at?: string
+          preparing_at?: string | null
+          ready_at?: string | null
           session_id: string
           status?: string
         }
         Update: {
           client_id?: string
           id?: string
+          origin?: string
           placed_at?: string
+          preparing_at?: string | null
+          ready_at?: string | null
           session_id?: string
           status?: string
         }
