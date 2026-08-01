@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import type { ClientInfo, TableSession } from "@/components/TableSessionPanel";
 import type { ClientOrder, PlacedOrder, OrderItem, IngredientMod } from "@/utils/orders";
 import { buildKitchenReceipts, printReceipt } from "@/utils/thermal-print";
+import { fetchActiveSessionsWithOriginFallback } from "@/hooks/sessionQueries";
 
 type Zone = string;
 
@@ -34,10 +35,7 @@ export const useSessionStore = () => {
     }
 
     setLoading(true);
-    const { data: dbSessions, error } = await supabase
-      .from("sessions")
-      .select("id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, origin, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))")
-      .eq("status", "active");
+    const { data: dbSessions, error } = await fetchActiveSessionsWithOriginFallback(supabase);
 
     if (error) {
       console.error("Error loading sessions:", error);
