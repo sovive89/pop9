@@ -64,7 +64,6 @@ const StockTab = () => {
   const [view, setView] = useState<SubView>("insumos");
   const [search, setSearch] = useState("");
 
-  // Dialog state
   const [newMaterialOpen, setNewMaterialOpen] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [purchaseTarget, setPurchaseTarget] = useState<string | null>(null);
@@ -73,13 +72,11 @@ const StockTab = () => {
   const [produceOpen, setProduceOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // ── Forms: novo insumo ──
   const [matName, setMatName] = useState("");
   const [matUnit, setMatUnit] = useState("");
   const [matIsProduced, setMatIsProduced] = useState(false);
   const [matMinStock, setMatMinStock] = useState("");
 
-  // ── Forms: entrada de compra ──
   const [pQuantity, setPQuantity] = useState("");
   const [pUnitCost, setPUnitCost] = useState("");
   const [pSupplierId, setPSupplierId] = useState<string>("");
@@ -87,20 +84,17 @@ const StockTab = () => {
   const [pBoxCount, setPBoxCount] = useState("");
   const [pUnitsPerBox, setPUnitsPerBox] = useState("");
 
-  // ── Forms: novo fornecedor ──
   const [supName, setSupName] = useState("");
   const [supDocument, setSupDocument] = useState("");
   const [supPhone, setSupPhone] = useState("");
   const [supEmail, setSupEmail] = useState("");
 
-  // ── Forms: nova receita de produção ──
   const [recName, setRecName] = useState("");
   const [recOutputId, setRecOutputId] = useState<string>("");
   const [recOutputQty, setRecOutputQty] = useState("");
   const [recShelfDays, setRecShelfDays] = useState("");
   const [recInputs, setRecInputs] = useState<ProductionRecipeInput[]>([{ rawMaterialId: "", quantity: 0 }]);
 
-  // ── Forms: produzir lote ──
   const [prodRecipeId, setProdRecipeId] = useState<string>("");
   const [prodQuantity, setProdQuantity] = useState("");
   const [prodNotes, setProdNotes] = useState("");
@@ -264,7 +258,6 @@ const StockTab = () => {
 
   return (
     <div className="space-y-4">
-      {/* Alerta de estoque baixo */}
       {alerts.length > 0 && (
         <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3">
           <div className="flex items-center gap-2 text-destructive text-sm font-medium mb-2">
@@ -281,7 +274,6 @@ const StockTab = () => {
         </div>
       )}
 
-      {/* Sub-navegação */}
       <div className="flex gap-1 rounded-xl border border-border bg-muted/30 p-1">
         {[
           { key: "insumos" as const, label: "Insumos", icon: Package },
@@ -303,7 +295,6 @@ const StockTab = () => {
         ))}
       </div>
 
-      {/* ── INSUMOS ── */}
       {view === "insumos" && (
         <div className="space-y-3">
           <div className="flex gap-2">
@@ -360,7 +351,6 @@ const StockTab = () => {
         </div>
       )}
 
-      {/* ── PRODUÇÃO ── */}
       {view === "producao" && (
         <div className="space-y-5">
           <div>
@@ -420,7 +410,6 @@ const StockTab = () => {
         </div>
       )}
 
-      {/* ── FORNECEDORES ── */}
       {view === "fornecedores" && (
         <div className="space-y-3">
           <div className="flex justify-end">
@@ -442,7 +431,6 @@ const StockTab = () => {
         </div>
       )}
 
-      {/* ── DIALOG: novo insumo ── */}
       <Dialog open={newMaterialOpen} onOpenChange={(o) => { setNewMaterialOpen(o); if (!o) resetMaterialForm(); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -484,7 +472,6 @@ const StockTab = () => {
         </DialogContent>
       </Dialog>
 
-      {/* ── DIALOG: entrada de compra ── */}
       <Dialog open={purchaseOpen} onOpenChange={(o) => { setPurchaseOpen(o); if (!o) resetPurchaseForm(); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -565,7 +552,6 @@ const StockTab = () => {
         </DialogContent>
       </Dialog>
 
-      {/* ── DIALOG: novo fornecedor ── */}
       <Dialog open={newSupplierOpen} onOpenChange={(o) => { setNewSupplierOpen(o); if (!o) resetSupplierForm(); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -598,7 +584,6 @@ const StockTab = () => {
         </DialogContent>
       </Dialog>
 
-      {/* ── DIALOG: nova receita ── */}
       <Dialog open={newRecipeOpen} onOpenChange={(o) => { setNewRecipeOpen(o); if (!o) resetRecipeForm(); }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -679,7 +664,6 @@ const StockTab = () => {
         </DialogContent>
       </Dialog>
 
-      {/* ── DIALOG: produzir lote ── */}
       <Dialog open={produceOpen} onOpenChange={(o) => { setProduceOpen(o); if (!o) resetProduceForm(); }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -689,31 +673,8 @@ const StockTab = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
-            {(() => {
-              const activeRecipe = recipes.find((r) => r.id === prodRecipeId);
-              const outputMaterial = activeRecipe ? materialsById[activeRecipe.outputRawMaterialId] : undefined;
-              return (
-                <div className="rounded-lg border border-primary/30 bg-primary/10 p-3">
-                  <p className="text-xs text-muted-foreground">Item produzido (crédito no estoque)</p>
-                  <p className="font-semibold text-foreground">
-                    {outputMaterial?.name ?? "?"}
-                    {outputMaterial?.unit ? ` · ${outputMaterial.unit}` : ""}
-                  </p>
-                  {activeRecipe && (
-                    <p className="text-xs text-muted-foreground mt-0.5">Receita: {activeRecipe.name}</p>
-                  )}
-                </div>
-              );
-            })()}
             <div className="space-y-2">
-              <Label className="text-sm text-muted-foreground">
-                Quantidade produzida (real)
-                {(() => {
-                  const activeRecipe = recipes.find((r) => r.id === prodRecipeId);
-                  const outputMaterial = activeRecipe ? materialsById[activeRecipe.outputRawMaterialId] : undefined;
-                  return outputMaterial?.unit ? ` (${outputMaterial.unit})` : "";
-                })()}
-              </Label>
+              <Label className="text-sm text-muted-foreground">Quantidade produzida (real)</Label>
               <Input type="number" value={prodQuantity} onChange={(e) => setProdQuantity(e.target.value)} />
             </div>
             <div className="space-y-2">
