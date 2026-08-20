@@ -11,6 +11,7 @@ import ResetPasswordTab from "@/components/admin/ResetPasswordTab";
 import TablesTab from "@/components/admin/TablesTab";
 import WhatsAppTab from "@/components/admin/WhatsAppTab";
 import CRMTab from "@/components/admin/CRMTab";
+import StockTab from "@/components/admin/StockTab";
 
 /** Links úteis (configurável no Admin). */
 const ADMIN_LINKS: { label: string; href: string; external?: boolean }[] = [
@@ -150,19 +151,14 @@ const Admin = () => {
               <Contact className="h-4 w-4" />
               <span className="hidden sm:inline">CRM</span>
             </TabsTrigger>
+            <TabsTrigger value="stock" className="gap-2 text-xs sm:text-sm">
+              <Package className="h-4 w-4" />
+              <span className="hidden sm:inline">Estoque</span>
+            </TabsTrigger>
             <TabsTrigger value="links" className="gap-2 text-xs sm:text-sm">
               <Link2 className="h-4 w-4" />
               <span className="hidden sm:inline">Links e APIs</span>
             </TabsTrigger>
-            <button
-              type="button"
-              disabled
-              title="Módulo Estoque em desenvolvimento"
-              className="inline-flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-xs sm:text-sm font-medium text-muted-foreground/70 bg-muted/50 cursor-not-allowed opacity-70 border border-transparent"
-            >
-              <Package className="h-4 w-4" />
-              <span className="hidden sm:inline">Estoque</span>
-            </button>
           </TabsList>
 
           <TabsContent value="menu"><MenuTab /></TabsContent>
@@ -171,6 +167,7 @@ const Admin = () => {
           <TabsContent value="password"><ResetPasswordTab /></TabsContent>
           <TabsContent value="whatsapp"><WhatsAppTab /></TabsContent>
           <TabsContent value="crm"><CRMTab /></TabsContent>
+          <TabsContent value="stock"><StockTab /></TabsContent>
           <TabsContent value="links" className="space-y-6">
             <section className="rounded-lg border border-border bg-card p-4">
               <div className="flex items-center gap-2 text-muted-foreground text-sm mb-3">
