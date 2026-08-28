@@ -601,9 +601,11 @@ const StockTab = () => {
                 <Select value={recOutputId} onValueChange={setRecOutputId}>
                   <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                   <SelectContent>
-                    {rawMaterials.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-                    ))}
+                    {rawMaterials
+                      .filter((m) => m.isProduced)
+                      .map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
