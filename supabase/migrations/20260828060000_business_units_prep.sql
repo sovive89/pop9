@@ -22,6 +22,9 @@
 --   Rede com filiais de nomes independentes: business.name é o nome da
 --   empresa/holding; cada business_units.name é a identidade própria daquela
 --   filial, sem precisar repetir o nome do negócio.
+--   Localização/características (endereço, bairro, cidade, estado) NÃO vão
+--   no `name` — são colunas próprias em business_units, pra não virar texto
+--   livre inconsistente ("Filial 01 - Centro" vs "Filial 01 (Centro)").
 --
 -- Por que agora: as migrations de estoque (20260828040000/041000/050000)
 -- ainda NÃO foram aplicadas no banco de produção real. É muito mais barato
@@ -65,7 +68,11 @@ comment on table public.businesses is
 create table if not exists public.business_units (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references public.businesses(id),
-  name text not null,
+  name text not null, -- ex: "Confit Burguer - Filial 01" — só o identificador, sem localização embutida
+  address text,
+  neighborhood text,
+  city text,
+  state text,
   active boolean not null default true,
   created_at timestamptz not null default now()
 );
