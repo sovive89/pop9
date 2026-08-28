@@ -1,3 +1,14 @@
+// NOTA: este arquivo normalmente é gerado por `supabase gen types
+// typescript --linked`. As entradas `lotes`, e os campos novos em
+// `raw_materials` (item_type, categoria), `production_recipes` (tipo,
+// perda_esperada, tempo_producao), `stock_movements` (lote_id) e
+// `production_batch_inputs` (lote_id) foram adicionadas manualmente aqui
+// para acompanhar as migrations 20260828040000_baseline_estoque.sql,
+// 20260828041000_estoque_lotes_e_tipos.sql e
+// 20260828050000_fefo_producao.sql. Depois de aplicar essas migrations no
+// projeto Supabase real, rode `supabase gen types typescript --linked >
+// src/integrations/supabase/types.ts` para substituir isto pela versão
+// oficial — e confira que ela bate com o que foi escrito à mão aqui.
 export type Json =
   | string
   | number
@@ -71,15 +82,16 @@ export type Database = {
         ]
       }
       production_batch_inputs: {
-        Row: { batch_id: string; id: string; quantity_used: number; raw_material_id: string }
-        Insert: { batch_id: string; id?: string; quantity_used: number; raw_material_id: string }
-        Update: { batch_id?: string; id?: string; quantity_used?: number; raw_material_id?: string }
+        Row: { batch_id: string; id: string; lote_id: string | null; quantity_used: number; raw_material_id: string }
+        Insert: { batch_id: string; id?: string; lote_id?: string | null; quantity_used: number; raw_material_id: string }
+        Update: { batch_id?: string; id?: string; lote_id?: string | null; quantity_used?: number; raw_material_id?: string }
         Relationships: [
           { foreignKeyName: "production_batch_inputs_batch_id_fkey"; columns: ["batch_id"]; isOneToOne: false; referencedRelation: "production_batches"; referencedColumns: ["id"] },
           { foreignKeyName: "production_batch_inputs_batch_id_fkey"; columns: ["batch_id"]; isOneToOne: false; referencedRelation: "production_labels"; referencedColumns: ["batch_id"] },
           { foreignKeyName: "production_batch_inputs_raw_material_id_fkey"; columns: ["raw_material_id"]; isOneToOne: false; referencedRelation: "daily_production_closing"; referencedColumns: ["raw_material_id"] },
           { foreignKeyName: "production_batch_inputs_raw_material_id_fkey"; columns: ["raw_material_id"]; isOneToOne: false; referencedRelation: "low_stock_alerts"; referencedColumns: ["id"] },
           { foreignKeyName: "production_batch_inputs_raw_material_id_fkey"; columns: ["raw_material_id"]; isOneToOne: false; referencedRelation: "raw_materials"; referencedColumns: ["id"] },
+          { foreignKeyName: "production_batch_inputs_lote_id_fkey"; columns: ["lote_id"]; isOneToOne: false; referencedRelation: "lotes"; referencedColumns: ["id"] },
         ]
       }
       production_batches: {
@@ -100,9 +112,9 @@ export type Database = {
         ]
       }
       production_recipes: {
-        Row: { active: boolean; created_at: string; id: string; name: string; output_quantity: number; output_raw_material_id: string; shelf_life_days: number | null }
-        Insert: { active?: boolean; created_at?: string; id?: string; name: string; output_quantity: number; output_raw_material_id: string; shelf_life_days?: number | null }
-        Update: { active?: boolean; created_at?: string; id?: string; name?: string; output_quantity?: number; output_raw_material_id?: string; shelf_life_days?: number | null }
+        Row: { active: boolean; created_at: string; id: string; name: string; output_quantity: number; output_raw_material_id: string; perda_esperada: number | null; shelf_life_days: number | null; tempo_producao: number | null; tipo: string | null }
+        Insert: { active?: boolean; created_at?: string; id?: string; name: string; output_quantity: number; output_raw_material_id: string; perda_esperada?: number | null; shelf_life_days?: number | null; tempo_producao?: number | null; tipo?: string | null }
+        Update: { active?: boolean; created_at?: string; id?: string; name?: string; output_quantity?: number; output_raw_material_id?: string; perda_esperada?: number | null; shelf_life_days?: number | null; tempo_producao?: number | null; tipo?: string | null }
         Relationships: [
           { foreignKeyName: "production_recipes_output_raw_material_id_fkey"; columns: ["output_raw_material_id"]; isOneToOne: false; referencedRelation: "daily_production_closing"; referencedColumns: ["raw_material_id"] },
           { foreignKeyName: "production_recipes_output_raw_material_id_fkey"; columns: ["output_raw_material_id"]; isOneToOne: false; referencedRelation: "low_stock_alerts"; referencedColumns: ["id"] },
@@ -122,10 +134,21 @@ export type Database = {
         Relationships: []
       }
       raw_materials: {
-        Row: { active: boolean; average_cost: number; created_at: string; current_stock: number; id: string; is_produced: boolean; min_stock: number; name: string; unit: string; updated_at: string }
-        Insert: { active?: boolean; average_cost?: number; created_at?: string; current_stock?: number; id?: string; is_produced?: boolean; min_stock?: number; name: string; unit: string; updated_at?: string }
-        Update: { active?: boolean; average_cost?: number; created_at?: string; current_stock?: number; id?: string; is_produced?: boolean; min_stock?: number; name?: string; unit?: string; updated_at?: string }
+        Row: { active: boolean; average_cost: number; categoria: string | null; created_at: string; current_stock: number; id: string; is_produced: boolean; item_type: string | null; min_stock: number; name: string; unit: string; updated_at: string }
+        Insert: { active?: boolean; average_cost?: number; categoria?: string | null; created_at?: string; current_stock?: number; id?: string; is_produced?: boolean; item_type?: string | null; min_stock?: number; name: string; unit: string; updated_at?: string }
+        Update: { active?: boolean; average_cost?: number; categoria?: string | null; created_at?: string; current_stock?: number; id?: string; is_produced?: boolean; item_type?: string | null; min_stock?: number; name?: string; unit?: string; updated_at?: string }
         Relationships: []
+      }
+      lotes: {
+        Row: { batch_id: string | null; created_at: string; data_entrada: string; fornecedor_id: string | null; id: string; numero_lote: string; origem: string; preco_unitario: number | null; quantidade_entrada: number; raw_material_id: string; receita_id: string | null; validade: string | null }
+        Insert: { batch_id?: string | null; created_at?: string; data_entrada?: string; fornecedor_id?: string | null; id?: string; numero_lote: string; origem: string; preco_unitario?: number | null; quantidade_entrada: number; raw_material_id: string; receita_id?: string | null; validade?: string | null }
+        Update: { batch_id?: string | null; created_at?: string; data_entrada?: string; fornecedor_id?: string | null; id?: string; numero_lote?: string; origem?: string; preco_unitario?: number | null; quantidade_entrada?: number; raw_material_id?: string; receita_id?: string | null; validade?: string | null }
+        Relationships: [
+          { foreignKeyName: "lotes_raw_material_id_fkey"; columns: ["raw_material_id"]; isOneToOne: false; referencedRelation: "raw_materials"; referencedColumns: ["id"] },
+          { foreignKeyName: "lotes_fornecedor_id_fkey"; columns: ["fornecedor_id"]; isOneToOne: false; referencedRelation: "suppliers"; referencedColumns: ["id"] },
+          { foreignKeyName: "lotes_receita_id_fkey"; columns: ["receita_id"]; isOneToOne: false; referencedRelation: "production_recipes"; referencedColumns: ["id"] },
+          { foreignKeyName: "lotes_batch_id_fkey"; columns: ["batch_id"]; isOneToOne: false; referencedRelation: "production_batches"; referencedColumns: ["id"] },
+        ]
       }
       recipe_items: {
         Row: { id: string; menu_item_id: string; quantity: number; raw_material_id: string }
@@ -154,14 +177,15 @@ export type Database = {
         Relationships: []
       }
       stock_movements: {
-        Row: { batch_info: Json | null; created_at: string; created_by: string | null; id: string; quantity: number; raw_material_id: string; reason: string; reference_id: string | null; reference_type: string | null; supplier_id: string | null; type: string; unit_cost: number | null }
-        Insert: { batch_info?: Json | null; created_at?: string; created_by?: string | null; id?: string; quantity: number; raw_material_id: string; reason: string; reference_id?: string | null; reference_type?: string | null; supplier_id?: string | null; type: string; unit_cost?: number | null }
-        Update: { batch_info?: Json | null; created_at?: string; created_by?: string | null; id?: string; quantity?: number; raw_material_id?: string; reason?: string; reference_id?: string | null; reference_type?: string | null; supplier_id?: string | null; type?: string; unit_cost?: number | null }
+        Row: { batch_info: Json | null; created_at: string; created_by: string | null; id: string; lote_id: string | null; quantity: number; raw_material_id: string; reason: string; reference_id: string | null; reference_type: string | null; supplier_id: string | null; type: string; unit_cost: number | null }
+        Insert: { batch_info?: Json | null; created_at?: string; created_by?: string | null; id?: string; lote_id?: string | null; quantity: number; raw_material_id: string; reason: string; reference_id?: string | null; reference_type?: string | null; supplier_id?: string | null; type: string; unit_cost?: number | null }
+        Update: { batch_info?: Json | null; created_at?: string; created_by?: string | null; id?: string; lote_id?: string | null; quantity?: number; raw_material_id?: string; reason?: string; reference_id?: string | null; reference_type?: string | null; supplier_id?: string | null; type?: string; unit_cost?: number | null }
         Relationships: [
           { foreignKeyName: "stock_movements_raw_material_id_fkey"; columns: ["raw_material_id"]; isOneToOne: false; referencedRelation: "daily_production_closing"; referencedColumns: ["raw_material_id"] },
           { foreignKeyName: "stock_movements_raw_material_id_fkey"; columns: ["raw_material_id"]; isOneToOne: false; referencedRelation: "low_stock_alerts"; referencedColumns: ["id"] },
           { foreignKeyName: "stock_movements_raw_material_id_fkey"; columns: ["raw_material_id"]; isOneToOne: false; referencedRelation: "raw_materials"; referencedColumns: ["id"] },
           { foreignKeyName: "stock_movements_supplier_id_fkey"; columns: ["supplier_id"]; isOneToOne: false; referencedRelation: "suppliers"; referencedColumns: ["id"] },
+          { foreignKeyName: "stock_movements_lote_id_fkey"; columns: ["lote_id"]; isOneToOne: false; referencedRelation: "lotes"; referencedColumns: ["id"] },
         ]
       }
       suppliers: {

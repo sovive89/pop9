@@ -9,6 +9,8 @@ import {
   Tag,
   Trash2,
   Search,
+  CalendarClock,
+  Boxes,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -29,22 +31,43 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { useStockData, ProductionRecipeInput } from "@/hooks/useStockData";
+import { useStockData, ProductionRecipeInput, ItemType, FichaTipo, alocarFefo } from "@/hooks/useStockData";
 
 type SubView = "insumos" | "producao" | "fornecedores";
 
 const STATUS_LABELS: Record<string, string> = {
   valido: "Válido",
   vence_hoje: "Vence hoje",
+  vence_em_breve: "Vence em breve",
   vencido: "Vencido",
   sem_validade: "Sem validade",
 };
 const STATUS_COLORS: Record<string, string> = {
   valido: "bg-success/15 text-success-foreground border-success/30",
   vence_hoje: "bg-yellow-500/15 text-yellow-600 border-yellow-500/30",
+  vence_em_breve: "bg-yellow-500/15 text-yellow-600 border-yellow-500/30",
   vencido: "bg-destructive/15 text-destructive border-destructive/30",
   sem_validade: "bg-muted text-muted-foreground border-border",
 };
+
+const ITEM_TYPE_OPTIONS: { value: ItemType; label: string; hint: string }[] = [
+  { value: "insumo", label: "Insumo", hint: "comprado de fornecedor, usado em receitas" },
+  { value: "semiacabado", label: "Semiacabado", hint: "produzido internamente, vira insumo de outra receita" },
+  { value: "produto_acabado", label: "Produto acabado", hint: "produzido internamente, pronto para venda" },
+  { value: "revenda", label: "Revenda", hint: "comprado pronto, vendido sem transformação" },
+];
+const ITEM_TYPE_LABELS: Record<ItemType, string> = {
+  insumo: "Insumo",
+  semiacabado: "Semiacabado",
+  produto_acabado: "Produto acabado",
+  revenda: "Revenda",
+};
+
+const FICHA_TIPO_OPTIONS: { value: FichaTipo; label: string }[] = [
+  { value: "producao", label: "Produção" },
+  { value: "mise_en_place", label: "Mise en place" },
+  { value: "porcionamento", label: "Porcionamento" },
+];
 
 const StockTab = () => {
   const {
@@ -53,6 +76,7 @@ const StockTab = () => {
     recipes,
     labels,
     alerts,
+    lotes,
     loading,
     createRawMaterial,
     registerPurchase,
@@ -74,7 +98,8 @@ const StockTab = () => {
 
   const [matName, setMatName] = useState("");
   const [matUnit, setMatUnit] = useState("");
-  const [matIsProduced, setMatIsProduced] = useState(false);
+  const [matItemType, setMatItemType] = useState<ItemType>("insumo");
+  const [matCategoria, setMatCategoria] = useState("");
   const [matMinStock, setMatMinStock] = useState("");
 
   const [pQuantity, setPQuantity] = useState("");
@@ -83,6 +108,8 @@ const StockTab = () => {
   const [pIsBox, setPIsBox] = useState(false);
   const [pBoxCount, setPBoxCount] = useState("");
   const [pUnitsPerBox, setPUnitsPerBox] = useState("");
+  const [pValidade, setPValidade] = useState("");
+  const [pNumeroLote, setPNumeroLote] = useState("");
 
   const [supName, setSupName] = useState("");
   const [supDocument, setSupDocument] = useState("");
@@ -93,12 +120,28 @@ const StockTab = () => {
   const [recOutputId, setRecOutputId] = useState<string>("");
   const [recOutputQty, setRecOutputQty] = useState("");
   const [recShelfDays, setRecShelfDays] = useState("");
+  const [recTipo, setRecTipo] = useState<FichaTipo>("producao");
+  const [recPerdaEsperada, setRecPerdaEsperada] = useState("");
+  const [recTempoProducao, setRecTempoProducao] = useState("");
   const [recInputs, setRecInputs] = useState<ProductionRecipeInput[]>([{ rawMaterialId: "", quantity: 0 }]);
 
   const [prodRecipeId, setProdRecipeId] = useState<string>("");
   const [prodQuantity, setProdQuantity] = useState("");
   const [prodNotes, setProdNotes] = useState("");
   const [prodInputs, setProdInputs] = useState<{ rawMaterialId: string; quantityUsed: number }[]>([]);
+
+  // Prévia do FEFO: de qual(is) lote(s) cada insumo do "Produzir Lote" vai
+  // sair, antes de confirmar. Puramente informativo — quem decide de
+  // verdade, na hora de salvar, é a mesma função (alocarFefo) rodando
+  // dentro de produceBatch, com os mesmos dados.
+  const fefoPreview = useMemo(() => {
+    const preview: Record<string, ReturnType<typeof alocarFefo>> = {};
+    prodInputs.forEach((inp) => {
+      if (!inp.rawMaterialId || inp.quantityUsed <= 0) return;
+      preview[inp.rawMaterialId] = alocarFefo(inp.rawMaterialId, inp.quantityUsed, lotes);
+    });
+    return preview;
+  }, [prodInputs, lotes]);
 
   const materialsById = useMemo(
     () => Object.fromEntries(rawMaterials.map((m) => [m.id, m])),
@@ -112,7 +155,8 @@ const StockTab = () => {
   const resetMaterialForm = () => {
     setMatName("");
     setMatUnit("");
-    setMatIsProduced(false);
+    setMatItemType("insumo");
+    setMatCategoria("");
     setMatMinStock("");
   };
 
@@ -123,6 +167,8 @@ const StockTab = () => {
     setPIsBox(false);
     setPBoxCount("");
     setPUnitsPerBox("");
+    setPValidade("");
+    setPNumeroLote("");
     setPurchaseTarget(null);
   };
 
@@ -138,6 +184,9 @@ const StockTab = () => {
     setRecOutputId("");
     setRecOutputQty("");
     setRecShelfDays("");
+    setRecTipo("producao");
+    setRecPerdaEsperada("");
+    setRecTempoProducao("");
     setRecInputs([{ rawMaterialId: "", quantity: 0 }]);
   };
 
@@ -154,8 +203,9 @@ const StockTab = () => {
     const ok = await createRawMaterial({
       name: matName.trim(),
       unit: matUnit.trim(),
-      isProduced: matIsProduced,
+      itemType: matItemType,
       minStock: Number(matMinStock) || 0,
+      categoria: matCategoria.trim() || null,
     });
     setSaving(false);
     if (ok) {
@@ -179,6 +229,8 @@ const StockTab = () => {
       supplierId: pSupplierId || null,
       boxCount: pIsBox ? Number(pBoxCount) : undefined,
       unitsPerBox: pIsBox ? Number(pUnitsPerBox) : undefined,
+      validade: pValidade || null,
+      numeroLote: pNumeroLote.trim() || null,
     });
     setSaving(false);
     if (ok) {
@@ -215,6 +267,9 @@ const StockTab = () => {
       outputRawMaterialId: recOutputId,
       outputQuantity: Number(recOutputQty),
       shelfLifeDays: recShelfDays ? Number(recShelfDays) : null,
+      tipo: recTipo,
+      perdaEsperada: recPerdaEsperada ? Number(recPerdaEsperada) : null,
+      tempoProducao: recTempoProducao ? Number(recTempoProducao) : null,
       inputs: recInputs.filter((i) => i.rawMaterialId && i.quantity > 0),
     });
     setSaving(false);
@@ -320,14 +375,14 @@ const StockTab = () => {
                   <div>
                     <p className="font-semibold text-foreground flex items-center gap-2">
                       {m.name}
-                      {m.isProduced && (
+                      {m.itemType !== "insumo" && (
                         <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">
-                          produzido
+                          {ITEM_TYPE_LABELS[m.itemType]}
                         </Badge>
                       )}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Custo médio: R$ {m.averageCost.toFixed(2)} / {m.unit}
+                      {m.categoria ? `${m.categoria} · ` : ""}Custo médio: R$ {m.averageCost.toFixed(2)} / {m.unit}
                     </p>
                   </div>
                   <Button size="sm" variant="outline" onClick={() => openPurchase(m.id)}>
@@ -407,6 +462,37 @@ const StockTab = () => {
               )}
             </div>
           </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-1.5">
+              <Boxes className="h-4 w-4" /> Lotes (compra + produção)
+            </h3>
+            <div className="space-y-2">
+              {lotes.map((l) => (
+                <div key={l.id} className="rounded-xl border border-border bg-card p-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="font-medium text-foreground">
+                      {materialsById[l.rawMaterialId]?.name ?? "?"}
+                    </p>
+                    <Badge variant="outline" className={STATUS_COLORS[l.statusValidade]}>
+                      {STATUS_LABELS[l.statusValidade]}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <CalendarClock className="h-3 w-3" />
+                    Lote {l.numeroLote} · {l.origem === "compra" ? "compra" : "produção"} ·{" "}
+                    {l.quantidadeRestante} / {l.quantidadeEntrada} {materialsById[l.rawMaterialId]?.unit ?? ""} restantes
+                    {l.validade && ` · válido até ${new Date(l.validade).toLocaleDateString("pt-BR")}`}
+                  </p>
+                </div>
+              ))}
+              {lotes.length === 0 && (
+                <p className="text-center text-muted-foreground py-6 text-sm">
+                  Nenhum lote registrado ainda (aplique a migration de lotes para ativar esta seção)
+                </p>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -452,16 +538,32 @@ const StockTab = () => {
               <Label className="text-sm text-muted-foreground">Estoque mínimo (para alerta)</Label>
               <Input type="number" value={matMinStock} onChange={(e) => setMatMinStock(e.target.value)} placeholder="0" />
             </div>
-            <button
-              type="button"
-              onClick={() => setMatIsProduced((v) => !v)}
-              className={`w-full flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
-                matIsProduced ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-muted-foreground"
-              }`}
-            >
-              <Factory className="h-4 w-4" />
-              Este item só existe depois de uma produção interna
-            </button>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Categoria (opcional)</Label>
+              <Input value={matCategoria} onChange={(e) => setMatCategoria(e.target.value)} placeholder="Ex: carnes, bebidas, embalagens..." />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Tipo de item</Label>
+              <div className="grid grid-cols-1 gap-2">
+                {ITEM_TYPE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setMatItemType(opt.value)}
+                    className={`w-full flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                      matItemType === opt.value
+                        ? "border-primary/40 bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 font-medium">
+                      <Factory className="h-4 w-4" /> {opt.label}
+                    </span>
+                    <span className="text-xs opacity-80">{opt.hint}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setNewMaterialOpen(false)} disabled={saving}>Cancelar</Button>
@@ -542,6 +644,18 @@ const StockTab = () => {
                 </SelectContent>
               </Select>
             </div>
+            <div className="grid grid-cols-2 gap-3 border-t border-border pt-3">
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground flex items-center gap-1">
+                  <CalendarClock className="h-3.5 w-3.5" /> Validade (opcional)
+                </Label>
+                <Input type="date" value={pValidade} onChange={(e) => setPValidade(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Nº do lote (opcional)</Label>
+                <Input value={pNumeroLote} onChange={(e) => setPNumeroLote(e.target.value)} placeholder="Gerado automaticamente" />
+              </div>
+            </div>
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setPurchaseOpen(false)} disabled={saving}>Cancelar</Button>
@@ -602,7 +716,7 @@ const StockTab = () => {
                   <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                   <SelectContent>
                     {rawMaterials
-                      .filter((m) => m.isProduced)
+                      .filter((m) => m.itemType === "semiacabado" || m.itemType === "produto_acabado")
                       .map((m) => (
                         <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
                       ))}
@@ -617,6 +731,27 @@ const StockTab = () => {
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Validade padrão (dias, opcional)</Label>
               <Input type="number" value={recShelfDays} onChange={(e) => setRecShelfDays(e.target.value)} placeholder="Ex: 3" />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Tipo de ficha</Label>
+              <Select value={recTipo} onValueChange={(v) => setRecTipo(v as FichaTipo)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {FICHA_TIPO_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Perda esperada % (opcional)</Label>
+                <Input type="number" value={recPerdaEsperada} onChange={(e) => setRecPerdaEsperada(e.target.value)} placeholder="Ex: 5" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Tempo de produção (min, opcional)</Label>
+                <Input type="number" value={recTempoProducao} onChange={(e) => setRecTempoProducao(e.target.value)} placeholder="Ex: 30" />
+              </div>
             </div>
 
             <div className="space-y-2 border-t border-border pt-3">
@@ -681,24 +816,44 @@ const StockTab = () => {
             </div>
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Insumos consumidos (ajuste se necessário)</Label>
-              {prodInputs.map((inp, idx) => (
-                <div key={idx} className="flex gap-2 items-center">
-                  <span className="flex-1 text-sm text-foreground">
-                    {materialsById[inp.rawMaterialId]?.name ?? "?"}
-                  </span>
-                  <Input
-                    type="number"
-                    className="w-24"
-                    value={inp.quantityUsed || ""}
-                    onChange={(e) =>
-                      setProdInputs((prev) =>
-                        prev.map((p, i) => (i === idx ? { ...p, quantityUsed: Number(e.target.value) } : p))
-                      )
-                    }
-                  />
-                  <span className="text-xs text-muted-foreground w-8">{materialsById[inp.rawMaterialId]?.unit}</span>
-                </div>
-              ))}
+              {prodInputs.map((inp, idx) => {
+                const alocacao = fefoPreview[inp.rawMaterialId];
+                return (
+                  <div key={idx} className="space-y-1">
+                    <div className="flex gap-2 items-center">
+                      <span className="flex-1 text-sm text-foreground">
+                        {materialsById[inp.rawMaterialId]?.name ?? "?"}
+                      </span>
+                      <Input
+                        type="number"
+                        className="w-24"
+                        value={inp.quantityUsed || ""}
+                        onChange={(e) =>
+                          setProdInputs((prev) =>
+                            prev.map((p, i) => (i === idx ? { ...p, quantityUsed: Number(e.target.value) } : p))
+                          )
+                        }
+                      />
+                      <span className="text-xs text-muted-foreground w-8">{materialsById[inp.rawMaterialId]?.unit}</span>
+                    </div>
+                    {alocacao && alocacao.length > 0 && (
+                      <p className="text-[11px] text-muted-foreground pl-1 flex items-center gap-1">
+                        <Boxes className="h-3 w-3 shrink-0" />
+                        FEFO: {alocacao.map((a, i) => (
+                          <span key={i}>
+                            {i > 0 && " + "}
+                            {a.quantidade.toFixed(a.quantidade % 1 === 0 ? 0 : 2)}
+                            {" "}
+                            {a.loteId
+                              ? `do lote ${a.numeroLote}${a.validade ? ` (val. ${new Date(a.validade).toLocaleDateString("pt-BR")})` : ""}`
+                              : "sem lote rastreado"}
+                          </span>
+                        ))}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Observações (opcional)</Label>
