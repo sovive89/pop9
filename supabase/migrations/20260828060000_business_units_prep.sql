@@ -21,7 +21,9 @@
 --   distinção (ex: "Confit Burguer - Filial 01", "Confit Burguer - Filial 02").
 --   Rede com filiais de nomes independentes: business.name é o nome da
 --   empresa/holding; cada business_units.name é a identidade própria daquela
---   filial, sem precisar repetir o nome do negócio.
+--   filial, sem precisar repetir o nome do negócio — inclusive porque
+--   filiais da mesma holding podem nem ser do mesmo ramo (ver
+--   establishment_type abaixo: uma pode ser hamburgueria, outra pizzaria).
 --   Localização/características (endereço, bairro, cidade, estado) NÃO vão
 --   no `name` — são colunas próprias em business_units, pra não virar texto
 --   livre inconsistente ("Filial 01 - Centro" vs "Filial 01 (Centro)").
@@ -69,6 +71,7 @@ create table if not exists public.business_units (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references public.businesses(id),
   name text not null, -- ex: "Confit Burguer - Filial 01" — só o identificador, sem localização embutida
+  establishment_type text, -- ex: "hamburgueria", "pizzaria" — filiais da mesma holding podem ser ramos diferentes
   address text,
   neighborhood text,
   city text,
@@ -130,8 +133,8 @@ where not exists (
   select 1 from public.businesses where name = 'Confit Burguer'
 );
 
-insert into public.business_units (business_id, name)
-select b.id, 'Confit Burguer - Filial 01'
+insert into public.business_units (business_id, name, establishment_type)
+select b.id, 'Confit Burguer - Filial 01', 'hamburgueria'
 from public.businesses b
 where b.name = 'Confit Burguer'
   and not exists (
