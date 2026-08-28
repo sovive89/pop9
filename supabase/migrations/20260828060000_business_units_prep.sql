@@ -1,22 +1,40 @@
--- Prepara o schema de estoque para expansão multi-unidade (multi-tenant) futura.
+-- Prepara TODO o schema do Pop9 para expansão multi-unidade (multi-tenant)
+-- futura — não só estoque. "Tudo deriva da unidade" foi a decisão explícita.
 --
 -- Contexto: o Pop9 hoje não tem NENHUM conceito de unidade/estabelecimento em
 -- lugar nenhum do banco (confirmado por grep em todas as migrations e em
 -- types.ts — zero ocorrências de business_unit/tenant_id/loja_id/unit_id).
 -- Isso é intencional pra uma casa só, mas o usuário confirmou que quer
--- preparar o terreno pra multi-unidade mais pra frente.
+-- preparar o terreno pra multi-unidade mais pra frente, cobrindo o app
+-- inteiro, não só o módulo de estoque.
 --
 -- Por que agora: as migrations de estoque (20260828040000/041000/050000)
 -- ainda NÃO foram aplicadas no banco de produção real. É muito mais barato
--- nascer com a coluna do que fazer um backfill depois com linhas de
--- raw_materials/lotes/stock_movements já acumuladas sem dono.
+-- nascer com a coluna do que fazer um backfill depois com linhas
+-- acumuladas sem dono.
+--
+-- Critério de quais tabelas recebem a coluna direto ("raiz") vs herdam via
+-- join ("filha"): uma tabela filha tem uma FK que já a liga
+-- deterministicamente a uma tabela raiz (ex: order_items -> orders) — dar a
+-- ela sua própria business_unit_id seria dado redundante que pode
+-- divergir do pai, o mesmo problema de normalização já visto nesta sessão
+-- com is_produced/item_type em raw_materials. Por isso a coluna só vai nas
+-- raízes: raw_materials, suppliers, lotes, stock_movements,
+-- production_recipes, production_batches, menu_categories, menu_items,
+-- orders, sessions, threads, user_roles.
+--
+-- Ficam de fora nesta migration: profiles e push_subscriptions são sobre o
+-- usuário/dispositivo, não sobre uma transação de uma unidade específica —
+-- um funcionário pode vir a trabalhar em mais de uma unidade. Isso pede uma
+-- tabela de vínculo (ex: user_business_units) numa migration futura, não
+-- uma coluna direta aqui.
 --
 -- Escopo deliberadamente mínimo: só abre espaço no schema (tabela +
 -- colunas nullable). NÃO implementa stock_locations/stock_balances por
--- unidade nem qualquer lógica de isolamento — isso é o redesenho maior do
--- Stock Core que ficou pausado por decisão do usuário. Uma casa só continua
--- funcionando exatamente igual, só que agora com a coluna business_unit_id
--- disponível (e nula) em vez de inexistente.
+-- unidade nem qualquer lógica de isolamento (RLS por unidade, etc.) — isso
+-- é o redesenho maior do Stock Core que ficou pausado por decisão do
+-- usuário. Uma casa só continua funcionando exatamente igual, só que agora
+-- com a coluna business_unit_id disponível (e nula) em vez de inexistente.
 create table if not exists public.business_units (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -28,7 +46,7 @@ comment on table public.business_units is
   'Preparação para multi-unidade. Hoje o Pop9 roda com uma casa só '
   '(Confit Burguer, inserida por esta mesma migration); esta tabela existe '
   'pra não exigir uma migration de backfill dolorosa quando uma segunda '
-  'unidade for aberta. As colunas business_unit_id nas tabelas de estoque '
+  'unidade for aberta. As colunas business_unit_id nas tabelas raiz do app '
   'ficam nullable e não-preenchidas por enquanto — popular/tornar '
   'obrigatório é trabalho de uma migration futura, não desta.';
 
@@ -48,6 +66,24 @@ alter table public.production_recipes
   add column if not exists business_unit_id uuid references public.business_units(id);
 
 alter table public.production_batches
+  add column if not exists business_unit_id uuid references public.business_units(id);
+
+alter table public.menu_categories
+  add column if not exists business_unit_id uuid references public.business_units(id);
+
+alter table public.menu_items
+  add column if not exists business_unit_id uuid references public.business_units(id);
+
+alter table public.orders
+  add column if not exists business_unit_id uuid references public.business_units(id);
+
+alter table public.sessions
+  add column if not exists business_unit_id uuid references public.business_units(id);
+
+alter table public.threads
+  add column if not exists business_unit_id uuid references public.business_units(id);
+
+alter table public.user_roles
   add column if not exists business_unit_id uuid references public.business_units(id);
 
 -- Primeira (e por enquanto única) unidade: a casa que já está rodando hoje.
