@@ -1,14 +1,13 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, Flame, Users, UtensilsCrossed, KeyRound, LayoutGrid, BarChart3, Package, Map, ChefHat, Settings, Link2, Webhook, ExternalLink, MessageCircle, Contact } from "lucide-react";
+import { ArrowLeft, Flame, Users, UtensilsCrossed, KeyRound, BarChart3, Package, Map, ChefHat, Settings, Link2, Webhook, ExternalLink, MessageCircle, Contact } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import MenuTab from "@/components/admin/MenuTab";
 import UsersTab from "@/components/admin/UsersTab";
 import ResetPasswordTab from "@/components/admin/ResetPasswordTab";
-import TablesTab from "@/components/admin/TablesTab";
 import WhatsAppTab from "@/components/admin/WhatsAppTab";
 import CRMTab from "@/components/admin/CRMTab";
 import StockTab from "@/components/admin/StockTab";
@@ -131,10 +130,6 @@ const Admin = () => {
               <UtensilsCrossed className="h-4 w-4" />
               <span className="hidden sm:inline">Cardápio</span>
             </TabsTrigger>
-            <TabsTrigger value="tables" className="gap-2 text-xs sm:text-sm">
-              <LayoutGrid className="h-4 w-4" />
-              <span className="hidden sm:inline">Mesas</span>
-            </TabsTrigger>
             <TabsTrigger value="users" className="gap-2 text-xs sm:text-sm">
               <Users className="h-4 w-4" />
               <span className="hidden sm:inline">Usuários</span>
@@ -162,7 +157,6 @@ const Admin = () => {
           </TabsList>
 
           <TabsContent value="menu"><MenuTab /></TabsContent>
-          <TabsContent value="tables"><TablesTab /></TabsContent>
           <TabsContent value="users"><UsersTab /></TabsContent>
           <TabsContent value="password"><ResetPasswordTab /></TabsContent>
           <TabsContent value="whatsapp"><WhatsAppTab /></TabsContent>
