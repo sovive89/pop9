@@ -76,6 +76,7 @@ create table if not exists public.business_units (
   neighborhood text,
   city text,
   state text,
+  table_count integer, -- número de mesas da unidade
   active boolean not null default true,
   created_at timestamptz not null default now()
 );
