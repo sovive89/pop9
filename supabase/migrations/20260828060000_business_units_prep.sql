@@ -15,9 +15,13 @@
 --                      de `businesses` diretamente — uma comanda, um insumo,
 --                      um pedido pertencem a uma unidade específica, não à
 --                      marca como um todo.
--- Rede com unidades de nomes diferentes: cada unidade recebe seu próprio
--- `name`. Rede com unidades homônimas (mesmo nome da marca em todo lugar):
--- a unidade única de hoje simplesmente repete o nome do negócio.
+-- Convenção de nomes (decisão explícita do usuário):
+--   Rede com filiais homônimas (mesmo nome da marca em toda unidade):
+--   business.name é o nome do negócio; cada business_units.name recebe uma
+--   distinção (ex: "Confit Burguer - Filial 01", "Confit Burguer - Filial 02").
+--   Rede com filiais de nomes independentes: business.name é o nome da
+--   empresa/holding; cada business_units.name é a identidade própria daquela
+--   filial, sem precisar repetir o nome do negócio.
 --
 -- Por que agora: as migrations de estoque (20260828040000/041000/050000)
 -- ainda NÃO foram aplicadas no banco de produção real. É muito mais barato
@@ -120,10 +124,10 @@ where not exists (
 );
 
 insert into public.business_units (business_id, name)
-select b.id, 'Confit Burguer'
+select b.id, 'Confit Burguer - Filial 01'
 from public.businesses b
 where b.name = 'Confit Burguer'
   and not exists (
     select 1 from public.business_units u
-    where u.business_id = b.id and u.name = 'Confit Burguer'
+    where u.business_id = b.id and u.name = 'Confit Burguer - Filial 01'
   );
