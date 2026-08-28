@@ -6,11 +6,23 @@
 -- controle de lote/validade do Colibri Back Office (ver claude/resumo-pop9.md
 -- e claude/spec-estoque-pop9.md no projeto).
 --
--- Tudo aditivo. Nada aqui remove ou renomeia coluna existente, e nenhum
--- código atual (StockTab.tsx, useStockData.ts) quebra se esta migration for
--- aplicada sem o resto das mudanças de frontend — as colunas novas são
--- nulas/têm default, e a coluna antiga (`is_produced`) continua existindo
--- e sendo mantida em sincronia por trigger, não substituída.
+-- Tudo aditivo. Nada aqui remove ou renomeia coluna existente.
+--
+-- CORREÇÃO IMPORTANTE (descoberta ao inspecionar o banco real via MCP antes
+-- de aplicar): raw_materials JÁ TEM uma coluna `tipo` (enum `item_tipo`,
+-- criada pela migration externa `add_item_type_enum` em 07/08, não
+-- versionada neste repo até agora) com exatamente os 4 valores que esta
+-- migration ia recriar sob o nome `item_type` (text). Criar `item_type` do
+-- lado de `tipo` seria duplicar o mesmo conceito com dois nomes — o mesmo
+-- tipo de dado redundante que já causou um bug real (a Cerveja Amstel
+-- aparecendo como "produzida": o frontend lia `item_type`, que nunca
+-- existiu, caindo sempre no fallback via `is_produced`, que estava errado
+-- pra esse item). Por isso esta migration usa `tipo` diretamente, não cria
+-- `item_type`.
+--
+-- `is_produced` não é removido nem ignorado: a view `daily_production_closing`
+-- filtra por `is_produced = true` de verdade, em produção. Um trigger novo
+-- mantém `is_produced` sempre derivado de `tipo` (fonte única da verdade).
 
 -- 1) LOTES — unifica compra + produção (hoje meio no `batch_info` jsonb,
 -- meio em `production_batches`). Ver seção "LOTE" de estrutura-estoque-pop9.md.
@@ -41,59 +53,33 @@ create index if not exists idx_lotes_fefo
 alter table public.stock_movements
   add column if not exists lote_id uuid references public.lotes(id);
 
--- 3) TIPO DE ITEM — substitui o booleano `is_produced`, que colide dois a
--- dois: insumo e revenda são `false`; semiacabado e produto_acabado são
--- `true`. Ver seção "ITEM" de estrutura-estoque-pop9.md.
---
--- `is_produced` NÃO é removido: fica como está, e um trigger mantém os dois
--- em sincronia, para não quebrar nenhum código (StockTab.tsx,
--- useStockData.ts) que ainda lê/grava `is_produced` diretamente. Migrar o
--- frontend para `item_type` é incremental, não um corte único.
-alter table public.raw_materials
-  add column if not exists item_type text
-    check (item_type in ('insumo', 'semiacabado', 'produto_acabado', 'revenda'));
-
+-- 3) `tipo` (enum item_tipo) já existe — só adiciona `categoria` e a
+-- sincronia com `is_produced` (fonte única da verdade passa a ser `tipo`).
 alter table public.raw_materials
   add column if not exists categoria text;
 
--- backfill: reclassifica o que já existe. Todo `is_produced = true` vira
--- 'semiacabado' por padrão — é a suposição mais segura (pode ser refinado
--- item a item depois; nenhum dado é perdido, só uma classificação inicial).
-update public.raw_materials
-  set item_type = case when is_produced then 'semiacabado' else 'insumo' end
-  where item_type is null;
-
-create or replace function public.sync_raw_material_item_type()
+create or replace function public.sync_raw_material_is_produced()
 returns trigger
 language plpgsql
 as $$
 begin
-  if tg_op = 'INSERT' then
-    if new.item_type is null then
-      new.item_type := case when new.is_produced then 'semiacabado' else 'insumo' end;
-    else
-      new.is_produced := new.item_type in ('semiacabado', 'produto_acabado');
-    end if;
-    return new;
-  end if;
-
-  -- UPDATE: qual coluna a chamada mudou de verdade manda na outra. Sem essa
-  -- checagem, um UPDATE que só toca `is_produced` (código antigo, ainda não
-  -- migrado para item_type) seria silenciosamente revertido pelo item_type
-  -- antigo da linha.
-  if new.item_type is distinct from old.item_type then
-    new.is_produced := new.item_type in ('semiacabado', 'produto_acabado');
-  elsif new.is_produced is distinct from old.is_produced then
-    new.item_type := case when new.is_produced then 'semiacabado' else 'insumo' end;
-  end if;
+  -- tipo é not null com default, então sempre há um valor pra derivar —
+  -- não precisa da lógica "qual mudou primeiro" que item_type/is_produced
+  -- exigiria se fossem dois campos igualmente opcionais.
+  new.is_produced := new.tipo in ('semiacabado', 'produto_acabado');
   return new;
 end;
 $$;
 
-drop trigger if exists trg_sync_raw_material_item_type on public.raw_materials;
-create trigger trg_sync_raw_material_item_type
+drop trigger if exists trg_sync_raw_material_is_produced on public.raw_materials;
+create trigger trg_sync_raw_material_is_produced
   before insert or update on public.raw_materials
-  for each row execute function public.sync_raw_material_item_type();
+  for each row execute function public.sync_raw_material_is_produced();
+
+-- aplica a sincronia imediatamente nas linhas existentes, pra corrigir
+-- qualquer divergência acumulada antes deste trigger existir.
+update public.raw_materials
+  set is_produced = (tipo in ('semiacabado', 'produto_acabado'));
 
 -- 4) FICHA TÉCNICA — três campos novos discutidos no diagrama Stock Core do
 -- usuário e no mecanismo do TOTVS (tipo de ficha, perda esperada como meta
