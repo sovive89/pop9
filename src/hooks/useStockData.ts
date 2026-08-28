@@ -169,9 +169,10 @@ export const useStockData = () => {
         name: r.name,
         unit: r.unit,
         isProduced: r.is_produced,
-        // item_type é coluna nova (migration 20260828041000); banco ainda
-        // não migrado localmente cai no fallback derivado de is_produced.
-        itemType: (r.item_type as ItemType | null) ?? (r.is_produced ? "semiacabado" : "insumo"),
+        // `tipo` é a coluna real do banco (enum item_tipo, existe desde
+        // 07/08 via uma migration nunca versionada aqui). is_produced é
+        // sempre derivado dela por trigger — nunca a fonte de verdade.
+        itemType: r.tipo as ItemType,
         categoria: r.categoria ?? null,
         currentStock: Number(r.current_stock),
         minStock: Number(r.min_stock),
@@ -354,9 +355,9 @@ export const useStockData = () => {
     const { error } = await supabase.from("raw_materials").insert({
       name: input.name,
       unit: input.unit,
-      item_type: input.itemType,
-      // is_produced não é enviado: o trigger trg_sync_raw_material_item_type
-      // (migration 20260828041000) deriva a partir de item_type no insert.
+      tipo: input.itemType,
+      // is_produced não é enviado: o trigger trg_sync_raw_material_is_produced
+      // (migration 20260828041000) deriva a partir de tipo no insert.
       min_stock: input.minStock,
       categoria: input.categoria || null,
     });
