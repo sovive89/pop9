@@ -564,6 +564,50 @@ export type Database = {
           },
         ]
       }
+      printer_configs: {
+        Row: {
+          active: boolean
+          business_unit_id: string | null
+          connection_type: string
+          created_at: string
+          device_identifier: string | null
+          gatilho: string
+          id: string
+          name: string
+          tipo: string
+        }
+        Insert: {
+          active?: boolean
+          business_unit_id?: string | null
+          connection_type?: string
+          created_at?: string
+          device_identifier?: string | null
+          gatilho: string
+          id?: string
+          name: string
+          tipo: string
+        }
+        Update: {
+          active?: boolean
+          business_unit_id?: string | null
+          connection_type?: string
+          created_at?: string
+          device_identifier?: string | null
+          gatilho?: string
+          id?: string
+          name?: string
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "printer_configs_business_unit_id_fkey"
+            columns: ["business_unit_id"]
+            isOneToOne: false
+            referencedRelation: "business_units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       production_batch_inputs: {
         Row: {
           batch_id: string

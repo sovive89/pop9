@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, Flame, Users, UtensilsCrossed, KeyRound, BarChart3, Package, Map, ChefHat, Settings, Link2, Webhook, ExternalLink, MessageCircle, Contact } from "lucide-react";
+import { ArrowLeft, Flame, Users, UtensilsCrossed, KeyRound, BarChart3, Package, Map, ChefHat, Settings, Link2, Webhook, ExternalLink, MessageCircle, Contact, Printer } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -11,6 +11,7 @@ import ResetPasswordTab from "@/components/admin/ResetPasswordTab";
 import WhatsAppTab from "@/components/admin/WhatsAppTab";
 import CRMTab from "@/components/admin/CRMTab";
 import StockTab from "@/components/admin/StockTab";
+import PrintersTab from "@/components/admin/PrintersTab";
 
 /** Links úteis (configurável no Admin). */
 const ADMIN_LINKS: { label: string; href: string; external?: boolean }[] = [
@@ -150,6 +151,10 @@ const Admin = () => {
               <Package className="h-4 w-4" />
               <span className="hidden sm:inline">Estoque</span>
             </TabsTrigger>
+            <TabsTrigger value="printers" className="gap-2 text-xs sm:text-sm">
+              <Printer className="h-4 w-4" />
+              <span className="hidden sm:inline">Impressoras</span>
+            </TabsTrigger>
             <TabsTrigger value="links" className="gap-2 text-xs sm:text-sm">
               <Link2 className="h-4 w-4" />
               <span className="hidden sm:inline">Links e APIs</span>
@@ -162,6 +167,7 @@ const Admin = () => {
           <TabsContent value="whatsapp"><WhatsAppTab /></TabsContent>
           <TabsContent value="crm"><CRMTab /></TabsContent>
           <TabsContent value="stock"><StockTab /></TabsContent>
+          <TabsContent value="printers"><PrintersTab /></TabsContent>
           <TabsContent value="links" className="space-y-6">
             <section className="rounded-lg border border-border bg-card p-4">
               <div className="flex items-center gap-2 text-muted-foreground text-sm mb-3">
