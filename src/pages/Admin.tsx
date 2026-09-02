@@ -14,7 +14,7 @@ import {
   Link2,
   Webhook,
   ExternalLink,
-  MessageCircle,
+  Plug,
   Contact,
   Printer,
   type LucideIcon,
@@ -56,17 +56,16 @@ const ADMIN_APIS: { label: string; href: string; external?: boolean }[] = [
   // { label: "API Docs", href: "https://api.exemplo.com/docs", external: true },
 ];
 
-type SectionKey = "menu" | "users" | "password" | "whatsapp" | "crm" | "stock" | "printers" | "links";
+type SectionKey = "menu" | "users" | "password" | "integrations" | "crm" | "stock" | "printers";
 
 const SECTIONS: { key: SectionKey; label: string; icon: LucideIcon }[] = [
   { key: "menu", label: "Cardápio", icon: UtensilsCrossed },
   { key: "users", label: "Usuários", icon: Users },
   { key: "password", label: "Senha", icon: KeyRound },
-  { key: "whatsapp", label: "WhatsApp", icon: MessageCircle },
+  { key: "integrations", label: "Integrações", icon: Plug },
   { key: "crm", label: "CRM", icon: Contact },
   { key: "stock", label: "Estoque", icon: Package },
   { key: "printers", label: "Impressoras", icon: Printer },
-  { key: "links", label: "Links e APIs", icon: Link2 },
 ];
 
 /**
@@ -254,12 +253,12 @@ const Admin = () => {
             {activeSection === "menu" && <MenuTab />}
             {activeSection === "users" && <UsersTab />}
             {activeSection === "password" && <ResetPasswordTab />}
-            {activeSection === "whatsapp" && <WhatsAppTab />}
             {activeSection === "crm" && <CRMTab />}
             {activeSection === "stock" && <StockTab />}
             {activeSection === "printers" && <PrintersTab />}
-            {activeSection === "links" && (
+            {activeSection === "integrations" && (
               <div className="space-y-6">
+                <WhatsAppTab />
                 <section className="rounded-lg border border-border bg-card p-4">
                   <div className="flex items-center gap-2 text-muted-foreground text-sm mb-3">
                     <Link2 className="h-4 w-4" />
