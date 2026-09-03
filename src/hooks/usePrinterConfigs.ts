@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 
 export type PrinterTipo = "termica" | "etiqueta";
 export type PrinterGatilho =
@@ -39,6 +40,7 @@ export const CONNECTION_TYPE_LABELS: Record<PrinterConnectionType, string> = {
 };
 
 export const usePrinterConfigs = () => {
+  const { businessUnitId } = useCurrentBusinessUnit();
   const [printers, setPrinters] = useState<PrinterConfig[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -83,6 +85,7 @@ export const usePrinterConfigs = () => {
       gatilho: input.gatilho,
       connection_type: input.connectionType,
       device_identifier: input.deviceIdentifier || null,
+      business_unit_id: businessUnitId,
     });
     if (error) {
       toast.error("Erro ao criar impressora: " + error.message);

@@ -15,6 +15,7 @@ import {
   Contact,
   Printer,
   QrCode,
+  Building2,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -27,6 +28,7 @@ import CRMTab from "@/components/admin/CRMTab";
 import StockTab from "@/components/admin/StockTab";
 import PrintersTab from "@/components/admin/PrintersTab";
 import QrCodesTab from "@/components/admin/QrCodesTab";
+import BusinessUnitsTab from "@/components/admin/BusinessUnitsTab";
 import {
   SidebarProvider,
   Sidebar,
@@ -44,7 +46,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-type SectionKey = "menu" | "users" | "password" | "connections" | "crm" | "stock" | "printers" | "qrcodes";
+type SectionKey = "menu" | "users" | "password" | "connections" | "crm" | "stock" | "printers" | "qrcodes" | "units";
 
 const SECTIONS: { key: SectionKey; label: string; icon: LucideIcon }[] = [
   { key: "menu", label: "Cardápio", icon: UtensilsCrossed },
@@ -55,6 +57,7 @@ const SECTIONS: { key: SectionKey; label: string; icon: LucideIcon }[] = [
   { key: "stock", label: "Estoque", icon: Package },
   { key: "printers", label: "Impressoras", icon: Printer },
   { key: "qrcodes", label: "QR Codes", icon: QrCode },
+  { key: "units", label: "Unidades", icon: Building2 },
 ];
 
 /**
@@ -246,6 +249,7 @@ const Admin = () => {
             {activeSection === "stock" && <StockTab />}
             {activeSection === "printers" && <PrintersTab />}
             {activeSection === "qrcodes" && <QrCodesTab />}
+            {activeSection === "units" && <BusinessUnitsTab />}
             {activeSection === "connections" && <ConnectionsTab />}
           </div>
         </main>

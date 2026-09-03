@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 
 export type ItemType = "insumo" | "semiacabado" | "produto_acabado" | "revenda";
 
@@ -137,6 +138,7 @@ export interface LowStockAlert {
 }
 
 export const useStockData = () => {
+  const { businessUnitId } = useCurrentBusinessUnit();
   const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [recipes, setRecipes] = useState<ProductionRecipe[]>([]);
@@ -352,6 +354,10 @@ export const useStockData = () => {
     minStock: number;
     categoria?: string | null;
   }) => {
+    if (!businessUnitId) {
+      toast.error("Nenhuma unidade ativa encontrada");
+      return false;
+    }
     const { error } = await supabase.from("raw_materials").insert({
       name: input.name,
       unit: input.unit,
@@ -360,6 +366,7 @@ export const useStockData = () => {
       // (migration 20260828041000) deriva a partir de tipo no insert.
       min_stock: input.minStock,
       categoria: input.categoria || null,
+      business_unit_id: businessUnitId,
     });
     if (error) {
       toast.error("Erro ao criar insumo: " + error.message);
@@ -380,6 +387,10 @@ export const useStockData = () => {
     validade?: string | null; // YYYY-MM-DD, opcional — pilar "Lotes/Validade"
     numeroLote?: string | null; // opcional; se vazio, gera um código
   }) => {
+    if (!businessUnitId) {
+      toast.error("Nenhuma unidade ativa encontrada");
+      return false;
+    }
     const { data: userData } = await supabase.auth.getUser();
     const batchInfo =
       input.boxCount && input.unitsPerBox
@@ -403,6 +414,7 @@ export const useStockData = () => {
         validade: input.validade || null,
         fornecedor_id: input.supplierId,
         preco_unitario: input.unitCost,
+        business_unit_id: businessUnitId,
       })
       .select()
       .single();
@@ -425,6 +437,7 @@ export const useStockData = () => {
       batch_info: batchInfo,
       lote_id: loteRow?.id ?? null,
       created_by: userData.user?.id,
+      business_unit_id: businessUnitId,
     });
     if (error) {
       toast.error("Erro ao registrar entrada: " + error.message);
@@ -436,7 +449,11 @@ export const useStockData = () => {
   };
 
   const createSupplier = async (input: { name: string; document: string; phone: string; email: string }) => {
-    const { error } = await supabase.from("suppliers").insert(input);
+    if (!businessUnitId) {
+      toast.error("Nenhuma unidade ativa encontrada");
+      return false;
+    }
+    const { error } = await supabase.from("suppliers").insert({ ...input, business_unit_id: businessUnitId });
     if (error) {
       toast.error("Erro ao criar fornecedor: " + error.message);
       return false;
@@ -456,6 +473,10 @@ export const useStockData = () => {
     tempoProducao?: number | null;
     inputs: ProductionRecipeInput[];
   }) => {
+    if (!businessUnitId) {
+      toast.error("Nenhuma unidade ativa encontrada");
+      return false;
+    }
     const { data: recipeRow, error: recipeErr } = await supabase
       .from("production_recipes")
       .insert({
@@ -466,6 +487,7 @@ export const useStockData = () => {
         tipo: input.tipo ?? "producao",
         perda_esperada: input.perdaEsperada ?? null,
         tempo_producao: input.tempoProducao ?? null,
+        business_unit_id: businessUnitId,
       })
       .select()
       .single();
@@ -500,6 +522,10 @@ export const useStockData = () => {
     notes: string;
     inputsUsed: { rawMaterialId: string; quantityUsed: number }[];
   }) => {
+    if (!businessUnitId) {
+      toast.error("Nenhuma unidade ativa encontrada");
+      return false;
+    }
     const { data: userData } = await supabase.auth.getUser();
 
     const { data: batchRow, error: batchErr } = await supabase
@@ -509,6 +535,7 @@ export const useStockData = () => {
         quantity_produced: input.quantityProduced,
         notes: input.notes || null,
         produced_by: userData.user?.id,
+        business_unit_id: businessUnitId,
       })
       .select()
       .single();
@@ -558,6 +585,7 @@ export const useStockData = () => {
         validade: batchRow.expires_at ?? null,
         receita_id: input.recipeId,
         batch_id: batchRow.id,
+        business_unit_id: businessUnitId,
       });
       if (loteErr) {
         console.warn("Não foi possível registrar o lote de produção (migration de lotes pendente?):", loteErr.message);

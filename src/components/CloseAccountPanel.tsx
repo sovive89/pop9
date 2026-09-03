@@ -21,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import {
   type ClientOrder,
   getClientTotal,
@@ -62,6 +63,7 @@ interface Props {
 }
 
 const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onCloseSession, onBack }: Props) => {
+  const { businessUnitId } = useCurrentBusinessUnit();
   const [tab, setTab] = useState<Tab>("geral");
   const [serviceCharge, setServiceCharge] = useState(false);
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
@@ -181,6 +183,10 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onCloseSession
       toast.error("Valor inválido");
       return;
     }
+    if (!businessUnitId) {
+      toast.error("Nenhuma unidade ativa encontrada");
+      return;
+    }
 
     setIsProcessing(true);
     try {
@@ -198,6 +204,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onCloseSession
         cash_received: cashVal,
         change_given: changeVal,
         created_by: user?.id,
+        business_unit_id: businessUnitId,
       });
 
       if (error) {

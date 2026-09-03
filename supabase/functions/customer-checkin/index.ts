@@ -39,6 +39,28 @@ function admin() {
   );
 }
 
+// business_unit_id agora é NOT NULL em sessions/session_clients/checkin_verifications
+// não tem coluna própria mas precisa saber a unidade antes de criar sessão. Só
+// existe 1 business_unit em produção hoje — mesma resolução de useCurrentBusinessUnit
+// no frontend — com fallback pelo token de mesa quando disponível.
+async function resolveBusinessUnitId(supabase: ReturnType<typeof admin>, tableNumber: number): Promise<string | null> {
+  const { data: qr } = await supabase
+    .from("table_qr_codes")
+    .select("business_unit_id")
+    .eq("table_number", tableNumber)
+    .eq("active", true)
+    .maybeSingle();
+  if (qr?.business_unit_id) return qr.business_unit_id;
+
+  const { data: bu } = await supabase
+    .from("business_units")
+    .select("id")
+    .eq("active", true)
+    .limit(1)
+    .maybeSingle();
+  return bu?.id ?? null;
+}
+
 async function requireStaff(req: Request) {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
@@ -143,6 +165,7 @@ async function staffGenerateCode(req: Request, body: any) {
 
   const code = randomCode(4);
   const expiresAt = new Date(Date.now() + CODE_TTL_MINUTES * 60_000).toISOString();
+  const businessUnitId = await resolveBusinessUnitId(supabase, tableNumber);
 
   const { error } = await supabase.from("checkin_verifications").insert({
     method: "staff_code",
@@ -150,6 +173,7 @@ async function staffGenerateCode(req: Request, body: any) {
     session_id: activeSession.id,
     code,
     expires_at: expiresAt,
+    business_unit_id: businessUnitId,
   });
 
   if (error) return json({ error: "Erro ao gerar código" }, 500);
@@ -166,6 +190,7 @@ async function requestCode(body: any) {
   const supabase = admin();
   const code = randomCode(6);
   const expiresAt = new Date(Date.now() + CODE_TTL_MINUTES * 60_000).toISOString();
+  const businessUnitId = await resolveBusinessUnitId(supabase, tableNumber);
 
   const { error } = await supabase.from("checkin_verifications").insert({
     method: "whatsapp_otp",
@@ -173,6 +198,7 @@ async function requestCode(body: any) {
     phone,
     code,
     expires_at: expiresAt,
+    business_unit_id: businessUnitId,
   });
 
   if (error) return json({ error: "Erro ao gerar código" }, 500);
@@ -251,25 +277,34 @@ async function verifyCode(body: any) {
     .eq("id", verification.id);
 
   let sessionId = verification.session_id as string | null;
+  let businessUnitId = verification.business_unit_id as string | null;
 
   if (!sessionId) {
     const { data: activeSession } = await supabase
       .from("sessions")
-      .select("id")
+      .select("id, business_unit_id")
       .eq("table_number", tableNumber)
       .eq("status", "active")
       .maybeSingle();
 
     if (activeSession) {
       sessionId = activeSession.id;
+      businessUnitId = activeSession.business_unit_id;
     } else {
+      if (!businessUnitId) {
+        businessUnitId = await resolveBusinessUnitId(supabase, tableNumber);
+      }
+      if (!businessUnitId) {
+        return json({ error: "Nenhuma unidade ativa encontrada" }, 500);
+      }
+
       const { data: newSession, error: sessionError } = await supabase
         .from("sessions")
         .insert({
           table_number: tableNumber,
           zone: "salao",
           origin: "customer",
-          business_unit_id: verification.business_unit_id,
+          business_unit_id: businessUnitId,
         })
         .select()
         .single();
@@ -279,6 +314,13 @@ async function verifyCode(body: any) {
       }
       sessionId = newSession.id;
     }
+  } else if (!businessUnitId) {
+    const { data: sessionRow } = await supabase
+      .from("sessions")
+      .select("business_unit_id")
+      .eq("id", sessionId)
+      .maybeSingle();
+    businessUnitId = sessionRow?.business_unit_id ?? null;
   }
 
   const { data: client, error: clientError } = await supabase
@@ -287,6 +329,7 @@ async function verifyCode(body: any) {
       session_id: sessionId,
       name: name ?? "Cliente",
       phone: phone ?? null,
+      business_unit_id: businessUnitId,
     })
     .select()
     .single();

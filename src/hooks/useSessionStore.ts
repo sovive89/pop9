@@ -7,6 +7,7 @@ import type { ClientInfo, TableSession } from "@/components/TableSessionPanel";
 import type { ClientOrder, PlacedOrder, OrderItem, IngredientMod } from "@/utils/orders";
 import { buildKitchenReceipts, printReceipt } from "@/utils/thermal-print";
 import { fetchActiveSessionsWithOriginFallback } from "@/hooks/sessionQueries";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 
 type Zone = string;
 
@@ -17,6 +18,7 @@ interface SessionData {
 
 export const useSessionStore = () => {
   const { user, loading: authLoading } = useAuth();
+  const { businessUnitId } = useCurrentBusinessUnit();
   const [sessions, setSessions] = useState<Record<number, SessionData>>({});
   const [loading, setLoading] = useState(true);
 
@@ -203,10 +205,14 @@ export const useSessionStore = () => {
       toast.error("Usuário não autenticado. Faça login novamente.");
       return false;
     }
+    if (!businessUnitId) {
+      toast.error("Nenhuma unidade ativa encontrada");
+      return false;
+    }
 
     const { data: session, error: sErr } = await supabase
       .from("sessions")
-      .insert({ table_number: tableNumber, zone, created_by: user?.id })
+      .insert({ table_number: tableNumber, zone, created_by: user?.id, business_unit_id: businessUnitId })
       .select()
       .single();
 
@@ -226,6 +232,7 @@ export const useSessionStore = () => {
         cep: clientData.cep,
         bairro: clientData.bairro,
         genero: clientData.genero,
+        business_unit_id: businessUnitId,
       })
       .select()
       .single();
@@ -269,6 +276,10 @@ export const useSessionStore = () => {
       toast.error("Usuário não autenticado. Faça login novamente.");
       return false;
     }
+    if (!businessUnitId) {
+      toast.error("Nenhuma unidade ativa encontrada");
+      return false;
+    }
 
     const sessionData = sessions[tableNumber];
     if (!sessionData) return false;
@@ -283,6 +294,7 @@ export const useSessionStore = () => {
         cep: clientData.cep,
         bairro: clientData.bairro,
         genero: clientData.genero,
+        business_unit_id: businessUnitId,
       })
       .select()
       .single();
@@ -347,10 +359,14 @@ export const useSessionStore = () => {
   const placeOrder = async (tableNumber: number, clientId: string, cartItems: OrderItem[]) => {
     const sessionData = sessions[tableNumber];
     if (!sessionData || cartItems.length === 0) return;
+    if (!businessUnitId) {
+      toast.error("Nenhuma unidade ativa encontrada");
+      return;
+    }
 
     const { data: order, error: oErr } = await supabase
       .from("orders")
-      .insert({ session_id: sessionData.session.dbId, client_id: clientId })
+      .insert({ session_id: sessionData.session.dbId, client_id: clientId, business_unit_id: businessUnitId })
       .select("id, placed_at")
       .single();
 

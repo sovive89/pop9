@@ -6,6 +6,7 @@ import { useAdminData, type DbMenuItem, type DbIngredient, type DbVariant, type 
 import { supabase } from "@/integrations/supabase/client";
 import { formatCurrency } from "@/utils/orders";
 import { toast } from "sonner";
+import RecipeBuilder, { type RecipeBuilderHandle } from "@/components/admin/RecipeBuilder";
 
 // ── Image Upload Helper ──
 const uploadMenuImage = async (file: File, itemId: string): Promise<string | null> => {
@@ -120,6 +121,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     item?.variants?.map(({ id: _, ...rest }) => rest) ?? []
   );
   const [saving, setSaving] = useState(false);
+  const recipeBuilderRef = useRef<RecipeBuilderHandle>(null);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -159,6 +161,13 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       },
       isNew
     );
+    if (ok) {
+      const recipeOk = await recipeBuilderRef.current?.commit(id.trim());
+      if (recipeOk === false) {
+        setSaving(false);
+        return;
+      }
+    }
     setSaving(false);
     if (ok) onCancel();
   };
@@ -287,6 +296,9 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
           </div>
         ))}
       </div>
+
+      {/* Ficha técnica (recipe_items → raw_materials, separado dos ingredientes de exibição acima) */}
+      <RecipeBuilder ref={recipeBuilderRef} menuItemId={item?.id} />
 
       {/* Variants */}
       <div className="space-y-2">

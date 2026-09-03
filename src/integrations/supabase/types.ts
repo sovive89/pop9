@@ -212,7 +212,7 @@ export type Database = {
       lotes: {
         Row: {
           batch_id: string | null
-          business_unit_id: string | null
+          business_unit_id: string
           created_at: string
           data_entrada: string
           fornecedor_id: string | null
@@ -227,7 +227,7 @@ export type Database = {
         }
         Insert: {
           batch_id?: string | null
-          business_unit_id?: string | null
+          business_unit_id: string
           created_at?: string
           data_entrada?: string
           fornecedor_id?: string | null
@@ -242,7 +242,7 @@ export type Database = {
         }
         Update: {
           batch_id?: string | null
-          business_unit_id?: string | null
+          business_unit_id?: string
           created_at?: string
           data_entrada?: string
           fornecedor_id?: string | null
@@ -316,7 +316,7 @@ export type Database = {
       }
       menu_categories: {
         Row: {
-          business_unit_id: string | null
+          business_unit_id: string
           created_at: string
           destination: string
           id: string
@@ -325,7 +325,7 @@ export type Database = {
           sort_order: number
         }
         Insert: {
-          business_unit_id?: string | null
+          business_unit_id: string
           created_at?: string
           destination?: string
           id?: string
@@ -334,7 +334,7 @@ export type Database = {
           sort_order?: number
         }
         Update: {
-          business_unit_id?: string | null
+          business_unit_id?: string
           created_at?: string
           destination?: string
           id?: string
@@ -419,7 +419,7 @@ export type Database = {
       menu_items: {
         Row: {
           active: boolean
-          business_unit_id: string | null
+          business_unit_id: string
           category: string
           created_at: string
           description: string | null
@@ -434,7 +434,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
-          business_unit_id?: string | null
+          business_unit_id: string
           category: string
           created_at?: string
           description?: string | null
@@ -449,7 +449,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
-          business_unit_id?: string | null
+          business_unit_id?: string
           category?: string
           created_at?: string
           description?: string | null
@@ -569,7 +569,7 @@ export type Database = {
       }
       orders: {
         Row: {
-          business_unit_id: string | null
+          business_unit_id: string
           client_id: string
           delivery_fee: number
           discount: number
@@ -587,7 +587,7 @@ export type Database = {
           total: number | null
         }
         Insert: {
-          business_unit_id?: string | null
+          business_unit_id: string
           client_id: string
           delivery_fee?: number
           discount?: number
@@ -605,7 +605,7 @@ export type Database = {
           total?: number | null
         }
         Update: {
-          business_unit_id?: string | null
+          business_unit_id?: string
           client_id?: string
           delivery_fee?: number
           discount?: number
@@ -663,6 +663,7 @@ export type Database = {
       payments: {
         Row: {
           amount: number
+          business_unit_id: string
           cash_received: number | null
           change_given: number | null
           client_id: string
@@ -679,6 +680,7 @@ export type Database = {
         }
         Insert: {
           amount: number
+          business_unit_id: string
           cash_received?: number | null
           change_given?: number | null
           client_id: string
@@ -695,6 +697,7 @@ export type Database = {
         }
         Update: {
           amount?: number
+          business_unit_id?: string
           cash_received?: number | null
           change_given?: number | null
           client_id?: string
@@ -710,6 +713,13 @@ export type Database = {
           status?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "payments_business_unit_id_fkey"
+            columns: ["business_unit_id"]
+            isOneToOne: false
+            referencedRelation: "business_units"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "payments_client_id_fkey"
             columns: ["client_id"]
@@ -861,7 +871,7 @@ export type Database = {
       production_batches: {
         Row: {
           batch_code: string | null
-          business_unit_id: string | null
+          business_unit_id: string
           created_at: string
           expires_at: string | null
           id: string
@@ -873,7 +883,7 @@ export type Database = {
         }
         Insert: {
           batch_code?: string | null
-          business_unit_id?: string | null
+          business_unit_id: string
           created_at?: string
           expires_at?: string | null
           id?: string
@@ -885,7 +895,7 @@ export type Database = {
         }
         Update: {
           batch_code?: string | null
-          business_unit_id?: string | null
+          business_unit_id?: string
           created_at?: string
           expires_at?: string | null
           id?: string
@@ -965,7 +975,7 @@ export type Database = {
       production_recipes: {
         Row: {
           active: boolean
-          business_unit_id: string | null
+          business_unit_id: string
           created_at: string
           id: string
           name: string
@@ -978,7 +988,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
-          business_unit_id?: string | null
+          business_unit_id: string
           created_at?: string
           id?: string
           name: string
@@ -991,7 +1001,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
-          business_unit_id?: string | null
+          business_unit_id?: string
           created_at?: string
           id?: string
           name?: string
@@ -1091,7 +1101,7 @@ export type Database = {
         Row: {
           active: boolean
           average_cost: number
-          business_unit_id: string | null
+          business_unit_id: string
           categoria: string | null
           created_at: string
           current_stock: number
@@ -1106,7 +1116,7 @@ export type Database = {
         Insert: {
           active?: boolean
           average_cost?: number
-          business_unit_id?: string | null
+          business_unit_id: string
           categoria?: string | null
           created_at?: string
           current_stock?: number
@@ -1121,7 +1131,7 @@ export type Database = {
         Update: {
           active?: boolean
           average_cost?: number
-          business_unit_id?: string | null
+          business_unit_id?: string
           categoria?: string | null
           created_at?: string
           current_stock?: number
@@ -1197,6 +1207,7 @@ export type Database = {
         Row: {
           added_at: string
           bairro: string | null
+          business_unit_id: string
           cep: string | null
           customer_id: string | null
           email: string | null
@@ -1210,6 +1221,7 @@ export type Database = {
         Insert: {
           added_at?: string
           bairro?: string | null
+          business_unit_id: string
           cep?: string | null
           customer_id?: string | null
           email?: string | null
@@ -1223,6 +1235,7 @@ export type Database = {
         Update: {
           added_at?: string
           bairro?: string | null
+          business_unit_id?: string
           cep?: string | null
           customer_id?: string | null
           email?: string | null
@@ -1234,6 +1247,13 @@ export type Database = {
           session_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "session_clients_business_unit_id_fkey"
+            columns: ["business_unit_id"]
+            isOneToOne: false
+            referencedRelation: "business_units"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "session_clients_customer_id_fkey"
             columns: ["customer_id"]
@@ -1259,7 +1279,7 @@ export type Database = {
       }
       sessions: {
         Row: {
-          business_unit_id: string | null
+          business_unit_id: string
           created_at: string
           created_by: string | null
           ended_at: string | null
@@ -1271,7 +1291,7 @@ export type Database = {
           zone: string
         }
         Insert: {
-          business_unit_id?: string | null
+          business_unit_id: string
           created_at?: string
           created_by?: string | null
           ended_at?: string | null
@@ -1283,7 +1303,7 @@ export type Database = {
           zone: string
         }
         Update: {
-          business_unit_id?: string | null
+          business_unit_id?: string
           created_at?: string
           created_by?: string | null
           ended_at?: string | null
@@ -1307,7 +1327,7 @@ export type Database = {
       stock_movements: {
         Row: {
           batch_info: Json | null
-          business_unit_id: string | null
+          business_unit_id: string
           created_at: string
           created_by: string | null
           id: string
@@ -1323,7 +1343,7 @@ export type Database = {
         }
         Insert: {
           batch_info?: Json | null
-          business_unit_id?: string | null
+          business_unit_id: string
           created_at?: string
           created_by?: string | null
           id?: string
@@ -1339,7 +1359,7 @@ export type Database = {
         }
         Update: {
           batch_info?: Json | null
-          business_unit_id?: string | null
+          business_unit_id?: string
           created_at?: string
           created_by?: string | null
           id?: string
@@ -1401,7 +1421,7 @@ export type Database = {
       suppliers: {
         Row: {
           active: boolean
-          business_unit_id: string | null
+          business_unit_id: string
           created_at: string
           document: string | null
           email: string | null
@@ -1411,7 +1431,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
-          business_unit_id?: string | null
+          business_unit_id: string
           created_at?: string
           document?: string | null
           email?: string | null
@@ -1421,7 +1441,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
-          business_unit_id?: string | null
+          business_unit_id?: string
           created_at?: string
           document?: string | null
           email?: string | null
