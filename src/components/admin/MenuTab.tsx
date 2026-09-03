@@ -113,6 +113,8 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   const [imageUrl, setImageUrl] = useState(item?.image_url ?? "");
   const [sortOrder, setSortOrder] = useState(item?.sort_order?.toString() ?? "0");
   const [active, setActive] = useState(item?.active ?? true);
+  const [sku, setSku] = useState(item?.sku ?? "");
+  const [status, setStatus] = useState<"draft" | "published">(item?.status ?? "draft");
   const [uploading, setUploading] = useState(false);
   const [ingredients, setIngredients] = useState<Omit<DbIngredient, "id">[]>(
     item?.ingredients?.map(({ id: _, ...rest }) => rest) ?? []
@@ -156,6 +158,8 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
         image_url: imageUrl.trim() || null,
         sort_order: parseInt(sortOrder) || 0,
         active,
+        sku: sku.trim() || null,
+        status,
         ingredients,
         variants,
       },
@@ -231,6 +235,20 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
             <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="rounded" />
             Ativo
           </label>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">SKU <span className="text-muted-foreground/60">(opcional)</span></label>
+          <Input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="Código interno" className="h-9" />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Status</label>
+          <select value={status} onChange={(e) => setStatus(e.target.value as "draft" | "published")} className="w-full h-9 rounded-md border border-border bg-muted px-3 text-sm text-foreground">
+            <option value="draft">Rascunho (não aparece pro cliente)</option>
+            <option value="published">Publicado</option>
+          </select>
         </div>
       </div>
 
@@ -432,6 +450,7 @@ const MenuTab = () => {
                         <span className="font-medium text-foreground">{item.name}</span>
                         <span className="text-xs text-muted-foreground">({item.id})</span>
                         {!item.active && <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Inativo</span>}
+                        {item.status === "draft" && <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-warning">Rascunho</span>}
                       </div>
                       <p className="text-xs text-muted-foreground truncate">{item.description}</p>
                       {item.ingredients.length > 0 && <p className="text-[10px] text-muted-foreground">{item.ingredients.length} ingredientes</p>}

@@ -428,8 +428,10 @@ export type Database = {
           image_url: string | null
           name: string
           price: number
+          sku: string | null
           sort_order: number
           source: string
+          status: string
           updated_at: string
         }
         Insert: {
@@ -443,8 +445,10 @@ export type Database = {
           image_url?: string | null
           name: string
           price: number
+          sku?: string | null
           sort_order?: number
           source?: string
+          status?: string
           updated_at?: string
         }
         Update: {
@@ -458,8 +462,10 @@ export type Database = {
           image_url?: string | null
           name?: string
           price?: number
+          sku?: string | null
           sort_order?: number
           source?: string
+          status?: string
           updated_at?: string
         }
         Relationships: [

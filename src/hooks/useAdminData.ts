@@ -19,6 +19,8 @@ export interface DbMenuItem {
   image_url: string | null;
   sort_order: number;
   active: boolean;
+  sku: string | null;
+  status: "draft" | "published";
   ingredients: DbIngredient[];
   variants: DbVariant[];
 }
@@ -121,6 +123,8 @@ export const useAdminData = () => {
       image_url: item.image_url ?? null,
       sort_order: item.sort_order,
       active: item.active,
+      sku: item.sku ?? null,
+      status: (item.status as "draft" | "published") ?? "published",
       ingredients: (ingredients ?? [])
         .filter((ing) => ing.menu_item_id === item.id)
         .map((ing) => ({
@@ -240,6 +244,8 @@ export const useAdminData = () => {
         image_url: itemData.image_url,
         sort_order: itemData.sort_order,
         active: itemData.active,
+        sku: itemData.sku,
+        status: itemData.status,
       }).eq("id", itemData.id);
       if (error) { toast.error("Erro ao atualizar item: " + error.message); return false; }
     }
