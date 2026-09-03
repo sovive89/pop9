@@ -122,9 +122,13 @@ export interface IntegrationDefinition {
   description: string;
   configType: ConfigType;
   /** Slug do ícone em `simple-icons`, quando existe um logo oficial
-   * confiável disponível na lib já instalada no projeto. Ausente = usa o
-   * monograma de fallback (nunca um logo desenhado à mão). */
+   * confiável disponível na lib já instalada no projeto. */
   simpleIconSlug?: string;
+  /** Domínio oficial da marca. Usado para buscar o ícone real do site
+   * quando a marca não está no `simple-icons` (a maioria das brasileiras).
+   * Só preencher com domínio confirmado — um domínio errado mostra o logo
+   * de outra empresa, o que é pior que mostrar as iniciais. */
+  domain?: string;
   /** Cor de fallback (hex, sem #) para o monograma quando não há
    * `simpleIconSlug`. Opcional — cai numa paleta neutra se ausente. */
   fallbackColor?: string;

@@ -86,6 +86,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "ifood",
     slug: "ifood",
+    domain: "ifood.com.br",
     name: "iFood",
     category: "DELIVERY",
     type: "OPERATIONAL",
@@ -102,6 +103,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "99food",
     slug: "99food",
+    domain: "99app.com",
     name: "99Food",
     category: "DELIVERY",
     type: "OPERATIONAL",
@@ -116,6 +118,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "rappi",
     slug: "rappi",
+    domain: "rappi.com.br",
     name: "Rappi",
     category: "DELIVERY",
     type: "OPERATIONAL",
@@ -130,6 +133,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "aiqfome",
     slug: "aiqfome",
+    domain: "aiqfome.com",
     name: "Aiqfome",
     category: "DELIVERY",
     type: "OPERATIONAL",
@@ -146,6 +150,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "whatsapp",
     slug: "whatsapp",
+    domain: "whatsapp.com",
     name: "WhatsApp",
     category: "COMMUNICATION",
     type: "OPERATIONAL",
@@ -166,6 +171,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "instagram",
     slug: "instagram",
+    domain: "instagram.com",
     name: "Instagram",
     category: "COMMUNICATION",
     type: "OPERATIONAL",
@@ -181,6 +187,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "telegram",
     slug: "telegram",
+    domain: "telegram.org",
     name: "Telegram",
     category: "COMMUNICATION",
     type: "OPERATIONAL",
@@ -198,6 +205,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "saipos",
     slug: "saipos",
+    domain: "saipos.com",
     name: "Saipos",
     category: "POS",
     type: "IMPORT",
@@ -213,6 +221,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "consumer",
     slug: "consumer",
+    domain: "consumer.com.br",
     name: "Consumer",
     category: "POS",
     type: "IMPORT",
@@ -227,6 +236,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "linx",
     slug: "linx",
+    domain: "linx.com.br",
     name: "Linx / Degust",
     category: "POS",
     type: "IMPORT",
@@ -241,6 +251,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "colibri",
     slug: "colibri",
+    domain: "ncrcolibri.com.br",
     name: "Colibri",
     category: "POS",
     type: "IMPORT",
@@ -269,6 +280,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "sischef",
     slug: "sischef",
+    domain: "sischef.com.br",
     name: "Sischef",
     category: "POS",
     type: "IMPORT",
@@ -285,6 +297,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "goomer",
     slug: "goomer",
+    domain: "goomer.com.br",
     name: "Goomer",
     category: "MENU",
     type: "OPERATIONAL",
@@ -302,6 +315,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "mercadopago",
     slug: "mercadopago",
+    domain: "mercadopago.com.br",
     name: "Mercado Pago",
     category: "PAYMENTS",
     type: "OPERATIONAL",
@@ -317,6 +331,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "stone",
     slug: "stone",
+    domain: "stone.com.br",
     name: "Stone",
     category: "PAYMENTS",
     type: "OPERATIONAL",
@@ -331,6 +346,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "cielo",
     slug: "cielo",
+    domain: "cielo.com.br",
     name: "Cielo",
     category: "PAYMENTS",
     type: "OPERATIONAL",
@@ -345,6 +361,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "rede",
     slug: "rede",
+    domain: "userede.com.br",
     name: "Rede",
     category: "PAYMENTS",
     type: "OPERATIONAL",
@@ -359,6 +376,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "pagbank",
     slug: "pagbank",
+    domain: "pagbank.com.br",
     name: "PagBank",
     category: "PAYMENTS",
     type: "OPERATIONAL",
@@ -373,6 +391,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "asaas",
     slug: "asaas",
+    domain: "asaas.com",
     name: "Asaas",
     category: "PAYMENTS",
     type: "OPERATIONAL",
@@ -403,6 +422,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "omie",
     slug: "omie",
+    domain: "omie.com.br",
     name: "Omie",
     category: "MANAGEMENT",
     type: "OPERATIONAL",
@@ -417,6 +437,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "bling",
     slug: "bling",
+    domain: "bling.com.br",
     name: "Bling",
     category: "MANAGEMENT",
     type: "OPERATIONAL",
@@ -431,6 +452,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "contaazul",
     slug: "contaazul",
+    domain: "contaazul.com",
     name: "Conta Azul",
     category: "MANAGEMENT",
     type: "OPERATIONAL",
@@ -447,6 +469,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "shopify",
     slug: "shopify",
+    domain: "shopify.com",
     name: "Shopify",
     category: "ECOMMERCE",
     type: "OPERATIONAL",
@@ -461,6 +484,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "woocommerce",
     slug: "woocommerce",
+    domain: "woocommerce.com",
     name: "WooCommerce",
     category: "ECOMMERCE",
     type: "OPERATIONAL",
@@ -478,6 +502,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "mercadolivre",
     slug: "mercadolivre",
+    domain: "mercadolivre.com.br",
     name: "Mercado Livre",
     category: "ECOMMERCE",
     type: "OPERATIONAL",
@@ -492,6 +517,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "shopee",
     slug: "shopee",
+    domain: "shopee.com.br",
     name: "Shopee",
     category: "ECOMMERCE",
     type: "OPERATIONAL",
@@ -568,6 +594,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "openai",
     slug: "openai",
+    domain: "openai.com",
     name: "OpenAI",
     category: "AI",
     type: "SUPPORT",
@@ -582,6 +609,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "google-gemini",
     slug: "google-gemini",
+    domain: "gemini.google.com",
     name: "Google Gemini",
     category: "AI",
     type: "SUPPORT",
@@ -596,6 +624,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "anthropic",
     slug: "anthropic",
+    domain: "anthropic.com",
     name: "Anthropic",
     category: "AI",
     type: "SUPPORT",
@@ -610,6 +639,7 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
   {
     id: "elevenlabs",
     slug: "elevenlabs",
+    domain: "elevenlabs.io",
     name: "ElevenLabs",
     category: "AI",
     type: "SUPPORT",
