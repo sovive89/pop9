@@ -167,6 +167,48 @@ export type Database = {
           },
         ]
       }
+      customers: {
+        Row: {
+          bairro: string | null
+          cep: string | null
+          created_at: string
+          email: string | null
+          external_id: string | null
+          genero: string | null
+          id: string
+          name: string
+          phone: string | null
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          bairro?: string | null
+          cep?: string | null
+          created_at?: string
+          email?: string | null
+          external_id?: string | null
+          genero?: string | null
+          id?: string
+          name: string
+          phone?: string | null
+          source?: string
+          updated_at?: string
+        }
+        Update: {
+          bairro?: string | null
+          cep?: string | null
+          created_at?: string
+          email?: string | null
+          external_id?: string | null
+          genero?: string | null
+          id?: string
+          name?: string
+          phone?: string | null
+          source?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       lotes: {
         Row: {
           batch_id: string | null
@@ -381,11 +423,13 @@ export type Database = {
           category: string
           created_at: string
           description: string | null
+          external_id: string | null
           id: string
           image_url: string | null
           name: string
           price: number
           sort_order: number
+          source: string
           updated_at: string
         }
         Insert: {
@@ -394,11 +438,13 @@ export type Database = {
           category: string
           created_at?: string
           description?: string | null
+          external_id?: string | null
           id: string
           image_url?: string | null
           name: string
           price: number
           sort_order?: number
+          source?: string
           updated_at?: string
         }
         Update: {
@@ -407,11 +453,13 @@ export type Database = {
           category?: string
           created_at?: string
           description?: string | null
+          external_id?: string | null
           id?: string
           image_url?: string | null
           name?: string
           price?: number
           sort_order?: number
+          source?: string
           updated_at?: string
         }
         Relationships: [
@@ -421,6 +469,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "business_units"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_items_category_fkey"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "menu_categories"
+            referencedColumns: ["key"]
           },
         ]
       }
@@ -516,35 +571,56 @@ export type Database = {
         Row: {
           business_unit_id: string | null
           client_id: string
+          delivery_fee: number
+          discount: number
+          external_id: string | null
           id: string
           origin: string
+          payment_status: string
           placed_at: string
           preparing_at: string | null
           ready_at: string | null
           session_id: string
+          source: string
           status: string
+          subtotal: number | null
+          total: number | null
         }
         Insert: {
           business_unit_id?: string | null
           client_id: string
+          delivery_fee?: number
+          discount?: number
+          external_id?: string | null
           id?: string
           origin?: string
+          payment_status?: string
           placed_at?: string
           preparing_at?: string | null
           ready_at?: string | null
           session_id: string
+          source?: string
           status?: string
+          subtotal?: number | null
+          total?: number | null
         }
         Update: {
           business_unit_id?: string | null
           client_id?: string
+          delivery_fee?: number
+          discount?: number
+          external_id?: string | null
           id?: string
           origin?: string
+          payment_status?: string
           placed_at?: string
           preparing_at?: string | null
           ready_at?: string | null
           session_id?: string
+          source?: string
           status?: string
+          subtotal?: number | null
+          total?: number | null
         }
         Relationships: [
           {
@@ -591,11 +667,15 @@ export type Database = {
           change_given: number | null
           client_id: string
           created_by: string | null
+          external_id: string | null
           id: string
           method: string
+          order_id: string | null
           paid_at: string
           service_charge: number
           session_id: string
+          source: string
+          status: string
         }
         Insert: {
           amount: number
@@ -603,11 +683,15 @@ export type Database = {
           change_given?: number | null
           client_id: string
           created_by?: string | null
+          external_id?: string | null
           id?: string
           method?: string
+          order_id?: string | null
           paid_at?: string
           service_charge?: number
           session_id: string
+          source?: string
+          status?: string
         }
         Update: {
           amount?: number
@@ -615,11 +699,15 @@ export type Database = {
           change_given?: number | null
           client_id?: string
           created_by?: string | null
+          external_id?: string | null
           id?: string
           method?: string
+          order_id?: string | null
           paid_at?: string
           service_charge?: number
           session_id?: string
+          source?: string
+          status?: string
         }
         Relationships: [
           {
@@ -634,6 +722,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "session_clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
             referencedColumns: ["id"]
           },
           {
@@ -1103,6 +1198,7 @@ export type Database = {
           added_at: string
           bairro: string | null
           cep: string | null
+          customer_id: string | null
           email: string | null
           genero: string | null
           id: string
@@ -1115,6 +1211,7 @@ export type Database = {
           added_at?: string
           bairro?: string | null
           cep?: string | null
+          customer_id?: string | null
           email?: string | null
           genero?: string | null
           id?: string
@@ -1127,6 +1224,7 @@ export type Database = {
           added_at?: string
           bairro?: string | null
           cep?: string | null
+          customer_id?: string | null
           email?: string | null
           genero?: string | null
           id?: string
@@ -1136,6 +1234,13 @@ export type Database = {
           session_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "session_clients_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "session_clients_session_id_fkey"
             columns: ["session_id"]
