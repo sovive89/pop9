@@ -11,12 +11,10 @@ import {
   Map,
   ChefHat,
   Settings,
-  Link2,
-  Webhook,
-  ExternalLink,
   Plug,
   Contact,
   Printer,
+  QrCode,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -24,10 +22,11 @@ import { supabase } from "@/integrations/supabase/client";
 import MenuTab from "@/components/admin/MenuTab";
 import UsersTab from "@/components/admin/UsersTab";
 import ResetPasswordTab from "@/components/admin/ResetPasswordTab";
-import WhatsAppTab from "@/components/admin/WhatsAppTab";
+import { ConnectionsTab } from "@/components/admin/ConnectionsTab";
 import CRMTab from "@/components/admin/CRMTab";
 import StockTab from "@/components/admin/StockTab";
 import PrintersTab from "@/components/admin/PrintersTab";
+import QrCodesTab from "@/components/admin/QrCodesTab";
 import {
   SidebarProvider,
   Sidebar,
@@ -45,27 +44,17 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-/** Links úteis (configurável no Admin). */
-const ADMIN_LINKS: { label: string; href: string; external?: boolean }[] = [
-  { label: "Relatórios", href: "/relatorios" },
-  // { label: "Site", href: "https://exemplo.com", external: true },
-];
-
-/** APIs e documentação externa. */
-const ADMIN_APIS: { label: string; href: string; external?: boolean }[] = [
-  // { label: "API Docs", href: "https://api.exemplo.com/docs", external: true },
-];
-
-type SectionKey = "menu" | "users" | "password" | "integrations" | "crm" | "stock" | "printers";
+type SectionKey = "menu" | "users" | "password" | "connections" | "crm" | "stock" | "printers" | "qrcodes";
 
 const SECTIONS: { key: SectionKey; label: string; icon: LucideIcon }[] = [
   { key: "menu", label: "Cardápio", icon: UtensilsCrossed },
   { key: "users", label: "Usuários", icon: Users },
   { key: "password", label: "Senha", icon: KeyRound },
-  { key: "integrations", label: "Integrações", icon: Plug },
+  { key: "connections", label: "Conexões", icon: Plug },
   { key: "crm", label: "CRM", icon: Contact },
   { key: "stock", label: "Estoque", icon: Package },
   { key: "printers", label: "Impressoras", icon: Printer },
+  { key: "qrcodes", label: "QR Codes", icon: QrCode },
 ];
 
 /**
@@ -249,66 +238,15 @@ const Admin = () => {
         </motion.header>
 
         <main className="flex-1 p-4">
-          <div className="mx-auto max-w-4xl">
+          <div className={activeSection === "connections" ? "mx-auto max-w-6xl" : "mx-auto max-w-4xl"}>
             {activeSection === "menu" && <MenuTab />}
             {activeSection === "users" && <UsersTab />}
             {activeSection === "password" && <ResetPasswordTab />}
             {activeSection === "crm" && <CRMTab />}
             {activeSection === "stock" && <StockTab />}
             {activeSection === "printers" && <PrintersTab />}
-            {activeSection === "integrations" && (
-              <div className="space-y-6">
-                <WhatsAppTab />
-                <section className="rounded-lg border border-border bg-card p-4">
-                  <div className="flex items-center gap-2 text-muted-foreground text-sm mb-3">
-                    <Link2 className="h-4 w-4" />
-                    <span className="font-medium">Links</span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {ADMIN_LINKS.length === 0 ? (
-                      <span className="text-sm text-muted-foreground">Nenhum link configurado. Edite ADMIN_LINKS em Admin.tsx.</span>
-                    ) : (
-                      ADMIN_LINKS.map(({ label, href, external }) => (
-                        <a
-                          key={href + label}
-                          href={href}
-                          target={external ? "_blank" : undefined}
-                          rel={external ? "noopener noreferrer" : undefined}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm text-foreground hover:bg-muted hover:border-primary/40 transition-colors"
-                        >
-                          {label}
-                          {(external === undefined || external) && <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />}
-                        </a>
-                      ))
-                    )}
-                  </div>
-                </section>
-                <section className="rounded-lg border border-border bg-card p-4">
-                  <div className="flex items-center gap-2 text-muted-foreground text-sm mb-3">
-                    <Webhook className="h-4 w-4" />
-                    <span className="font-medium">APIs</span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {ADMIN_APIS.length === 0 ? (
-                      <span className="text-sm text-muted-foreground">Nenhuma API configurada. Edite ADMIN_APIS em Admin.tsx.</span>
-                    ) : (
-                      ADMIN_APIS.map(({ label, href, external }) => (
-                        <a
-                          key={href + label}
-                          href={href}
-                          target={external !== false ? "_blank" : undefined}
-                          rel={external !== false ? "noopener noreferrer" : undefined}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm text-foreground hover:bg-muted hover:border-primary/40 transition-colors"
-                        >
-                          {label}
-                          {(external === undefined || external) && <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />}
-                        </a>
-                      ))
-                    )}
-                  </div>
-                </section>
-              </div>
-            )}
+            {activeSection === "qrcodes" && <QrCodesTab />}
+            {activeSection === "connections" && <ConnectionsTab />}
           </div>
         </main>
       </SidebarInset>
