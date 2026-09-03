@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import type { ClientInfo, TableSession } from "@/components/TableSessionPanel";
 import type { ClientOrder, PlacedOrder, OrderItem, IngredientMod } from "@/utils/orders";
 import { buildKitchenReceipts, printReceipt } from "@/utils/thermal-print";
+import { fetchActiveSessionsWithOriginFallback } from "@/hooks/sessionQueries";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 
 type Zone = string;
 
@@ -15,19 +17,31 @@ interface SessionData {
 }
 
 export const useSessionStore = () => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const { businessUnitId } = useCurrentBusinessUnit();
   const [sessions, setSessions] = useState<Record<number, SessionData>>({});
   const [loading, setLoading] = useState(true);
 
-  // Load active sessions on mount (select mínimo = GET mais rápido)
+  const getSupabaseErrorMessage = useCallback((fallback: string, error?: { message?: string | null; code?: string | null }) => {
+    const details = [error?.code, error?.message].filter(Boolean).join(" - ");
+    return details ? `${fallback}: ${details}` : fallback;
+  }, []);
+
+  // Load active sessions after auth is ready
   const loadSessions = useCallback(async () => {
-    const { data: dbSessions, error } = await supabase
-      .from("sessions")
-      .select("id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, origin, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))")
-      .eq("status", "active");
+    if (authLoading) return;
+    if (!user) {
+      setSessions({});
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    const { data: dbSessions, error } = await fetchActiveSessionsWithOriginFallback(supabase);
 
     if (error) {
       console.error("Error loading sessions:", error);
+      toast.error(getSupabaseErrorMessage("Falha ao sincronizar mesas ativas", error));
       setLoading(false);
       return;
     }
@@ -77,7 +91,7 @@ export const useSessionStore = () => {
 
     setSessions(map);
     setLoading(false);
-  }, []);
+  }, [authLoading, getSupabaseErrorMessage, user]);
 
   useEffect(() => {
     loadSessions();
@@ -183,16 +197,29 @@ export const useSessionStore = () => {
     zone: Zone,
     clientData: { name: string; phone?: string; email?: string; cep?: string; bairro?: string; genero?: string }
   ) => {
+    if (authLoading) {
+      toast.error("Aguarde a autenticação para iniciar a sessão");
+      return false;
+    }
+    if (!user?.id) {
+      toast.error("Usuário não autenticado. Faça login novamente.");
+      return false;
+    }
+    if (!businessUnitId) {
+      toast.error("Nenhuma unidade ativa encontrada");
+      return false;
+    }
+
     const { data: session, error: sErr } = await supabase
       .from("sessions")
-      .insert({ table_number: tableNumber, zone, created_by: user?.id })
+      .insert({ table_number: tableNumber, zone, created_by: user?.id, business_unit_id: businessUnitId })
       .select()
       .single();
 
     if (sErr || !session) {
-      toast.error("Erro ao criar sessão");
+      toast.error(getSupabaseErrorMessage("Erro ao criar sessão (verifique RLS/permissões)", sErr));
       console.error(sErr);
-      return;
+      return false;
     }
 
     const { data: client, error: cErr } = await supabase
@@ -205,14 +232,15 @@ export const useSessionStore = () => {
         cep: clientData.cep,
         bairro: clientData.bairro,
         genero: clientData.genero,
+        business_unit_id: businessUnitId,
       })
       .select()
       .single();
 
     if (cErr || !client) {
-      toast.error("Erro ao registrar cliente");
+      toast.error(getSupabaseErrorMessage("Erro ao registrar cliente da sessão", cErr));
       console.error(cErr);
-      return;
+      return false;
     }
 
     setSessions((prev) => ({
@@ -237,14 +265,24 @@ export const useSessionStore = () => {
     }));
 
     toast.success(`Sessão iniciada — Mesa ${String(tableNumber).padStart(2, "0")}`);
+    return true;
   };
 
   const addClient = async (
     tableNumber: number,
     clientData: { name: string; phone?: string; email?: string; cep?: string; bairro?: string; genero?: string }
   ) => {
+    if (authLoading || !user?.id) {
+      toast.error("Usuário não autenticado. Faça login novamente.");
+      return false;
+    }
+    if (!businessUnitId) {
+      toast.error("Nenhuma unidade ativa encontrada");
+      return false;
+    }
+
     const sessionData = sessions[tableNumber];
-    if (!sessionData) return;
+    if (!sessionData) return false;
 
     const { data: client, error } = await supabase
       .from("session_clients")
@@ -256,13 +294,14 @@ export const useSessionStore = () => {
         cep: clientData.cep,
         bairro: clientData.bairro,
         genero: clientData.genero,
+        business_unit_id: businessUnitId,
       })
       .select()
       .single();
 
     if (error || !client) {
-      toast.error("Erro ao adicionar cliente");
-      return;
+      toast.error(getSupabaseErrorMessage("Erro ao adicionar cliente na sessão", error));
+      return false;
     }
 
     setSessions((prev) => {
@@ -291,6 +330,7 @@ export const useSessionStore = () => {
     });
 
     toast.success(`${clientData.name} adicionado à Mesa ${String(tableNumber).padStart(2, "0")}`);
+    return true;
   };
 
   const closeSession = async (tableNumber: number) => {
@@ -319,10 +359,14 @@ export const useSessionStore = () => {
   const placeOrder = async (tableNumber: number, clientId: string, cartItems: OrderItem[]) => {
     const sessionData = sessions[tableNumber];
     if (!sessionData || cartItems.length === 0) return;
+    if (!businessUnitId) {
+      toast.error("Nenhuma unidade ativa encontrada");
+      return;
+    }
 
     const { data: order, error: oErr } = await supabase
       .from("orders")
-      .insert({ session_id: sessionData.session.dbId, client_id: clientId })
+      .insert({ session_id: sessionData.session.dbId, client_id: clientId, business_unit_id: businessUnitId })
       .select("id, placed_at")
       .single();
 

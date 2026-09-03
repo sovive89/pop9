@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 
 export interface UserWithRole {
   userId: string;
@@ -18,6 +19,8 @@ export interface DbMenuItem {
   image_url: string | null;
   sort_order: number;
   active: boolean;
+  sku: string | null;
+  status: "draft" | "published";
   ingredients: DbIngredient[];
   variants: DbVariant[];
 }
@@ -45,6 +48,7 @@ export interface DbMenuCategory {
 }
 
 export const useAdminData = () => {
+  const { businessUnitId } = useCurrentBusinessUnit();
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [menuItems, setMenuItems] = useState<DbMenuItem[]>([]);
   const [categories, setCategories] = useState<DbMenuCategory[]>([]);
@@ -119,6 +123,8 @@ export const useAdminData = () => {
       image_url: item.image_url ?? null,
       sort_order: item.sort_order,
       active: item.active,
+      sku: item.sku ?? null,
+      status: (item.status as "draft" | "published") ?? "published",
       ingredients: (ingredients ?? [])
         .filter((ing) => ing.menu_item_id === item.id)
         .map((ing) => ({
@@ -226,7 +232,8 @@ export const useAdminData = () => {
     const { ingredients, variants, ...itemData } = item;
 
     if (isNew) {
-      const { error } = await supabase.from("menu_items").insert(itemData);
+      if (!businessUnitId) { toast.error("Nenhuma unidade ativa encontrada"); return false; }
+      const { error } = await supabase.from("menu_items").insert({ ...itemData, business_unit_id: businessUnitId });
       if (error) { toast.error("Erro ao criar item: " + error.message); return false; }
     } else {
       const { error } = await supabase.from("menu_items").update({
@@ -237,6 +244,8 @@ export const useAdminData = () => {
         image_url: itemData.image_url,
         sort_order: itemData.sort_order,
         active: itemData.active,
+        sku: itemData.sku,
+        status: itemData.status,
       }).eq("id", itemData.id);
       if (error) { toast.error("Erro ao atualizar item: " + error.message); return false; }
     }
@@ -285,11 +294,13 @@ export const useAdminData = () => {
   // ── Category CRUD ──
   const saveCategory = async (cat: Omit<DbMenuCategory, "id"> & { id?: string }, isNew: boolean) => {
     if (isNew) {
+      if (!businessUnitId) { toast.error("Nenhuma unidade ativa encontrada"); return false; }
       const { error } = await supabase.from("menu_categories").insert({
         key: cat.key,
         label: cat.label,
         destination: cat.destination,
         sort_order: cat.sort_order,
+        business_unit_id: businessUnitId,
       });
       if (error) { toast.error("Erro ao criar categoria: " + error.message); return false; }
     } else {

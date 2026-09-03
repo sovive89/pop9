@@ -1,30 +1,16 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Users, Coffee, UtensilsCrossed, Flame, Star, Palmtree } from "lucide-react";
+import { Users, Flame, Plus } from "lucide-react";
 import TableSessionPanel, { type TableSession, type ClientInfo } from "./TableSessionPanel";
 import ClientOrderPanel from "./ClientOrderPanel";
 import { type ClientOrder, type OrderItem } from "@/utils/orders";
 import { useSessionStore } from "@/hooks/useSessionStore";
-import { useTableZones } from "@/hooks/useTableZones";
+import { useTableCount } from "@/hooks/useTableCount";
 
 type ClientInput = Omit<ClientInfo, "id" | "addedAt">;
 type TableStatus = "free" | "occupied" | "reserved";
 
-const ICON_MAP: Record<string, React.ComponentType<any>> = {
-  UtensilsCrossed,
-  Coffee,
-  Users,
-  Star,
-  Palmtree,
-};
-
-const COLS_MAP: Record<number, string> = {
-  2: "grid-cols-2",
-  3: "grid-cols-3",
-  4: "grid-cols-4",
-  5: "grid-cols-5",
-  6: "grid-cols-6",
-};
+const DEFAULT_ZONE = "salao";
 
 const statusColors: Record<TableStatus, string> = {
   free: "border-muted-foreground/30 bg-secondary hover:bg-secondary/80 hover:border-primary/50",
@@ -46,11 +32,12 @@ const statusLabel: Record<TableStatus, string> = {
 
 const TableMap = () => {
   const { sessions, loading: sessionsLoading, startSession, addClient, closeSession, placeOrder, updateLocalCart } = useSessionStore();
-  const { zones, allTables, loading: zonesLoading, getZoneForTable } = useTableZones();
+  const { tableCount, loading: tableCountLoading, addTable } = useTableCount();
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   const [selectedClient, setSelectedClient] = useState<ClientInfo | null>(null);
 
-  const loading = sessionsLoading || zonesLoading;
+  const loading = sessionsLoading || tableCountLoading;
+  const tableIds = Array.from({ length: tableCount }, (_, i) => i + 1);
 
   const getTableStatus = (tableId: number): TableStatus =>
     sessions[tableId] ? "occupied" : "free";
@@ -94,8 +81,8 @@ const TableMap = () => {
   };
 
   const counts = {
-    free: allTables.filter((t) => getTableStatus(t.id) === "free").length,
-    occupied: allTables.filter((t) => getTableStatus(t.id) === "occupied").length,
+    free: tableIds.filter((id) => getTableStatus(id) === "free").length,
+    occupied: tableIds.filter((id) => getTableStatus(id) === "occupied").length,
     reserved: 0,
   };
 
@@ -141,83 +128,69 @@ const TableMap = () => {
         ))}
       </div>
 
-      {/* Zones */}
-      {zones.map((zone, zoneIdx) => {
-        const Icon = ICON_MAP[zone.icon] || UtensilsCrossed;
-        const zoneTables = allTables.filter((t) => t.zone === zone.key);
-        const colsClass = COLS_MAP[zone.cols] || "grid-cols-4";
-
-        return (
-          <motion.section
-            key={zone.key}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: zoneIdx * 0.1 }}
+      {/* Mesas — grade única, cards de tamanho fixo (não encolhem conforme
+          o número de mesas cresce, novas mesas só quebram pra próxima
+          linha). Cor por área fica pra depois — hoje toda mesa usa o
+          mesmo esquema de cor por status (livre/ocupada). */}
+      <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-3 sm:gap-4">
+          {tableIds.map((tableId, i) => {
+            const status = getTableStatus(tableId);
+            const session = getTableSession(tableId);
+            const isReady = hasReadyOrders(tableId);
+            return (
+              <motion.button
+                key={tableId}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{
+                  opacity: 1,
+                  scale: isReady ? [1, 1.06, 1] : 1,
+                  boxShadow: isReady
+                    ? ["0 0 0px hsl(var(--primary)/0)", "0 0 18px hsl(var(--primary)/0.5)", "0 0 0px hsl(var(--primary)/0)"]
+                    : "none",
+                }}
+                transition={isReady ? { delay: i * 0.02, repeat: Infinity, duration: 1.5, ease: "easeInOut" } : { delay: i * 0.02 }}
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => handleTableClick(tableId)}
+                className={`relative flex flex-col items-center justify-center rounded-xl border-2 p-4 transition-colors ${statusColors[status]} ${isReady ? "border-primary ring-2 ring-primary/30" : ""}`}
+              >
+                {isReady && (
+                  <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[8px] font-bold text-primary-foreground animate-bounce">
+                    ✓
+                  </span>
+                )}
+                <span className="text-3xl font-bold text-foreground leading-none" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>
+                  {String(tableId).padStart(2, "0")}
+                </span>
+                <span className={`mt-2 h-2 w-2 rounded-full ${statusDot[status]}`} />
+                {session && (
+                  <div className="mt-1 flex items-center gap-1">
+                    <Users className="h-3 w-3 text-primary" />
+                    <span className="text-[10px] text-primary font-medium">{session.clients.length}</span>
+                  </div>
+                )}
+              </motion.button>
+            );
+          })}
+          <button
+            onClick={addTable}
+            className="flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-muted-foreground/30 p-4 text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
           >
-            <div className="flex items-center gap-2 mb-3">
-              <Icon className="h-5 w-5 text-primary" />
-              <h2 className="text-2xl text-foreground">{zone.label}</h2>
-              <span className="text-xs text-muted-foreground ml-1">
-                ({zoneTables.filter((t) => getTableStatus(t.id) === "free").length} livres)
-              </span>
-            </div>
-
-            <div className={`grid ${colsClass} gap-3 sm:gap-4`}>
-              {zoneTables.map((table, i) => {
-                const status = getTableStatus(table.id);
-                const session = getTableSession(table.id);
-                  const isReady = hasReadyOrders(table.id);
-                  return (
-                    <motion.button
-                      key={table.id}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{
-                        opacity: 1,
-                        scale: isReady ? [1, 1.06, 1] : 1,
-                        boxShadow: isReady
-                          ? ["0 0 0px hsl(var(--primary)/0)", "0 0 18px hsl(var(--primary)/0.5)", "0 0 0px hsl(var(--primary)/0)"]
-                          : "none",
-                      }}
-                      transition={isReady ? { delay: i * 0.02, repeat: Infinity, duration: 1.5, ease: "easeInOut" } : { delay: i * 0.02 }}
-                      whileHover={{ scale: 1.04 }}
-                      whileTap={{ scale: 0.97 }}
-                      onClick={() => handleTableClick(table.id)}
-                      className={`relative flex flex-col items-center justify-center rounded-xl border-2 p-4 transition-colors ${statusColors[status]} ${isReady ? "border-primary ring-2 ring-primary/30" : ""}`}
-                    >
-                      {isReady && (
-                        <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[8px] font-bold text-primary-foreground animate-bounce">
-                          ✓
-                        </span>
-                      )}
-                      <span className="text-3xl font-bold text-foreground leading-none" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>
-                        {String(table.id).padStart(2, "0")}
-                      </span>
-                      <span className={`mt-2 h-2 w-2 rounded-full ${statusDot[status]}`} />
-                      {session && (
-                        <div className="mt-1 flex items-center gap-1">
-                          <Users className="h-3 w-3 text-primary" />
-                          <span className="text-[10px] text-primary font-medium">{session.clients.length}</span>
-                        </div>
-                      )}
-                    </motion.button>
-                  );
-              })}
-            </div>
-          </motion.section>
-        );
-      })}
+            <Plus className="h-6 w-6" />
+            <span className="text-[10px] font-medium">Mesa</span>
+          </button>
+        </div>
+      </motion.section>
 
       {/* Session Panel */}
       {selectedTableId !== null && (
         <TableSessionPanel
           tableId={selectedTableId}
-          zoneName={getZoneForTable(selectedTableId)?.label ?? ""}
+          zoneName=""
           session={getTableSession(selectedTableId)}
           orders={getTableOrders(selectedTableId)}
-          onStartSession={(input) => {
-            const zone = getZoneForTable(selectedTableId);
-            handleStartSession(selectedTableId, zone?.key ?? "salao", input);
-          }}
+          onStartSession={(input) => handleStartSession(selectedTableId, DEFAULT_ZONE, input)}
           onAddClient={(input) => handleAddClient(selectedTableId, input)}
           onCloseSession={() => handleCloseSession(selectedTableId)}
           onClose={() => setSelectedTableId(null)}

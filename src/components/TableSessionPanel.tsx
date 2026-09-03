@@ -16,6 +16,7 @@ import {
   Eye,
   EyeOff,
   Printer,
+  QrCode,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -106,6 +107,10 @@ const TableSessionPanel = ({
   const [isVerifying, setIsVerifying] = useState(false);
   const [showCloseAccount, setShowCloseAccount] = useState(false);
 
+  const [accessCode, setAccessCode] = useState<string | null>(null);
+  const [accessCodeExpiresAt, setAccessCodeExpiresAt] = useState<Date | null>(null);
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
+
   const tableTotal = getTableTotal(orders);
   const [includeServiceCharge, setIncludeServiceCharge] = useState(false);
   const [receiptPreviewHtml, setReceiptPreviewHtml] = useState<string | null>(null);
@@ -139,6 +144,27 @@ const TableSessionPanel = ({
       toast.error("Erro ao verificar senha");
     } finally {
       setIsVerifying(false);
+    }
+  };
+
+  const handleGenerateAccessCode = async () => {
+    setIsGeneratingCode(true);
+    try {
+      const { data: { session: authSession } } = await supabase.auth.getSession();
+      const { data, error } = await supabase.functions.invoke("customer-checkin", {
+        body: { action: "staff_generate_code", table_number: tableId },
+        headers: authSession ? { Authorization: `Bearer ${authSession.access_token}` } : undefined,
+      });
+      if (error || data?.error) {
+        toast.error(data?.error ?? "Erro ao gerar código");
+        return;
+      }
+      setAccessCode(data.code);
+      setAccessCodeExpiresAt(new Date(data.expires_at));
+    } catch {
+      toast.error("Erro ao gerar código");
+    } finally {
+      setIsGeneratingCode(false);
     }
   };
 
@@ -221,6 +247,38 @@ const TableSessionPanel = ({
                 <span className="text-sm font-semibold text-foreground">{session.clients.length}</span>
               </div>
             </div>
+          )}
+
+          {/* Liberar acesso do cliente (check-in via QR) */}
+          {session && (
+            accessCode ? (
+              <div className="mt-2 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Código de acesso do cliente</p>
+                  <p className="text-2xl font-bold text-primary tracking-widest">{accessCode}</p>
+                  {accessCodeExpiresAt && (
+                    <p className="text-[10px] text-muted-foreground">
+                      Válido até {formatTime(accessCodeExpiresAt)}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={() => { setAccessCode(null); setAccessCodeExpiresAt(null); }}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleGenerateAccessCode}
+                disabled={isGeneratingCode}
+                className="mt-2 w-full flex items-center justify-center gap-2 rounded-lg border border-dashed border-muted-foreground/30 px-4 py-2 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
+              >
+                <QrCode className="h-3.5 w-3.5" />
+                {isGeneratingCode ? "Gerando..." : "Liberar acesso do cliente"}
+              </button>
+            )
           )}
         </div>
 

@@ -10,6 +10,7 @@ import RecuperarSenha from "./pages/RecuperarSenha";
 import Kitchen from "./pages/Kitchen";
 import Admin from "./pages/Admin";
 import Reports from "./pages/Reports";
+import CustomerCheckin from "./pages/CustomerCheckin";
 import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
@@ -28,6 +29,8 @@ const App = () => (
           <Route path="/cozinha" element={<Kitchen />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/relatorios" element={<Reports />} />
+          <Route path="/m" element={<CustomerCheckin />} />
+          <Route path="/m/t/:token" element={<CustomerCheckin />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
