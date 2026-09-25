@@ -441,7 +441,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           external_id?: string | null
-          id: string
+          id?: string
           image_url?: string | null
           name: string
           price: number

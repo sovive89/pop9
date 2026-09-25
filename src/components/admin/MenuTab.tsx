@@ -9,12 +9,11 @@ import { toast } from "sonner";
 import RecipeBuilder, { type RecipeBuilderHandle } from "@/components/admin/RecipeBuilder";
 
 // ── Image Upload Helper ──
-const uploadMenuImage = async (file: File, itemId: string): Promise<string | null> => {
+// O nome do arquivo é gerado aqui (não depende do ID do item, que só existe
+// depois que o banco cria o registro).
+const uploadMenuImage = async (file: File): Promise<string | null> => {
   const ext = file.name.split(".").pop();
-  const path = `${itemId}.${ext}`;
-
-  // Remove old file if exists
-  await supabase.storage.from("menu-images").remove([path]);
+  const path = `${crypto.randomUUID()}.${ext}`;
 
   const { error } = await supabase.storage.from("menu-images").upload(path, file, { upsert: true });
   if (error) {
@@ -98,14 +97,13 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
 interface MenuEditorProps {
   item?: DbMenuItem;
   categories: DbMenuCategory[];
-  onSave: (item: any, isNew: boolean) => Promise<boolean>;
+  onSave: (item: any, isNew: boolean) => Promise<string | false>;
   onCancel: () => void;
 }
 
 const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps) => {
   const isNew = !item;
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [id, setId] = useState(item?.id ?? "");
   const [name, setName] = useState(item?.name ?? "");
   const [price, setPrice] = useState(item?.price?.toString() ?? "");
   const [category, setCategory] = useState(item?.category ?? (categories[0]?.key ?? ""));
@@ -113,8 +111,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   const [imageUrl, setImageUrl] = useState(item?.image_url ?? "");
   const [sortOrder, setSortOrder] = useState(item?.sort_order?.toString() ?? "0");
   const [active, setActive] = useState(item?.active ?? true);
-  const [sku, setSku] = useState(item?.sku ?? "");
-  const [status, setStatus] = useState<"draft" | "published">(item?.status ?? "draft");
+  const isPublished = item?.status === "published";
   const [uploading, setUploading] = useState(false);
   const [ingredients, setIngredients] = useState<Omit<DbIngredient, "id">[]>(
     item?.ingredients?.map(({ id: _, ...rest }) => rest) ?? []
@@ -128,13 +125,9 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!id.trim()) {
-      toast.error("Preencha o ID do item antes de enviar a imagem");
-      return;
-    }
     setUploading(true);
-    const url = await uploadMenuImage(file, id.trim());
-    if (url) setImageUrl(url + "?t=" + Date.now());
+    const url = await uploadMenuImage(file);
+    if (url) setImageUrl(url);
     setUploading(false);
   };
 
@@ -142,31 +135,32 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     setImageUrl("");
   };
 
-  const handleSave = async () => {
-    if (!id.trim() || !name.trim() || !price) {
-      toast.error("ID, nome e preço são obrigatórios");
+  // ID, SKU e ordem inicial são definidos pelo banco (trigger + defaults).
+  // O status muda pela ação escolhida: "Salvar rascunho" ou "Publicar".
+  const handleSave = async (status: "draft" | "published") => {
+    if (!name.trim() || !price) {
+      toast.error("Nome e preço são obrigatórios");
       return;
     }
     setSaving(true);
-    const ok = await onSave(
+    const savedId = await onSave(
       {
-        id: id.trim(),
+        ...(isNew ? {} : { id: item!.id, sort_order: parseInt(sortOrder) || 0 }),
         name: name.trim(),
         price: parseFloat(price),
         category,
         description: description.trim() || null,
         image_url: imageUrl.trim() || null,
-        sort_order: parseInt(sortOrder) || 0,
         active,
-        sku: sku.trim() || null,
         status,
         ingredients,
         variants,
       },
       isNew
     );
+    const ok = savedId !== false;
     if (ok) {
-      const recipeOk = await recipeBuilderRef.current?.commit(id.trim());
+      const recipeOk = await recipeBuilderRef.current?.commit(savedId);
       if (recipeOk === false) {
         setSaving(false);
         return;
@@ -203,11 +197,14 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
         <button onClick={onCancel} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">ID</label>
-          <Input value={id} onChange={(e) => setId(e.target.value)} disabled={!isNew} placeholder="ex: b8" className="h-9" />
+      {!isNew && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span>SKU: <span className="font-mono text-foreground">{item!.sku ?? "—"}</span></span>
+          <span>Status: <span className="text-foreground">{isPublished ? "Publicado" : "Rascunho"}</span></span>
         </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-3">
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Categoria</label>
           <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full h-9 rounded-md border border-border bg-muted px-3 text-sm text-foreground">
@@ -226,29 +223,17 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
           <label className="text-xs font-medium text-muted-foreground">Preço (R$)</label>
           <Input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className="h-9" />
         </div>
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">Ordem</label>
-          <Input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-9" />
-        </div>
+        {!isNew && (
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Ordem</label>
+            <Input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-9" />
+          </div>
+        )}
         <div className="flex items-end">
           <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
             <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="rounded" />
             Ativo
           </label>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">SKU <span className="text-muted-foreground/60">(opcional)</span></label>
-          <Input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="Código interno" className="h-9" />
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">Status</label>
-          <select value={status} onChange={(e) => setStatus(e.target.value as "draft" | "published")} className="w-full h-9 rounded-md border border-border bg-muted px-3 text-sm text-foreground">
-            <option value="draft">Rascunho (não aparece pro cliente)</option>
-            <option value="published">Publicado</option>
-          </select>
         </div>
       </div>
 
@@ -335,9 +320,21 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       </div>
 
       <div className="flex gap-2 pt-2">
-        <Button onClick={handleSave} disabled={saving} className="gap-2">
-          <Save className="h-4 w-4" /> {saving ? "Salvando..." : "Salvar"}
-        </Button>
+        {isPublished ? (
+          <>
+            <Button onClick={() => handleSave("published")} disabled={saving} className="gap-2">
+              <Save className="h-4 w-4" /> {saving ? "Salvando..." : "Salvar"}
+            </Button>
+            <Button variant="outline" onClick={() => handleSave("draft")} disabled={saving}>Voltar para rascunho</Button>
+          </>
+        ) : (
+          <>
+            <Button variant="outline" onClick={() => handleSave("draft")} disabled={saving} className="gap-2">
+              <Save className="h-4 w-4" /> {saving ? "Salvando..." : "Salvar rascunho"}
+            </Button>
+            <Button onClick={() => handleSave("published")} disabled={saving}>Publicar</Button>
+          </>
+        )}
         <Button variant="outline" onClick={onCancel}>Cancelar</Button>
       </div>
     </div>

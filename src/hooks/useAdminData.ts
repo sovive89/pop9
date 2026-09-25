@@ -228,13 +228,29 @@ export const useAdminData = () => {
   };
 
   // ── Menu CRUD ──
-  const saveMenuItem = async (item: Omit<DbMenuItem, "ingredients" | "variants"> & { ingredients: Omit<DbIngredient, "id">[]; variants: Omit<DbVariant, "id">[] }, isNew: boolean) => {
-    const { ingredients, variants, ...itemData } = item;
+  // Retorna o ID do item salvo (gerado pelo banco quando é novo) ou false em caso de erro.
+  // id, sku e sort_order de itens novos são preenchidos pelo banco
+  // (default + trigger menu_items_fill_system_fields).
+  type MenuItemInput = Omit<DbMenuItem, "id" | "sku" | "sort_order" | "ingredients" | "variants"> & {
+    id?: string;
+    sort_order?: number;
+    ingredients: Omit<DbIngredient, "id">[];
+    variants: Omit<DbVariant, "id">[];
+  };
+  const saveMenuItem = async (input: MenuItemInput, isNew: boolean): Promise<string | false> => {
+    const { ingredients, variants, ...itemData } = input;
+    let itemId = itemData.id;
 
     if (isNew) {
       if (!businessUnitId) { toast.error("Nenhuma unidade ativa encontrada"); return false; }
-      const { error } = await supabase.from("menu_items").insert({ ...itemData, business_unit_id: businessUnitId });
-      if (error) { toast.error("Erro ao criar item: " + error.message); return false; }
+      const { id: _ignored, sort_order: _ignoredOrder, ...newItem } = itemData;
+      const { data, error } = await supabase
+        .from("menu_items")
+        .insert({ ...newItem, business_unit_id: businessUnitId })
+        .select("id")
+        .single();
+      if (error || !data) { toast.error("Erro ao criar item: " + (error?.message ?? "sem retorno")); return false; }
+      itemId = data.id;
     } else {
       const { error } = await supabase.from("menu_items").update({
         name: itemData.name,
@@ -244,18 +260,17 @@ export const useAdminData = () => {
         image_url: itemData.image_url,
         sort_order: itemData.sort_order,
         active: itemData.active,
-        sku: itemData.sku,
         status: itemData.status,
       }).eq("id", itemData.id);
       if (error) { toast.error("Erro ao atualizar item: " + error.message); return false; }
     }
 
     // Replace ingredients
-    await supabase.from("menu_item_ingredients").delete().eq("menu_item_id", item.id);
+    await supabase.from("menu_item_ingredients").delete().eq("menu_item_id", itemId);
     if (ingredients.length > 0) {
       const { error } = await supabase.from("menu_item_ingredients").insert(
         ingredients.map((ing, idx) => ({
-          menu_item_id: item.id,
+          menu_item_id: itemId,
           name: ing.name,
           removable: ing.removable,
           extra_price: ing.extra_price,
@@ -266,11 +281,11 @@ export const useAdminData = () => {
     }
 
     // Replace variants
-    await supabase.from("menu_item_variants").delete().eq("menu_item_id", item.id);
+    await supabase.from("menu_item_variants").delete().eq("menu_item_id", itemId);
     if (variants.length > 0) {
       const { error } = await supabase.from("menu_item_variants").insert(
         variants.map((v, idx) => ({
-          menu_item_id: item.id,
+          menu_item_id: itemId,
           name: v.name,
           sort_order: idx,
         }))
@@ -280,7 +295,7 @@ export const useAdminData = () => {
 
     toast.success(isNew ? "Item criado" : "Item atualizado");
     await loadMenu();
-    return true;
+    return itemId!;
   };
 
   const deleteMenuItem = async (id: string) => {
