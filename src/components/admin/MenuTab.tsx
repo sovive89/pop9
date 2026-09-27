@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Flame, Plus, Trash2, Pencil, Save, X, ChevronDown, ChevronUp, Tags, ImagePlus, Image } from "lucide-react";
+import { Flame, Plus, Trash2, Pencil, Save, X, ChevronDown, ChevronUp, Tags, ImagePlus, Image, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAdminData, type DbMenuItem, type DbIngredient, type DbVariant, type DbMenuCategory } from "@/hooks/useAdminData";
@@ -24,6 +24,14 @@ const uploadMenuImage = async (file: File): Promise<string | null> => {
   const { data } = supabase.storage.from("menu-images").getPublicUrl(path);
   return data.publicUrl;
 };
+
+// ── Geração de foto com IA (Edge Function generate-menu-image) ──
+const AI_IMAGE_MODELS = [
+  { id: "google/gemini-3.1-flash-image", label: "Nano Banana 2 (Google)" },
+  { id: "openai/gpt-image-2", label: "GPT Image 2 (OpenAI)" },
+  { id: "bfl/flux-2-pro", label: "Flux 2 Pro (fotorrealista)" },
+  { id: "bytedance/seedream-5.0-lite", label: "Seedream 5 Lite (econômico)" },
+];
 
 // ── Category Editor ──
 interface CategoryEditorProps {
@@ -113,6 +121,9 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   const [active, setActive] = useState(item?.active ?? true);
   const isPublished = item?.status === "published";
   const [uploading, setUploading] = useState(false);
+  const [aiModel, setAiModel] = useState(AI_IMAGE_MODELS[0].id);
+  const [aiExtra, setAiExtra] = useState("");
+  const [generating, setGenerating] = useState(false);
   const [ingredients, setIngredients] = useState<Omit<DbIngredient, "id">[]>(
     item?.ingredients?.map(({ id: _, ...rest }) => rest) ?? []
   );
@@ -129,6 +140,35 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     const url = await uploadMenuImage(file);
     if (url) setImageUrl(url);
     setUploading(false);
+  };
+
+  const handleGenerateImage = async () => {
+    if (!name.trim()) {
+      toast.error("Preencha o nome do item antes de gerar a foto");
+      return;
+    }
+    setGenerating(true);
+    const { data, error } = await supabase.functions.invoke("generate-menu-image", {
+      body: {
+        name: name.trim(),
+        description: description.trim() || undefined,
+        ingredients: ingredients.map((i) => i.name.trim()).filter(Boolean),
+        model: aiModel,
+        extra: aiExtra.trim() || undefined,
+      },
+    });
+    setGenerating(false);
+    if (error || !data?.url) {
+      let msg = data?.error ?? error?.message ?? "erro desconhecido";
+      try {
+        const body = await (error as { context?: Response })?.context?.json?.();
+        if (body?.error) msg = body.error;
+      } catch { /* resposta sem corpo JSON */ }
+      toast.error("Erro ao gerar foto: " + msg);
+      return;
+    }
+    setImageUrl(data.url);
+    toast.success("Foto gerada — salve o item para manter");
   };
 
   const removeImage = () => {
@@ -277,6 +317,32 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
             <span className="text-sm">{uploading ? "Enviando..." : "Adicionar foto"}</span>
           </button>
         )}
+
+        <div className="rounded-lg border border-border bg-secondary/20 p-3 space-y-2">
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            <Sparkles className="h-3.5 w-3.5 text-primary" /> Gerar foto com IA
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={aiModel}
+              onChange={(e) => setAiModel(e.target.value)}
+              className="h-9 rounded-md border border-border bg-muted px-3 text-sm text-foreground"
+            >
+              {AI_IMAGE_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+            </select>
+            <Input
+              value={aiExtra}
+              onChange={(e) => setAiExtra(e.target.value)}
+              placeholder="Ajuste opcional (ex: em tábua de madeira)"
+              className="h-9 flex-1 min-w-[180px]"
+            />
+            <Button type="button" variant="outline" onClick={handleGenerateImage} disabled={generating} className="gap-2 h-9">
+              {generating ? <Flame className="h-4 w-4 animate-pulse text-primary" /> : <Sparkles className="h-4 w-4" />}
+              {generating ? "Gerando..." : imageUrl ? "Gerar outra" : "Gerar"}
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">Usa nome, descrição e ingredientes do item. Cada geração tem custo na sua conta de IA.</p>
+        </div>
       </div>
 
       {/* Ingredients */}
