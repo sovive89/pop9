@@ -23,6 +23,8 @@ const MODELS: Record<string, { route: "chat" | "images" }> = {
   "openai/gpt-image-2": { route: "images" },            // OpenAI
   "bfl/flux-2-pro": { route: "images" },                // Flux 2 Pro (fotorrealista)
   "bytedance/seedream-5.0-lite": { route: "images" },   // Seedream (mais barato)
+  "spacexai/grok-imagine-image-2.0": { route: "images" }, // Grok Imagine 2 (xAI)
+  "spacexai/grok-imagine-image": { route: "images" },     // Grok Imagine (xAI, econômico)
 };
 
 const json = (body: unknown, status = 200) =>

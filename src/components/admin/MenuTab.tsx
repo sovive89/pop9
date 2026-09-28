@@ -31,6 +31,8 @@ const AI_IMAGE_MODELS = [
   { id: "openai/gpt-image-2", label: "GPT Image 2 (OpenAI)" },
   { id: "bfl/flux-2-pro", label: "Flux 2 Pro (fotorrealista)" },
   { id: "bytedance/seedream-5.0-lite", label: "Seedream 5 Lite (econômico)" },
+  { id: "spacexai/grok-imagine-image-2.0", label: "Grok Imagine 2 (xAI)" },
+  { id: "spacexai/grok-imagine-image", label: "Grok Imagine (xAI, econômico)" },
 ];
 
 // ── Category Editor ──
