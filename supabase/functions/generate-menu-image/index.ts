@@ -65,8 +65,22 @@ function decodeBase64(b64: string): { bytes: Uint8Array; mime: string } {
   return { bytes, mime };
 }
 
+// Timeout no download da imagem já gerada (a IA respondeu e cobrou): mensagem
+// própria pra não sugerir "gerar de novo" como se a IA tivesse travado.
+class DownloadTimeoutError extends Error {}
+
 async function fetchImageBytes(url: string) {
-  const res = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
+  let res: Response;
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "TimeoutError") {
+      throw new DownloadTimeoutError(
+        "A imagem foi gerada, mas o download dela demorou demais. Tente gerar novamente em instantes.",
+      );
+    }
+    throw e;
+  }
   if (!res.ok) throw new Error(`Falha ao baixar imagem gerada (${res.status})`);
   return {
     bytes: new Uint8Array(await res.arrayBuffer()),
@@ -153,6 +167,7 @@ Deno.serve(async (req) => {
     const { data: pub } = admin.storage.from("menu-images").getPublicUrl(path);
     return json({ url: pub.publicUrl, model });
   } catch (e) {
+    if (e instanceof DownloadTimeoutError) return json({ error: e.message }, 504);
     if (e instanceof DOMException && e.name === "TimeoutError") {
       return json({ error: "A IA demorou demais para responder. Tente de novo ou escolha outro modelo." }, 504);
     }

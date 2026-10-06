@@ -121,7 +121,7 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
 interface MenuEditorProps {
   item?: DbMenuItem;
   categories: DbMenuCategory[];
-  onSave: (item: any, isNew: boolean) => Promise<string | false>;
+  onSave: (item: any, isNew: boolean) => Promise<string | false | { failedId: string }>;
   onCancel: () => void;
 }
 
@@ -133,6 +133,9 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Imagens enviadas/geradas nesta edição; as não usadas são apagadas ao fechar.
   const sessionImages = useRef<string[]>([]);
+  // Imagem já gravada no item (save ok, mas um passo seguinte falhou):
+  // não pode ser apagada ao cancelar, senão a URL do item fica quebrada.
+  const persistedImage = useRef<string | null>(null);
   const [name, setName] = useState(item?.name ?? "");
   const [price, setPrice] = useState(item?.price?.toString() ?? "");
   const [category, setCategory] = useState(item?.category ?? (categories[0]?.key ?? ""));
@@ -202,7 +205,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
 
   // Cancelar: descarta tudo que foi enviado/gerado nesta edição.
   const handleCancel = () => {
-    void removeMenuImages(sessionImages.current);
+    void removeMenuImages(sessionImages.current.filter((u) => u !== persistedImage.current));
     onCancel();
   };
 
@@ -232,11 +235,14 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       },
       isNew
     );
-    if (savedId === false) {
+    if (typeof savedId !== "string") {
+      // Item novo ficou no banco sem conseguir desfazer: próxima tentativa atualiza ele.
+      if (savedId && !item) setCreatedId(savedId.failedId);
       setSaving(false);
       return;
     }
     if (!item) setCreatedId(savedId);
+    persistedImage.current = finalImage;
     const recipeOk = await recipeBuilderRef.current?.commit(savedId);
     setSaving(false);
     if (recipeOk === false) return;
@@ -275,9 +281,9 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
         <button onClick={handleCancel} aria-label="Fechar" className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
       </div>
 
-      {!isNew && (
+      {item && (
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          <span>SKU: <span className="font-mono text-foreground">{item!.sku ?? "—"}</span></span>
+          <span>SKU: <span className="font-mono text-foreground">{item.sku ?? "—"}</span></span>
           <span>Status: <span className="text-foreground">{isPublished ? "Publicado" : "Rascunho"}</span></span>
         </div>
       )}
@@ -301,7 +307,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
           <label className="text-xs font-medium text-muted-foreground">Preço (R$)</label>
           <Input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className="h-9" />
         </div>
-        {!isNew && (
+        {item && (
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Ordem</label>
             <Input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-9" />

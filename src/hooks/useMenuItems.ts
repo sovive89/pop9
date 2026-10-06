@@ -45,7 +45,9 @@ export const useMenuItems = () => {
 
       const { data: dbItems, error: iErr } = itemsRes;
 
-      if (iErr || !dbItems || dbItems.length === 0) {
+      // Fallback estático só em erro; lista vazia (ex.: tudo em rascunho) é
+      // cardápio vazio de verdade, não motivo pra mostrar itens fictícios.
+      if (iErr || !dbItems) {
         setItems(staticMenuItems);
         setLoading(false);
         return;

@@ -228,16 +228,19 @@ export const useAdminData = () => {
   };
 
   // ── Menu CRUD ──
-  // Retorna o ID do item salvo (gerado pelo banco quando é novo) ou false em caso de erro.
+  // Retorna o ID do item salvo (gerado pelo banco quando é novo) ou, em caso de
+  // erro, { failedId } quando o item novo ficou no banco (rollback falhou) —
+  // assim o editor reaproveita esse ID em vez de criar outro — ou false.
   // id, sku e sort_order de itens novos são preenchidos pelo banco
   // (default + trigger menu_items_fill_system_fields).
+  type MenuItemSaveResult = string | false | { failedId: string };
   type MenuItemInput = Omit<DbMenuItem, "id" | "sku" | "sort_order" | "ingredients" | "variants"> & {
     id?: string;
     sort_order?: number;
     ingredients: Omit<DbIngredient, "id">[];
     variants: Omit<DbVariant, "id">[];
   };
-  const saveMenuItem = async (input: MenuItemInput, isNew: boolean): Promise<string | false> => {
+  const saveMenuItem = async (input: MenuItemInput, isNew: boolean): Promise<MenuItemSaveResult> => {
     const { ingredients, variants, ...itemData } = input;
     let itemId = itemData.id;
 
@@ -267,13 +270,13 @@ export const useAdminData = () => {
 
     // Item novo que falha depois do insert é desfeito: o ID vem do banco, então
     // tentar de novo criaria um segundo item e deixaria este pela metade.
-    const rollbackNew = async (): Promise<false> => {
-      if (isNew && itemId) {
-        await supabase.from("menu_item_ingredients").delete().eq("menu_item_id", itemId);
-        await supabase.from("menu_item_variants").delete().eq("menu_item_id", itemId);
-        await supabase.from("menu_items").delete().eq("id", itemId);
-      }
-      return false;
+    const rollbackNew = async (): Promise<MenuItemSaveResult> => {
+      if (!isNew || !itemId) return false;
+      await supabase.from("menu_item_ingredients").delete().eq("menu_item_id", itemId);
+      await supabase.from("menu_item_variants").delete().eq("menu_item_id", itemId);
+      const { error } = await supabase.from("menu_items").delete().eq("id", itemId);
+      // Não conseguiu desfazer: devolve o ID pra próxima tentativa atualizar este item.
+      return error ? { failedId: itemId } : false;
     };
 
     // Replace ingredients
