@@ -171,9 +171,15 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
-    const url = await uploadMenuImage(file);
-    if (url && trackImage(url)) setImageUrl(url);
-    setUploading(false);
+    try {
+      const url = await uploadMenuImage(file);
+      if (url && trackImage(url)) setImageUrl(url);
+    } catch (err) {
+      toast.error("Erro ao enviar imagem: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      // Sempre libera os botões de salvar, mesmo se a rede falhar.
+      setUploading(false);
+    }
   };
 
   const handleGenerateImage = async () => {
@@ -182,16 +188,24 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       return;
     }
     setGenerating(true);
-    const { data, error } = await supabase.functions.invoke("generate-menu-image", {
-      body: {
-        name: name.trim(),
-        description: description.trim() || undefined,
-        ingredients: ingredients.map((i) => i.name.trim()).filter(Boolean),
-        model: aiModel,
-        extra: aiExtra.trim() || undefined,
-      },
-    });
-    setGenerating(false);
+    let data: { url?: string; error?: string } | null = null;
+    let error: Error | null = null;
+    try {
+      ({ data, error } = await supabase.functions.invoke("generate-menu-image", {
+        body: {
+          name: name.trim(),
+          description: description.trim() || undefined,
+          ingredients: ingredients.map((i) => i.name.trim()).filter(Boolean),
+          model: aiModel,
+          extra: aiExtra.trim() || undefined,
+        },
+      }));
+    } catch (err) {
+      error = err instanceof Error ? err : new Error(String(err));
+    } finally {
+      // Sempre libera os botões de salvar, mesmo se a rede falhar.
+      setGenerating(false);
+    }
     if (error || !data?.url) {
       let msg = data?.error ?? error?.message ?? "erro desconhecido";
       try {
@@ -201,7 +215,11 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       toast.error("Erro ao gerar foto: " + msg);
       return;
     }
-    if (!trackImage(data.url)) return;
+    if (!trackImage(data.url)) {
+      // Editor já fechado: a geração foi cobrada, mas a foto foi descartada.
+      toast.info("A foto gerada chegou depois de fechar o editor e foi descartada.");
+      return;
+    }
     setImageUrl(data.url);
     toast.success("Foto gerada — salve o item para manter");
   };
