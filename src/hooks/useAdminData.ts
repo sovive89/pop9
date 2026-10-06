@@ -265,6 +265,17 @@ export const useAdminData = () => {
       if (error) { toast.error("Erro ao atualizar item: " + error.message); return false; }
     }
 
+    // Item novo que falha depois do insert é desfeito: o ID vem do banco, então
+    // tentar de novo criaria um segundo item e deixaria este pela metade.
+    const rollbackNew = async (): Promise<false> => {
+      if (isNew && itemId) {
+        await supabase.from("menu_item_ingredients").delete().eq("menu_item_id", itemId);
+        await supabase.from("menu_item_variants").delete().eq("menu_item_id", itemId);
+        await supabase.from("menu_items").delete().eq("id", itemId);
+      }
+      return false;
+    };
+
     // Replace ingredients
     await supabase.from("menu_item_ingredients").delete().eq("menu_item_id", itemId);
     if (ingredients.length > 0) {
@@ -277,7 +288,7 @@ export const useAdminData = () => {
           sort_order: idx,
         }))
       );
-      if (error) { toast.error("Erro ao salvar ingredientes"); return false; }
+      if (error) { toast.error("Erro ao salvar ingredientes"); return rollbackNew(); }
     }
 
     // Replace variants
@@ -290,7 +301,7 @@ export const useAdminData = () => {
           sort_order: idx,
         }))
       );
-      if (error) { toast.error("Erro ao salvar variantes"); return false; }
+      if (error) { toast.error("Erro ao salvar variantes"); return rollbackNew(); }
     }
 
     toast.success(isNew ? "Item criado" : "Item atualizado");

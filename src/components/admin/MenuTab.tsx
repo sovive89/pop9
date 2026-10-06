@@ -25,6 +25,20 @@ const uploadMenuImage = async (file: File): Promise<string | null> => {
   return data.publicUrl;
 };
 
+// Caminho no bucket menu-images a partir da URL pública (null se for externa).
+const MENU_IMAGES_PREFIX = "/storage/v1/object/public/menu-images/";
+const menuImagePath = (url: string | null | undefined): string | null => {
+  if (!url) return null;
+  const idx = url.indexOf(MENU_IMAGES_PREFIX);
+  return idx === -1 ? null : decodeURIComponent(url.slice(idx + MENU_IMAGES_PREFIX.length).split("?")[0]);
+};
+
+// Remove do bucket as imagens que deixaram de ser usadas (best effort).
+const removeMenuImages = async (urls: (string | null | undefined)[]) => {
+  const paths = urls.map(menuImagePath).filter((p): p is string => !!p);
+  if (paths.length > 0) await supabase.storage.from("menu-images").remove(paths);
+};
+
 // ── Geração de foto com IA (Edge Function generate-menu-image) ──
 const AI_IMAGE_MODELS = [
   { id: "google/gemini-3.1-flash-image", label: "Nano Banana 2 (Google)" },
@@ -112,8 +126,13 @@ interface MenuEditorProps {
 }
 
 const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps) => {
-  const isNew = !item;
+  // Se o item novo já foi criado mas um passo seguinte (ficha técnica) falhou,
+  // guardamos o ID para que "salvar de novo" atualize em vez de duplicar.
+  const [createdId, setCreatedId] = useState<string | null>(null);
+  const isNew = !item && !createdId;
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Imagens enviadas/geradas nesta edição; as não usadas são apagadas ao fechar.
+  const sessionImages = useRef<string[]>([]);
   const [name, setName] = useState(item?.name ?? "");
   const [price, setPrice] = useState(item?.price?.toString() ?? "");
   const [category, setCategory] = useState(item?.category ?? (categories[0]?.key ?? ""));
@@ -140,7 +159,10 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     if (!file) return;
     setUploading(true);
     const url = await uploadMenuImage(file);
-    if (url) setImageUrl(url);
+    if (url) {
+      sessionImages.current.push(url);
+      setImageUrl(url);
+    }
     setUploading(false);
   };
 
@@ -169,12 +191,19 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       toast.error("Erro ao gerar foto: " + msg);
       return;
     }
+    sessionImages.current.push(data.url);
     setImageUrl(data.url);
     toast.success("Foto gerada — salve o item para manter");
   };
 
   const removeImage = () => {
     setImageUrl("");
+  };
+
+  // Cancelar: descarta tudo que foi enviado/gerado nesta edição.
+  const handleCancel = () => {
+    void removeMenuImages(sessionImages.current);
+    onCancel();
   };
 
   // ID, SKU e ordem inicial são definidos pelo banco (trigger + defaults).
@@ -185,14 +214,17 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       return;
     }
     setSaving(true);
+    const finalImage = imageUrl.trim() || null;
     const savedId = await onSave(
       {
-        ...(isNew ? {} : { id: item!.id, sort_order: parseInt(sortOrder) || 0 }),
+        ...(item
+          ? { id: item.id, sort_order: parseInt(sortOrder) || 0 }
+          : createdId ? { id: createdId } : {}),
         name: name.trim(),
         price: parseFloat(price),
         category,
         description: description.trim() || null,
-        image_url: imageUrl.trim() || null,
+        image_url: finalImage,
         active,
         status,
         ingredients,
@@ -200,16 +232,20 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       },
       isNew
     );
-    const ok = savedId !== false;
-    if (ok) {
-      const recipeOk = await recipeBuilderRef.current?.commit(savedId);
-      if (recipeOk === false) {
-        setSaving(false);
-        return;
-      }
+    if (savedId === false) {
+      setSaving(false);
+      return;
     }
+    if (!item) setCreatedId(savedId);
+    const recipeOk = await recipeBuilderRef.current?.commit(savedId);
     setSaving(false);
-    if (ok) onCancel();
+    if (recipeOk === false) return;
+
+    // Salvo: apaga a foto antiga (se foi trocada) e as tentativas descartadas.
+    void removeMenuImages(
+      [item?.image_url, ...sessionImages.current].filter((u) => u && u !== finalImage)
+    );
+    onCancel();
   };
 
   const addIngredient = () => {
@@ -236,7 +272,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     <div className="rounded-xl border border-border bg-card p-5 space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-foreground">{isNew ? "Novo Item" : "Editar Item"}</h3>
-        <button onClick={onCancel} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+        <button onClick={handleCancel} aria-label="Fechar" className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
       </div>
 
       {!isNew && (
@@ -328,6 +364,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
             <select
               value={aiModel}
               onChange={(e) => setAiModel(e.target.value)}
+              aria-label="Modelo de IA para gerar a foto"
               className="h-9 rounded-md border border-border bg-muted px-3 text-sm text-foreground"
             >
               {AI_IMAGE_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
@@ -403,7 +440,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
             <Button onClick={() => handleSave("published")} disabled={saving}>Publicar</Button>
           </>
         )}
-        <Button variant="outline" onClick={onCancel}>Cancelar</Button>
+        <Button variant="outline" onClick={handleCancel}>Cancelar</Button>
       </div>
     </div>
   );

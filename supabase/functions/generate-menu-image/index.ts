@@ -16,6 +16,11 @@ const corsHeaders = {
 
 const GATEWAY_URL = "https://ai-gateway.vercel.sh/v1";
 
+// Limites para não ficar preso esperando um modelo travado: a função devolve
+// erro claro antes de a invocação expirar (e antes de cortar o upload).
+const GENERATION_TIMEOUT_MS = 90_000;
+const DOWNLOAD_TIMEOUT_MS = 30_000;
+
 // Modelos permitidos. "chat" = modelos multimodais (Nano Banana), que geram
 // imagem pela rota de chat; "images" = modelos só de imagem.
 const MODELS: Record<string, { route: "chat" | "images" }> = {
@@ -61,7 +66,7 @@ function decodeBase64(b64: string): { bytes: Uint8Array; mime: string } {
 }
 
 async function fetchImageBytes(url: string) {
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`Falha ao baixar imagem gerada (${res.status})`);
   return {
     bytes: new Uint8Array(await res.arrayBuffer()),
@@ -82,6 +87,7 @@ async function generate(model: string, prompt: string, apiKey: string) {
         modalities: ["text", "image"],
         stream: false,
       }),
+      signal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
     });
     if (!res.ok) throw new Error(`IA (${res.status}): ${await res.text()}`);
     const data = await res.json();
@@ -94,6 +100,7 @@ async function generate(model: string, prompt: string, apiKey: string) {
     method: "POST",
     headers,
     body: JSON.stringify({ model, prompt, n: 1 }),
+    signal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`IA (${res.status}): ${await res.text()}`);
   const data = await res.json();
@@ -146,6 +153,9 @@ Deno.serve(async (req) => {
     const { data: pub } = admin.storage.from("menu-images").getPublicUrl(path);
     return json({ url: pub.publicUrl, model });
   } catch (e) {
+    if (e instanceof DOMException && e.name === "TimeoutError") {
+      return json({ error: "A IA demorou demais para responder. Tente de novo ou escolha outro modelo." }, 504);
+    }
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);
   }
 });

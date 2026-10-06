@@ -38,7 +38,7 @@ export const useMenuItems = () => {
       }
 
       const [itemsRes, ingredientsRes, variantsRes] = await Promise.all([
-        supabase.from("menu_items").select("id, name, price, category, description, sort_order").eq("active", true).order("sort_order"),
+        supabase.from("menu_items").select("id, name, price, category, description, sort_order").eq("active", true).eq("status", "published").order("sort_order"),
         supabase.from("menu_item_ingredients").select("menu_item_id, name, removable, extra_price, sort_order").order("sort_order"),
         supabase.from("menu_item_variants").select("menu_item_id, name, sort_order").order("sort_order"),
       ]);
