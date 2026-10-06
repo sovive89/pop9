@@ -136,6 +136,16 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   // Imagem já gravada no item (save ok, mas um passo seguinte falhou):
   // não pode ser apagada ao cancelar, senão a URL do item fica quebrada.
   const persistedImage = useRef<string | null>(null);
+  // Editor fechado: upload/geração que terminar depois disso é apagado na hora.
+  const closed = useRef(false);
+  const trackImage = (url: string): boolean => {
+    if (closed.current) {
+      void removeMenuImages([url]);
+      return false;
+    }
+    sessionImages.current.push(url);
+    return true;
+  };
   const [name, setName] = useState(item?.name ?? "");
   const [price, setPrice] = useState(item?.price?.toString() ?? "");
   const [category, setCategory] = useState(item?.category ?? (categories[0]?.key ?? ""));
@@ -162,10 +172,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     if (!file) return;
     setUploading(true);
     const url = await uploadMenuImage(file);
-    if (url) {
-      sessionImages.current.push(url);
-      setImageUrl(url);
-    }
+    if (url && trackImage(url)) setImageUrl(url);
     setUploading(false);
   };
 
@@ -194,7 +201,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       toast.error("Erro ao gerar foto: " + msg);
       return;
     }
-    sessionImages.current.push(data.url);
+    if (!trackImage(data.url)) return;
     setImageUrl(data.url);
     toast.success("Foto gerada — salve o item para manter");
   };
@@ -205,6 +212,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
 
   // Cancelar: descarta tudo que foi enviado/gerado nesta edição.
   const handleCancel = () => {
+    closed.current = true;
     void removeMenuImages(sessionImages.current.filter((u) => u !== persistedImage.current));
     onCancel();
   };
@@ -248,6 +256,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     if (recipeOk === false) return;
 
     // Salvo: apaga a foto antiga (se foi trocada) e as tentativas descartadas.
+    closed.current = true;
     void removeMenuImages(
       [item?.image_url, ...sessionImages.current].filter((u) => u && u !== finalImage)
     );
@@ -433,17 +442,17 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       <div className="flex gap-2 pt-2">
         {isPublished ? (
           <>
-            <Button onClick={() => handleSave("published")} disabled={saving} className="gap-2">
+            <Button onClick={() => handleSave("published")} disabled={saving || uploading || generating} className="gap-2">
               <Save className="h-4 w-4" /> {saving ? "Salvando..." : "Salvar"}
             </Button>
-            <Button variant="outline" onClick={() => handleSave("draft")} disabled={saving}>Voltar para rascunho</Button>
+            <Button variant="outline" onClick={() => handleSave("draft")} disabled={saving || uploading || generating}>Voltar para rascunho</Button>
           </>
         ) : (
           <>
-            <Button variant="outline" onClick={() => handleSave("draft")} disabled={saving} className="gap-2">
+            <Button variant="outline" onClick={() => handleSave("draft")} disabled={saving || uploading || generating} className="gap-2">
               <Save className="h-4 w-4" /> {saving ? "Salvando..." : "Salvar rascunho"}
             </Button>
-            <Button onClick={() => handleSave("published")} disabled={saving}>Publicar</Button>
+            <Button onClick={() => handleSave("published")} disabled={saving || uploading || generating}>Publicar</Button>
           </>
         )}
         <Button variant="outline" onClick={handleCancel}>Cancelar</Button>
