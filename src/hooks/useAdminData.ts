@@ -228,13 +228,33 @@ export const useAdminData = () => {
   };
 
   // ── Menu CRUD ──
-  const saveMenuItem = async (item: Omit<DbMenuItem, "ingredients" | "variants"> & { ingredients: Omit<DbIngredient, "id">[]; variants: Omit<DbVariant, "id">[] }, isNew: boolean) => {
-    const { ingredients, variants, ...itemData } = item;
+  // Retorna o ID do item salvo (gerado pelo banco quando é novo) ou, em caso de
+  // erro, { failedId } quando o item ficou gravado no banco (item novo cujo
+  // rollback falhou, ou item existente com o update já aplicado) — assim o
+  // editor reaproveita esse ID em vez de criar outro e sabe o que foi salvo — ou false.
+  // id, sku e sort_order de itens novos são preenchidos pelo banco
+  // (default + trigger menu_items_fill_system_fields).
+  type MenuItemSaveResult = string | false | { failedId: string };
+  type MenuItemInput = Omit<DbMenuItem, "id" | "sku" | "sort_order" | "ingredients" | "variants"> & {
+    id?: string;
+    sort_order?: number;
+    ingredients: Omit<DbIngredient, "id">[];
+    variants: Omit<DbVariant, "id">[];
+  };
+  const saveMenuItem = async (input: MenuItemInput, isNew: boolean): Promise<MenuItemSaveResult> => {
+    const { ingredients, variants, ...itemData } = input;
+    let itemId = itemData.id;
 
     if (isNew) {
       if (!businessUnitId) { toast.error("Nenhuma unidade ativa encontrada"); return false; }
-      const { error } = await supabase.from("menu_items").insert({ ...itemData, business_unit_id: businessUnitId });
-      if (error) { toast.error("Erro ao criar item: " + error.message); return false; }
+      const { id: _ignored, sort_order: _ignoredOrder, ...newItem } = itemData;
+      const { data, error } = await supabase
+        .from("menu_items")
+        .insert({ ...newItem, business_unit_id: businessUnitId })
+        .select("id")
+        .single();
+      if (error || !data) { toast.error("Erro ao criar item: " + (error?.message ?? "sem retorno")); return false; }
+      itemId = data.id;
     } else {
       const { error } = await supabase.from("menu_items").update({
         name: itemData.name,
@@ -244,43 +264,56 @@ export const useAdminData = () => {
         image_url: itemData.image_url,
         sort_order: itemData.sort_order,
         active: itemData.active,
-        sku: itemData.sku,
         status: itemData.status,
       }).eq("id", itemData.id);
       if (error) { toast.error("Erro ao atualizar item: " + error.message); return false; }
     }
 
+    // Item novo que falha depois do insert é desfeito: o ID vem do banco, então
+    // tentar de novo criaria um segundo item e deixaria este pela metade.
+    const rollbackNew = async (): Promise<MenuItemSaveResult> => {
+      if (!itemId) return false;
+      // Item existente: o update de nome/foto/status já foi gravado e não se
+      // desfaz. Devolve o ID para o editor saber o que ficou salvo (foto, status).
+      if (!isNew) return { failedId: itemId };
+      await supabase.from("menu_item_ingredients").delete().eq("menu_item_id", itemId);
+      await supabase.from("menu_item_variants").delete().eq("menu_item_id", itemId);
+      const { error } = await supabase.from("menu_items").delete().eq("id", itemId);
+      // Não conseguiu desfazer: devolve o ID pra próxima tentativa atualizar este item.
+      return error ? { failedId: itemId } : false;
+    };
+
     // Replace ingredients
-    await supabase.from("menu_item_ingredients").delete().eq("menu_item_id", item.id);
+    await supabase.from("menu_item_ingredients").delete().eq("menu_item_id", itemId);
     if (ingredients.length > 0) {
       const { error } = await supabase.from("menu_item_ingredients").insert(
         ingredients.map((ing, idx) => ({
-          menu_item_id: item.id,
+          menu_item_id: itemId,
           name: ing.name,
           removable: ing.removable,
           extra_price: ing.extra_price,
           sort_order: idx,
         }))
       );
-      if (error) { toast.error("Erro ao salvar ingredientes"); return false; }
+      if (error) { toast.error("Erro ao salvar ingredientes"); return rollbackNew(); }
     }
 
     // Replace variants
-    await supabase.from("menu_item_variants").delete().eq("menu_item_id", item.id);
+    await supabase.from("menu_item_variants").delete().eq("menu_item_id", itemId);
     if (variants.length > 0) {
       const { error } = await supabase.from("menu_item_variants").insert(
         variants.map((v, idx) => ({
-          menu_item_id: item.id,
+          menu_item_id: itemId,
           name: v.name,
           sort_order: idx,
         }))
       );
-      if (error) { toast.error("Erro ao salvar variantes"); return false; }
+      if (error) { toast.error("Erro ao salvar variantes"); return rollbackNew(); }
     }
 
     toast.success(isNew ? "Item criado" : "Item atualizado");
     await loadMenu();
-    return true;
+    return itemId!;
   };
 
   const deleteMenuItem = async (id: string) => {

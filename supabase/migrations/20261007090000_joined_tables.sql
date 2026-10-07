@@ -1,0 +1,12 @@
+-- NEUTRALIZADA (07/10/2026).
+--
+-- Esta migration implementava "unir mesas = juntar contas" (sessions.joined_tables,
+-- join_tables(uuid, integer), merge_sessions). O usuário decidiu o contrário:
+-- a união é SÓ VISUAL e a comanda nunca sai da mesa/QR Code dela. A versão
+-- válida está em 20261007040000_table_seats_and_groups.sql, que também remove
+-- esses objetos caso tenham sido aplicados.
+--
+-- O arquivo foi mantido (vazio) só porque ele já estava no histórico do git.
+-- Não aplicar nada daqui: se rodasse depois da 20261007040000, recriaria a
+-- coluna e as funções descartadas.
+select 1;
