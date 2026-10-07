@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Users, Flame, Plus, Check, Pencil, Link2, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -56,6 +56,10 @@ const AreaRow = ({
   useEffect(() => setName(area.name), [area.name]);
   useEffect(() => setColor(area.color), [area.color]);
 
+  // Última cor escolhida e a que já está salva, para gravar ao desmontar.
+  const latest = useRef({ color, saved: area.color, id: area.id, onUpdate });
+  latest.current = { color, saved: area.color, id: area.id, onUpdate };
+
   // O seletor de cor dispara o tempo todo enquanto o dedo arrasta; só grava
   // no banco quando para de mexer por meio segundo.
   useEffect(() => {
@@ -64,6 +68,15 @@ const AreaRow = ({
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [color]);
+
+  // "Concluir" desmonta a linha: se ainda havia cor pendente (< 500 ms), grava agora.
+  useEffect(
+    () => () => {
+      const { color: c, saved, id, onUpdate: update } = latest.current;
+      if (c !== saved) void update(id, { color: c });
+    },
+    [],
+  );
 
   return (
     <div className="flex items-center gap-2">

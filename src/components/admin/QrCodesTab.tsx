@@ -49,11 +49,20 @@ const QrCodesTab = () => {
           .eq("business_unit_id", unit.id)
           .eq("active", true);
 
+        // Mesas ativas (arquivadas ficam de fora). Sem a migration das mesas,
+        // cai no intervalo 1..table_count como antes.
+        const { data: activeTables, error: tablesError } = await supabase
+          .from("dining_tables")
+          .select("number")
+          .eq("business_unit_id", unit.id)
+          .is("archived_at", null)
+          .order("number");
+        const tableNumbers = tablesError
+          ? Array.from({ length: unit.table_count }, (_, i) => i + 1)
+          : (activeTables ?? []).map((t) => t.number);
+
         const existingMap = new Map((existing ?? []).map((r) => [r.table_number, r.token]));
-        const missing: number[] = [];
-        for (let n = 1; n <= unit.table_count; n++) {
-          if (!existingMap.has(n)) missing.push(n);
-        }
+        const missing = tableNumbers.filter((n) => !existingMap.has(n));
 
         if (missing.length > 0) {
           const { data: inserted } = await supabase
@@ -64,7 +73,7 @@ const QrCodesTab = () => {
         }
 
         const qrs: TableQr[] = [];
-        for (let n = 1; n <= unit.table_count; n++) {
+        for (const n of tableNumbers) {
           const token = existingMap.get(n);
           if (!token) continue;
           const url = `${baseUrl}/m/t/${token}`;

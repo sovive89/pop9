@@ -106,7 +106,7 @@ export const useTables = () => {
    */
   const syncTableCount = useCallback(async () => {
     if (!businessUnitId) return;
-    const { data } = await supabase
+    const { data, error: readError } = await supabase
       .from("dining_tables")
       .select("number")
       .eq("business_unit_id", businessUnitId)
@@ -114,10 +114,16 @@ export const useTables = () => {
       .order("number", { ascending: false })
       .limit(1)
       .maybeSingle();
-    await supabase
+    if (readError) {
+      toast.error("Mesas salvas, mas não deu para atualizar a contagem usada nos QR Codes");
+      return;
+    }
+    // Sem mesas ativas, 0 é intencional: o QrCodesTab mostra "nenhuma mesa configurada".
+    const { error } = await supabase
       .from("business_units")
       .update({ table_count: data?.number ?? 0 })
       .eq("id", businessUnitId);
+    if (error) toast.error("Mesas salvas, mas não deu para atualizar a contagem usada nos QR Codes");
   }, [businessUnitId]);
 
   const addTable = useCallback(async (): Promise<boolean> => {

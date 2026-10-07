@@ -4,8 +4,8 @@
 -- não existia no banco. business_units.table_count = 12 significava "mesas 1
 -- a 12", sessions.table_number guarda só o número e o mapa
 -- (src/components/TableMap.tsx) desenhava Array.from({ length: tableCount }).
--- A tabela table_zones, usada por useTableZones.ts, nunca existiu no banco —
--- o app rodava num fallback hardcoded. Com só um número não dá para ter cor
+-- O mapa não lia nenhuma tabela de mesas ou zonas com cor (as zonas de
+-- useTableZones.ts vinham de um fallback hardcoded). Com só um número não dá para ter cor
 -- por área, apagar a mesa 5 de 12, nem lembrar que uma mesa foi arquivada.
 --
 -- Esta migration é ADITIVA: nada existente é removido ou alterado em
@@ -65,6 +65,80 @@ from public.business_units bu
 cross join lateral generate_series(1, coalesce(bu.table_count, 3)) as n
 where bu.active
 on conflict (business_unit_id, number) do nothing;
+
+-- ---------------------------------------------------------------------------
+-- 2b. Regras de integridade (no banco, para valer mesmo com chamadas concorrentes)
+-- ---------------------------------------------------------------------------
+-- (a) a área precisa ser da mesma unidade da mesa;
+-- (b) não arquiva mesa com comanda aberta;
+-- (c) ao arquivar, desativa o QR Code da mesa (senão o QR antigo abriria
+--     comanda numa mesa que saiu do mapa).
+create or replace function public.dining_tables_guard()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.area_id is not null and not exists (
+    select 1 from public.table_areas a
+    where a.id = new.area_id and a.business_unit_id = new.business_unit_id
+  ) then
+    raise exception 'A área precisa ser da mesma unidade da mesa';
+  end if;
+
+  if tg_op = 'UPDATE' and old.archived_at is null and new.archived_at is not null then
+    -- espera quem estiver abrindo comanda nesta mesa (ver sessions_block_archived_table)
+    perform 1 from public.dining_tables where id = new.id for update;
+    if exists (
+      select 1 from public.sessions s
+      where s.business_unit_id = new.business_unit_id
+        and s.table_number = new.number
+        and s.status = 'active'
+    ) then
+      raise exception 'Mesa % tem conta aberta: feche a conta antes de arquivar', new.number;
+    end if;
+    update public.table_qr_codes
+       set active = false
+     where business_unit_id = new.business_unit_id
+       and table_number = new.number
+       and active;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_dining_tables_guard on public.dining_tables;
+create trigger trg_dining_tables_guard
+  before insert or update on public.dining_tables
+  for each row execute function public.dining_tables_guard();
+
+-- Não abre comanda em mesa arquivada. O "for share" serializa com o arquivamento:
+-- se a mesa está sendo arquivada agora, espera o commit e então enxerga o arquivamento.
+create or replace function public.sessions_block_archived_table()
+returns trigger
+language plpgsql
+as $$
+declare
+  v_archived timestamptz;
+begin
+  if new.business_unit_id is null or new.table_number is null then
+    return new;
+  end if;
+  select archived_at into v_archived
+  from public.dining_tables
+  where business_unit_id = new.business_unit_id and number = new.table_number
+  for share;
+  if v_archived is not null then
+    raise exception 'Mesa % está arquivada', new.table_number;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_sessions_block_archived_table on public.sessions;
+create trigger trg_sessions_block_archived_table
+  before insert on public.sessions
+  for each row execute function public.sessions_block_archived_table();
 
 -- ---------------------------------------------------------------------------
 -- 3. RLS — mesmo padrão de business_units: admin gerencia, staff lê

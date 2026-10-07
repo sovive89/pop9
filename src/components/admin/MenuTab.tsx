@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Flame, Plus, Trash2, Pencil, Save, X, ChevronDown, ChevronUp, Tags, ImagePlus, Image, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -153,7 +153,10 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   const [imageUrl, setImageUrl] = useState(item?.image_url ?? "");
   const [sortOrder, setSortOrder] = useState(item?.sort_order?.toString() ?? "0");
   const [active, setActive] = useState(item?.active ?? true);
-  const isPublished = item?.status === "published";
+  // Status já gravado no banco (não o do item aberto): muda assim que um save
+  // passa, mesmo que um passo seguinte (ficha técnica) falhe e o editor continue aberto.
+  const [savedStatus, setSavedStatus] = useState(item?.status);
+  const isPublished = savedStatus === "published";
   const [uploading, setUploading] = useState(false);
   const [aiModel, setAiModel] = useState(AI_IMAGE_MODELS[0].id);
   const [aiExtra, setAiExtra] = useState("");
@@ -229,11 +232,24 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   };
 
   // Cancelar: descarta tudo que foi enviado/gerado nesta edição.
-  const handleCancel = () => {
+  const discardSessionImages = () => {
     closed.current = true;
-    void removeMenuImages(sessionImages.current.filter((u) => u !== persistedImage.current));
+    const leftovers = sessionImages.current.filter((u) => u !== persistedImage.current);
+    sessionImages.current = [];
+    if (leftovers.length > 0) void removeMenuImages(leftovers);
+  };
+
+  // Não deixa fechar no meio do save: a foto ainda não foi gravada no item e
+  // seria apagada antes de a URL chegar ao banco.
+  const handleCancel = () => {
+    if (saving) return;
+    discardSessionImages();
     onCancel();
   };
+
+  // Trocar de seção do admin desmonta o editor sem passar por Cancelar/Salvar:
+  // apaga as fotos enviadas/geradas que não foram gravadas e ignora respostas atrasadas.
+  useEffect(() => discardSessionImages, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ID, SKU e ordem inicial são definidos pelo banco (trigger + defaults).
   // O status muda pela ação escolhida: "Salvar rascunho" ou "Publicar".
@@ -263,21 +279,27 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     );
     if (typeof savedId !== "string") {
       // Item novo ficou no banco sem conseguir desfazer: próxima tentativa atualiza ele.
-      if (savedId && !item) setCreatedId(savedId.failedId);
+      if (savedId && !item) {
+        setCreatedId(savedId.failedId);
+        // A linha existe e aponta para esta foto: Cancelar não pode apagá-la.
+        persistedImage.current = finalImage;
+        setSavedStatus(status);
+      }
       setSaving(false);
       return;
     }
     if (!item) setCreatedId(savedId);
     persistedImage.current = finalImage;
+    setSavedStatus(status);
     const recipeOk = await recipeBuilderRef.current?.commit(savedId);
     setSaving(false);
     if (recipeOk === false) return;
 
     // Salvo: apaga a foto antiga (se foi trocada) e as tentativas descartadas.
+    const stale = [item?.image_url, ...sessionImages.current].filter((u) => u && u !== finalImage);
     closed.current = true;
-    void removeMenuImages(
-      [item?.image_url, ...sessionImages.current].filter((u) => u && u !== finalImage)
-    );
+    sessionImages.current = [];
+    void removeMenuImages(stale);
     onCancel();
   };
 
@@ -305,7 +327,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     <div className="rounded-xl border border-border bg-card p-5 space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-foreground">{isNew ? "Novo Item" : "Editar Item"}</h3>
-        <button onClick={handleCancel} aria-label="Fechar" className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+        <button onClick={handleCancel} disabled={saving} aria-label="Fechar" className="text-muted-foreground hover:text-foreground disabled:opacity-50"><X className="h-5 w-5" /></button>
       </div>
 
       {item && (
@@ -473,7 +495,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
             <Button onClick={() => handleSave("published")} disabled={saving || uploading || generating}>Publicar</Button>
           </>
         )}
-        <Button variant="outline" onClick={handleCancel}>Cancelar</Button>
+        <Button variant="outline" onClick={handleCancel} disabled={saving}>Cancelar</Button>
       </div>
     </div>
   );
