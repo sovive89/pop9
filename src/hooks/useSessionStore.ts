@@ -482,5 +482,6 @@ export const useSessionStore = () => {
     placeOrder,
     updateLocalCart,
     markDelivered,
+    reload: loadSessions,
   };
 };

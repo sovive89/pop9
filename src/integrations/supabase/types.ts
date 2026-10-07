@@ -1283,6 +1283,83 @@ export type Database = {
           },
         ]
       }
+      dining_tables: {
+        Row: {
+          archived_at: string | null
+          area_id: string | null
+          business_unit_id: string
+          created_at: string
+          id: string
+          number: number
+        }
+        Insert: {
+          archived_at?: string | null
+          area_id?: string | null
+          business_unit_id: string
+          created_at?: string
+          id?: string
+          number: number
+        }
+        Update: {
+          archived_at?: string | null
+          area_id?: string | null
+          business_unit_id?: string
+          created_at?: string
+          id?: string
+          number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dining_tables_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "table_areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dining_tables_business_unit_id_fkey"
+            columns: ["business_unit_id"]
+            isOneToOne: false
+            referencedRelation: "business_units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      table_areas: {
+        Row: {
+          business_unit_id: string
+          color: string
+          created_at: string
+          id: string
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          business_unit_id: string
+          color?: string
+          created_at?: string
+          id?: string
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          business_unit_id?: string
+          color?: string
+          created_at?: string
+          id?: string
+          name?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "table_areas_business_unit_id_fkey"
+            columns: ["business_unit_id"]
+            isOneToOne: false
+            referencedRelation: "business_units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sessions: {
         Row: {
           business_unit_id: string
@@ -1290,6 +1367,7 @@ export type Database = {
           created_by: string | null
           ended_at: string | null
           id: string
+          merged_into: string | null
           origin: string
           started_at: string
           status: string
@@ -1302,6 +1380,7 @@ export type Database = {
           created_by?: string | null
           ended_at?: string | null
           id?: string
+          merged_into?: string | null
           origin?: string
           started_at?: string
           status?: string
@@ -1314,6 +1393,7 @@ export type Database = {
           created_by?: string | null
           ended_at?: string | null
           id?: string
+          merged_into?: string | null
           origin?: string
           started_at?: string
           status?: string
@@ -1326,6 +1406,13 @@ export type Database = {
             columns: ["business_unit_id"]
             isOneToOne: false
             referencedRelation: "business_units"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_merged_into_fkey"
+            columns: ["merged_into"]
+            isOneToOne: false
+            referencedRelation: "sessions"
             referencedColumns: ["id"]
           },
         ]
@@ -1701,6 +1788,10 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      merge_sessions: {
+        Args: { p_source: string; p_target: string }
+        Returns: undefined
       }
     }
     Enums: {
