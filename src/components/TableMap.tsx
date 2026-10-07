@@ -176,7 +176,9 @@ const TableMap = () => {
     createArea,
     updateArea,
     deleteArea,
-    mergeSessions,
+    joins,
+    loadJoins,
+    joinTable,
   } = useTables();
 
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
@@ -187,8 +189,29 @@ const TableMap = () => {
   const [mergeSource, setMergeSource] = useState<number | null>(null);
   const [mergeTarget, setMergeTarget] = useState<number | null>(null);
   const [merging, setMerging] = useState(false);
+  // Arrastar-e-soltar (modo unir): mesa sendo arrastada e mesa sob o dedo.
+  const [dragging, setDragging] = useState<number | null>(null);
+  const [dropTarget, setDropTarget] = useState<number | null>(null);
+  const justDragged = useRef(false);
 
   const loading = sessionsLoading || tablesLoading;
+
+  // Grupos (joined_tables) mudam junto com as comandas: recarrega a cada sync.
+  useEffect(() => {
+    loadJoins();
+  }, [sessions, loadJoins]);
+
+  // mesa unida → mesa que tem a conta do grupo
+  const ownerOf = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const [owner, members] of Object.entries(joins)) {
+      if (!sessions[Number(owner)]) continue; // conta já fechada, ainda não recarregou
+      for (const n of members) m.set(n, Number(owner));
+    }
+    return m;
+  }, [joins, sessions]);
+  const groupOwner = (n: number) => ownerOf.get(n) ?? n;
+  const groupMembers = (owner: number) => [owner, ...(sessions[owner] ? joins[owner] ?? [] : [])].sort((a, b) => a - b);
 
   const areaById = useMemo(() => new Map(areas.map((a) => [a.id, a])), [areas]);
   const tableCountByArea = useMemo(() => {
@@ -197,7 +220,8 @@ const TableMap = () => {
     return m;
   }, [tables]);
 
-  const getTableStatus = (tableId: number): TableStatus => (sessions[tableId] ? "occupied" : "free");
+  const getTableStatus = (tableId: number): TableStatus =>
+    sessions[tableId] || ownerOf.has(tableId) ? "occupied" : "free";
 
   const hasReadyOrders = (tableId: number): boolean => {
     const tableOrders = sessions[tableId]?.orders ?? [];
@@ -226,7 +250,7 @@ const TableMap = () => {
       return;
     }
     if (mode === "merge") {
-      if (!sessions[tableId]) return; // só mesas com conta aberta
+      if (justDragged.current) return; // o "click" que vem logo depois de soltar
       if (mergeSource === null) {
         setMergeSource(tableId);
       } else if (tableId === mergeSource) {
@@ -263,19 +287,56 @@ const TableMap = () => {
     await placeOrder(tableId, clientId, cart);
   };
 
+  /**
+   * Quem fica com a conta: a mesa onde soltou, se tiver conta aberta; senão a
+   * arrastada (ex.: arrastou uma mesa ocupada para uma livre ao lado).
+   * Devolve null quando nenhuma das duas tem conta.
+   */
+  const resolveJoin = (source: number, target: number) => {
+    const s = groupOwner(source);
+    const t = groupOwner(target);
+    if (s === t) return null;
+    if (sessions[t]) return { owner: t, joined: s };
+    if (sessions[s]) return { owner: s, joined: t };
+    return null;
+  };
+  const pendingJoin = mergeSource !== null && mergeTarget !== null ? resolveJoin(mergeSource, mergeTarget) : null;
+  const pendingLabel = pendingJoin
+    ? [...new Set([...groupMembers(pendingJoin.owner), ...groupMembers(pendingJoin.joined)])]
+        .sort((a, b) => a - b)
+        .map(pad)
+        .join(" + ")
+    : "";
+
   const handleMerge = async () => {
-    if (mergeSource === null || mergeTarget === null) return;
-    const sourceId = sessions[mergeSource]?.session.dbId;
-    const targetId = sessions[mergeTarget]?.session.dbId;
-    if (!sourceId || !targetId) return;
+    if (!pendingJoin) return;
+    const ownerSession = sessions[pendingJoin.owner]?.session.dbId;
+    if (!ownerSession) return;
     setMerging(true);
-    const ok = await mergeSessions(sourceId, targetId);
+    const ok = await joinTable(ownerSession, pendingJoin.joined);
     setMerging(false);
     if (ok) {
-      toast.success(`Mesa ${pad(mergeSource)} unida à Mesa ${pad(mergeTarget)}`);
+      toast.success(`Mesas ${pendingLabel} unidas`);
       changeMode("normal");
       await reloadSessions();
     }
+  };
+
+  // Mesa (card) sob o ponteiro, ignorando a que está sendo arrastada.
+  const tableUnderPointer = (x: number, y: number, exclude: number): number | null => {
+    for (const el of document.elementsFromPoint(x, y)) {
+      const n = (el as HTMLElement).closest?.("[data-table-number]")?.getAttribute("data-table-number");
+      if (n && Number(n) !== exclude) return Number(n);
+    }
+    return null;
+  };
+
+  const pointerXY = (e: MouseEvent | TouchEvent | PointerEvent) => {
+    if ("changedTouches" in e && e.changedTouches.length) {
+      return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+    }
+    const p = e as MouseEvent;
+    return { x: p.clientX, y: p.clientY };
   };
 
   const handleMoveSelected = async (value: string) => {
@@ -304,7 +365,7 @@ const TableMap = () => {
   };
 
   const selectedTables = tables.filter((t) => selectedIds.includes(t.id));
-  const selectedOccupied = selectedTables.filter((t) => sessions[t.number]);
+  const selectedOccupied = selectedTables.filter((t) => getTableStatus(t.number) === "occupied");
   const occupiedCount = counts.occupied;
   const showAddTile = mode === "edit" || !editable; // sem a migration, mantém o "+ Mesa" antigo
   const hasUnassigned = (tableCountByArea.get(null) ?? 0) > 0;
@@ -353,7 +414,7 @@ const TableMap = () => {
         <div className="ml-auto flex items-center gap-2">
           {mode === "normal" && (
             <>
-              <Button variant="outline" size="sm" onClick={() => changeMode("merge")} disabled={occupiedCount < 2}>
+              <Button variant="outline" size="sm" onClick={() => changeMode("merge")} disabled={occupiedCount < 1 || tables.length < 2}>
                 <Link2 className="mr-1.5 h-4 w-4" /> Unir mesas
               </Button>
               {isAdmin && editable && (
@@ -460,19 +521,28 @@ const TableMap = () => {
         <div className="space-y-2 rounded-xl border border-primary/40 bg-primary/10 px-4 py-3">
           {mergeSource === null && (
             <p className="text-sm text-foreground">
-              Toque na mesa que será <strong>unida</strong> (ela vai ficar livre). Só mesas com conta aberta.
+              <strong>Arraste</strong> uma mesa e solte em cima da outra (ou toque numa e depois na outra). Pelo menos uma
+              precisa ter conta aberta. As mesas ficam juntas até a conta ser fechada.
             </p>
           )}
           {mergeSource !== null && mergeTarget === null && (
             <p className="text-sm text-foreground">
-              Mesa {pad(mergeSource)} escolhida. Agora toque na mesa que <strong>continua com a conta</strong>.
+              Mesa {pad(mergeSource)} escolhida. Agora toque na mesa que vai ficar <strong>junto</strong> com ela.
             </p>
           )}
-          {mergeSource !== null && mergeTarget !== null && (
+          {mergeSource !== null && mergeTarget !== null && !pendingJoin && (
+            <p className="text-sm text-warning">
+              Pelo menos uma das mesas precisa ter conta aberta. Escolha de novo.
+            </p>
+          )}
+          {pendingJoin && (
             <div className="flex flex-wrap items-center gap-3">
               <p className="text-sm text-foreground">
-                Unir <strong>Mesa {pad(mergeSource)}</strong> na <strong>Mesa {pad(mergeTarget)}</strong>? Clientes, pedidos e
-                pagamentos da {pad(mergeSource)} vão para a {pad(mergeTarget)}, e a {pad(mergeSource)} fica livre.
+                Juntar{" "}
+                <strong>Mesas {pendingLabel}</strong>
+                ? A conta fica na Mesa {pad(pendingJoin.owner)}
+                {sessions[pendingJoin.joined] ? ` (clientes, pedidos e pagamentos da ${pad(pendingJoin.joined)} vão para ela)` : ""}.
+                Ao fechar a conta, todas ficam livres.
               </p>
               <Button size="sm" onClick={handleMerge} disabled={merging}>
                 {merging ? "Unindo…" : "Confirmar união"}
@@ -490,21 +560,32 @@ const TableMap = () => {
         <div className="grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-3 sm:gap-4">
           {tables.map((table, i) => {
             const tableId = table.number;
+            // Fora da edição, mesa unida a outra não aparece sozinha: entra no
+            // card do grupo, na posição da mesa que tem a conta.
+            const grouped = mode !== "edit";
+            if (grouped && ownerOf.has(tableId) && tables.some((t) => t.number === ownerOf.get(tableId))) return null;
+            const members = grouped ? groupMembers(tableId) : [tableId];
+            const isGroup = members.length > 1;
             const status = getTableStatus(tableId);
             const session = getTableSession(tableId);
             const isReady = hasReadyOrders(tableId);
             const area = table.area_id ? areaById.get(table.area_id) : undefined;
             const isSelected = mode === "edit" && selectedIds.includes(table.id);
             const isMergeSource = mode === "merge" && mergeSource === tableId;
-            const isMergeTarget = mode === "merge" && mergeTarget === tableId;
-            const dimmed = mode === "merge" && status !== "occupied";
+            const isMergeTarget = mode === "merge" && (mergeTarget === tableId || dropTarget === tableId);
+            const isDragging = dragging === tableId;
+            // Escolhida uma mesa livre, as outras livres não servem (alguém precisa ter conta).
+            const dimmed =
+              mode === "merge" && mergeSource !== null && status === "free" && getTableStatus(groupOwner(mergeSource)) === "free";
+            const canDrag = mode === "merge" && !dimmed;
             return (
               <motion.button
                 key={table.id}
+                data-table-number={tableId}
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{
                   opacity: dimmed ? 0.35 : 1,
-                  scale: isReady ? [1, 1.06, 1] : 1,
+                  scale: isReady && !isDragging ? [1, 1.06, 1] : 1,
                   boxShadow: isReady
                     ? ["0 0 0px hsl(var(--primary)/0)", "0 0 18px hsl(var(--primary)/0.5)", "0 0 0px hsl(var(--primary)/0)"]
                     : "none",
@@ -512,10 +593,40 @@ const TableMap = () => {
                 transition={isReady ? { delay: i * 0.02, repeat: Infinity, duration: 1.5, ease: "easeInOut" } : { delay: i * 0.02 }}
                 whileHover={{ scale: dimmed ? 1 : 1.04 }}
                 whileTap={{ scale: dimmed ? 1 : 0.97 }}
+                drag={canDrag}
+                dragSnapToOrigin
+                dragElastic={1}
+                dragMomentum={false}
+                whileDrag={{ scale: 1.08, zIndex: 50, cursor: "grabbing" }}
+                onDragStart={() => {
+                  setDragging(tableId);
+                  setMergeSource(null);
+                  setMergeTarget(null);
+                }}
+                onDrag={(e) => {
+                  const { x, y } = pointerXY(e);
+                  setDropTarget(tableUnderPointer(x, y, tableId));
+                }}
+                onDragEnd={(e) => {
+                  const { x, y } = pointerXY(e);
+                  const target = tableUnderPointer(x, y, tableId);
+                  setDragging(null);
+                  setDropTarget(null);
+                  justDragged.current = true;
+                  setTimeout(() => (justDragged.current = false), 250);
+                  if (target !== null) {
+                    setMergeSource(tableId);
+                    setMergeTarget(target);
+                  }
+                }}
                 onClick={() => handleTableClick(tableId, table.id)}
                 disabled={dimmed}
-                title={area?.name}
-                style={area && !isReady ? { borderColor: area.color } : undefined}
+                title={isGroup ? `Mesas ${members.map(pad).join(" + ")}` : area?.name}
+                style={{
+                  ...(area && !isReady ? { borderColor: area.color } : {}),
+                  ...(isGroup ? { gridColumn: `span ${Math.min(members.length, 3)}` } : {}),
+                  ...(canDrag ? { cursor: "grab", touchAction: "none" } : {}),
+                }}
                 className={`relative flex flex-col items-center justify-center rounded-xl border-2 p-4 transition-colors ${statusColors[status]} ${isReady ? "border-primary ring-2 ring-primary/30" : ""} ${isSelected || isMergeTarget ? "ring-4 ring-primary" : ""} ${isMergeSource ? "ring-4 ring-warning" : ""}`}
               >
                 {isReady && (
@@ -528,9 +639,25 @@ const TableMap = () => {
                     <Check className="h-3 w-3" />
                   </span>
                 )}
-                <span className="text-3xl font-bold text-foreground leading-none" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>
-                  {pad(tableId)}
-                </span>
+                {isGroup ? (
+                  // Interseção: círculos translúcidos sobrepostos — a área em
+                  // comum fica mais escura, como num diagrama de Venn.
+                  <span className="flex items-center" aria-label={`Mesas ${members.map(pad).join(" + ")} unidas`}>
+                    {members.map((n, idx) => (
+                      <span
+                        key={n}
+                        className={`flex h-12 w-12 items-center justify-center rounded-full border-2 border-primary bg-primary/25 text-2xl font-bold leading-none text-foreground ${idx > 0 ? "-ml-4" : ""}`}
+                        style={{ fontFamily: "'Bebas Neue', sans-serif" }}
+                      >
+                        {pad(n)}
+                      </span>
+                    ))}
+                  </span>
+                ) : (
+                  <span className="text-3xl font-bold text-foreground leading-none" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>
+                    {pad(tableId)}
+                  </span>
+                )}
                 <span className={`mt-2 h-2 w-2 rounded-full ${statusDot[status]}`} />
                 {session && (
                   <div className="mt-1 flex items-center gap-1">

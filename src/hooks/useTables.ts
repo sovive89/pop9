@@ -260,6 +260,54 @@ export const useTables = () => {
     return true;
   }, []);
 
+  /**
+   * Grupos de mesas unidas: número da mesa que tem a conta → outras mesas do
+   * grupo (sessions.joined_tables). Sem a migration 20261007090000 fica vazio.
+   */
+  const [joins, setJoins] = useState<Record<number, number[]>>({});
+
+  const loadJoins = useCallback(async () => {
+    if (!businessUnitId) return;
+    const { data, error } = await supabase
+      .from("sessions")
+      .select("table_number, joined_tables")
+      .eq("business_unit_id", businessUnitId)
+      .eq("status", "active");
+    if (error) {
+      setJoins({});
+      return;
+    }
+    const next: Record<number, number[]> = {};
+    for (const s of data ?? []) {
+      if (s.joined_tables?.length) next[s.table_number] = s.joined_tables;
+    }
+    setJoins(next);
+  }, [businessUnitId]);
+
+  useEffect(() => {
+    loadJoins();
+  }, [loadJoins]);
+
+  /**
+   * Junta a mesa `tableNumber` (livre ou ocupada) ao grupo da comanda
+   * `targetSessionId`. Se ela tinha conta, a conta é absorvida (merge_sessions).
+   */
+  const joinTable = useCallback(
+    async (targetSessionId: string, tableNumber: number): Promise<boolean> => {
+      const { error } = await supabase.rpc("join_tables", {
+        p_target: targetSessionId,
+        p_table_number: tableNumber,
+      });
+      if (error) {
+        toast.error(error.message || "Não foi possível unir as mesas");
+        return false;
+      }
+      await loadJoins();
+      return true;
+    },
+    [loadJoins],
+  );
+
   return {
     tables,
     areas,
@@ -273,5 +321,8 @@ export const useTables = () => {
     updateArea,
     deleteArea,
     mergeSessions,
+    joins,
+    loadJoins,
+    joinTable,
   };
 };

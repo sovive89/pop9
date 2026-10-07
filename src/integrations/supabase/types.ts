@@ -1367,6 +1367,7 @@ export type Database = {
           created_by: string | null
           ended_at: string | null
           id: string
+          joined_tables: number[]
           merged_into: string | null
           origin: string
           started_at: string
@@ -1380,6 +1381,7 @@ export type Database = {
           created_by?: string | null
           ended_at?: string | null
           id?: string
+          joined_tables?: number[]
           merged_into?: string | null
           origin?: string
           started_at?: string
@@ -1393,6 +1395,7 @@ export type Database = {
           created_by?: string | null
           ended_at?: string | null
           id?: string
+          joined_tables?: number[]
           merged_into?: string | null
           origin?: string
           started_at?: string
@@ -1788,6 +1791,10 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      join_tables: {
+        Args: { p_table_number: number; p_target: string }
+        Returns: undefined
       }
       merge_sessions: {
         Args: { p_source: string; p_target: string }
