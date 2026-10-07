@@ -279,9 +279,9 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     );
     if (typeof savedId !== "string") {
       // Item novo ficou no banco sem conseguir desfazer: próxima tentativa atualiza ele.
-      if (savedId && !item) {
-        setCreatedId(savedId.failedId);
-        // A linha existe e aponta para esta foto: Cancelar não pode apagá-la.
+      if (savedId) {
+        if (!item) setCreatedId(savedId.failedId);
+        // A linha existe e já aponta para esta foto/status: Cancelar não pode apagá-la.
         persistedImage.current = finalImage;
         setSavedStatus(status);
       }

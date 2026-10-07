@@ -112,8 +112,10 @@ create trigger trg_dining_tables_guard
   before insert or update on public.dining_tables
   for each row execute function public.dining_tables_guard();
 
--- Não abre comanda em mesa arquivada. O "for share" serializa com o arquivamento:
--- se a mesa está sendo arquivada agora, espera o commit e então enxerga o arquivamento.
+-- Não deixa uma comanda ficar ATIVA em mesa arquivada — ao abrir (insert) nem ao
+-- reativar/mover uma comanda existente (update de status, mesa ou unidade). O
+-- "for share" serializa com o arquivamento: se a mesa está sendo arquivada agora,
+-- espera o commit e então enxerga o arquivamento.
 create or replace function public.sessions_block_archived_table()
 returns trigger
 language plpgsql
@@ -121,7 +123,16 @@ as $$
 declare
   v_archived timestamptz;
 begin
-  if new.business_unit_id is null or new.table_number is null then
+  if new.status is distinct from 'active'
+     or new.business_unit_id is null
+     or new.table_number is null then
+    return new;
+  end if;
+  -- update que não mexe em status/mesa/unidade (ex.: merged_into) não precisa checar
+  if tg_op = 'UPDATE'
+     and old.status is not distinct from new.status
+     and old.business_unit_id is not distinct from new.business_unit_id
+     and old.table_number is not distinct from new.table_number then
     return new;
   end if;
   select archived_at into v_archived
@@ -137,7 +148,7 @@ $$;
 
 drop trigger if exists trg_sessions_block_archived_table on public.sessions;
 create trigger trg_sessions_block_archived_table
-  before insert on public.sessions
+  before insert or update of status, table_number, business_unit_id on public.sessions
   for each row execute function public.sessions_block_archived_table();
 
 -- ---------------------------------------------------------------------------
