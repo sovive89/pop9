@@ -1289,24 +1289,30 @@ export type Database = {
           area_id: string | null
           business_unit_id: string
           created_at: string
+          group_id: string | null
           id: string
           number: number
+          seats: number
         }
         Insert: {
           archived_at?: string | null
           area_id?: string | null
           business_unit_id: string
           created_at?: string
+          group_id?: string | null
           id?: string
           number: number
+          seats?: number
         }
         Update: {
           archived_at?: string | null
           area_id?: string | null
           business_unit_id?: string
           created_at?: string
+          group_id?: string | null
           id?: string
           number?: number
+          seats?: number
         }
         Relationships: [
           {
@@ -1367,8 +1373,6 @@ export type Database = {
           created_by: string | null
           ended_at: string | null
           id: string
-          joined_tables: number[]
-          merged_into: string | null
           origin: string
           started_at: string
           status: string
@@ -1381,8 +1385,6 @@ export type Database = {
           created_by?: string | null
           ended_at?: string | null
           id?: string
-          joined_tables?: number[]
-          merged_into?: string | null
           origin?: string
           started_at?: string
           status?: string
@@ -1395,8 +1397,6 @@ export type Database = {
           created_by?: string | null
           ended_at?: string | null
           id?: string
-          joined_tables?: number[]
-          merged_into?: string | null
           origin?: string
           started_at?: string
           status?: string
@@ -1409,13 +1409,6 @@ export type Database = {
             columns: ["business_unit_id"]
             isOneToOne: false
             referencedRelation: "business_units"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "sessions_merged_into_fkey"
-            columns: ["merged_into"]
-            isOneToOne: false
-            referencedRelation: "sessions"
             referencedColumns: ["id"]
           },
         ]
@@ -1793,11 +1786,11 @@ export type Database = {
         Returns: boolean
       }
       join_tables: {
-        Args: { p_table_number: number; p_target: string }
-        Returns: undefined
+        Args: { p_table_ids: string[] }
+        Returns: string
       }
-      merge_sessions: {
-        Args: { p_source: string; p_target: string }
+      split_table_group: {
+        Args: { p_group_id: string }
         Returns: undefined
       }
     }

@@ -13,12 +13,17 @@ export interface TableArea {
 
 export interface DiningTable {
   id: string;
-  /** Número que o garçom vê. É o mesmo valor guardado em sessions.table_number. */
+  /** Número que o garçom vê. É o mesmo valor guardado em sessions.table_number e no QR Code. */
   number: number;
   area_id: string | null;
+  /** Lugares (cadeiras) da mesa. */
+  seats: number;
+  /** Mesas com o mesmo group_id estão unidas no mapa (só visual). */
+  group_id: string | null;
 }
 
 const DEFAULT_TABLE_COUNT = 3;
+const DEFAULT_SEATS = 4;
 
 export const NO_AREA_COLOR = "#71717a";
 export const DEFAULT_AREA_COLOR = "#f97316";
@@ -27,13 +32,15 @@ export const DEFAULT_AREA_COLOR = "#f97316";
  * Mesas e áreas do mapa (tabelas dining_tables / table_areas).
  *
  * Substitui o useTableCount, que só guardava "quantas mesas existem". Aqui
- * cada mesa é um registro, então dá para ter cor/legenda por área e arquivar
- * (= "deletar") uma mesa sem apagar o histórico.
+ * cada mesa é um registro, então dá para ter cor/legenda por área, lugares,
+ * união visual de mesas e arquivar (= "deletar") sem apagar o histórico.
  *
- * Se a migration 20261006220000 ainda não foi aplicada no banco, o hook cai
- * no modo legado: monta as mesas 1..table_count como antes e `editable` fica
- * false (o mapa funciona, só não oferece edição). Mesmo comportamento do
- * resto do app com migrations pendentes.
+ * União de mesas é SÓ VISUAL: a comanda continua sempre presa à mesa (e ao QR
+ * Code dela). Unir/separar não mexe em sessions, orders nem payments.
+ *
+ * Se as migrations de mesas ainda não foram aplicadas no banco, o hook cai no
+ * modo legado: monta as mesas 1..table_count como antes e `editable` fica
+ * false (o mapa funciona, só não oferece edição nem união).
  */
 export const useTables = () => {
   const { user } = useAuth();
@@ -44,7 +51,7 @@ export const useTables = () => {
   const [editable, setEditable] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // Só admin configura (RLS também impede os outros de gravar).
+  // Só admin configura áreas/lugares/arquivar (RLS também impede os outros de gravar).
   useEffect(() => {
     if (!user) {
       setIsAdmin(false);
@@ -65,7 +72,7 @@ export const useTables = () => {
     const [tablesRes, areasRes] = await Promise.all([
       supabase
         .from("dining_tables")
-        .select("id, number, area_id")
+        .select("id, number, area_id, seats, group_id")
         .eq("business_unit_id", businessUnitId)
         .is("archived_at", null)
         .order("number"),
@@ -85,7 +92,15 @@ export const useTables = () => {
         .eq("id", businessUnitId)
         .maybeSingle();
       const count = data?.table_count ?? DEFAULT_TABLE_COUNT;
-      setTables(Array.from({ length: count }, (_, i) => ({ id: `legacy-${i + 1}`, number: i + 1, area_id: null })));
+      setTables(
+        Array.from({ length: count }, (_, i) => ({
+          id: `legacy-${i + 1}`,
+          number: i + 1,
+          area_id: null,
+          seats: DEFAULT_SEATS,
+          group_id: null,
+        })),
+      );
       setAreas([]);
       setEditable(false);
     } else {
@@ -99,6 +114,23 @@ export const useTables = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Quando outro aparelho une/separa/edita mesas, este atualiza sozinho.
+  useEffect(() => {
+    if (!businessUnitId) return;
+    const channel = supabase
+      .channel("dining-tables-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "dining_tables" }, () => {
+        load();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "table_areas" }, () => {
+        load();
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [businessUnitId, load]);
 
   /**
    * business_units.table_count continua sendo lido pelo QrCodesTab. Mantemos
@@ -197,6 +229,25 @@ export const useTables = () => {
     [load],
   );
 
+  /** Define os lugares (cadeiras) de uma ou mais mesas. */
+  const setSeats = useCallback(
+    async (ids: string[], seats: number): Promise<boolean> => {
+      if (ids.length === 0) return true;
+      if (!Number.isInteger(seats) || seats < 1 || seats > 99) {
+        toast.error("Lugares deve ser um número entre 1 e 99");
+        return false;
+      }
+      const { error } = await supabase.from("dining_tables").update({ seats }).in("id", ids);
+      if (error) {
+        toast.error("Não foi possível salvar os lugares");
+        return false;
+      }
+      await load();
+      return true;
+    },
+    [load],
+  );
+
   const createArea = useCallback(
     async (name: string, color: string): Promise<boolean> => {
       const trimmed = name.trim();
@@ -247,65 +298,32 @@ export const useTables = () => {
     [load],
   );
 
-  /** Une as contas: tudo de `sourceSessionId` vai para `targetSessionId` (uma transação no banco). */
-  const mergeSessions = useCallback(async (sourceSessionId: string, targetSessionId: string): Promise<boolean> => {
-    const { error } = await supabase.rpc("merge_sessions", {
-      p_source: sourceSessionId,
-      p_target: targetSessionId,
-    });
-    if (error) {
-      toast.error(error.message || "Não foi possível unir as mesas");
-      return false;
-    }
-    return true;
-  }, []);
-
-  /**
-   * Grupos de mesas unidas: número da mesa que tem a conta → outras mesas do
-   * grupo (sessions.joined_tables). Sem a migration 20261007090000 fica vazio.
-   */
-  const [joins, setJoins] = useState<Record<number, number[]>>({});
-
-  const loadJoins = useCallback(async () => {
-    if (!businessUnitId) return;
-    const { data, error } = await supabase
-      .from("sessions")
-      .select("table_number, joined_tables")
-      .eq("business_unit_id", businessUnitId)
-      .eq("status", "active");
-    if (error) {
-      setJoins({});
-      return;
-    }
-    const next: Record<number, number[]> = {};
-    for (const s of data ?? []) {
-      if (s.joined_tables?.length) next[s.table_number] = s.joined_tables;
-    }
-    setJoins(next);
-  }, [businessUnitId]);
-
-  useEffect(() => {
-    loadJoins();
-  }, [loadJoins]);
-
-  /**
-   * Junta a mesa `tableNumber` (livre ou ocupada) ao grupo da comanda
-   * `targetSessionId`. Se ela tinha conta, a conta é absorvida (merge_sessions).
-   */
-  const joinTable = useCallback(
-    async (targetSessionId: string, tableNumber: number): Promise<boolean> => {
-      const { error } = await supabase.rpc("join_tables", {
-        p_target: targetSessionId,
-        p_table_number: tableNumber,
-      });
+  /** Une mesas no mapa (só visual). As comandas continuam separadas, uma por mesa. */
+  const joinTables = useCallback(
+    async (ids: string[]): Promise<boolean> => {
+      const { error } = await supabase.rpc("join_tables", { p_table_ids: ids });
       if (error) {
         toast.error(error.message || "Não foi possível unir as mesas");
         return false;
       }
-      await loadJoins();
+      await load();
       return true;
     },
-    [loadJoins],
+    [load],
+  );
+
+  /** Separa um grupo de mesas. Não mexe em comanda nenhuma. */
+  const splitGroup = useCallback(
+    async (groupId: string): Promise<boolean> => {
+      const { error } = await supabase.rpc("split_table_group", { p_group_id: groupId });
+      if (error) {
+        toast.error(error.message || "Não foi possível separar as mesas");
+        return false;
+      }
+      await load();
+      return true;
+    },
+    [load],
   );
 
   return {
@@ -317,12 +335,11 @@ export const useTables = () => {
     addTable,
     archiveTables,
     moveTablesToArea,
+    setSeats,
     createArea,
     updateArea,
     deleteArea,
-    mergeSessions,
-    joins,
-    loadJoins,
-    joinTable,
+    joinTables,
+    splitGroup,
   };
 };
