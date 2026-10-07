@@ -19,9 +19,14 @@ jobs:
 
       - run: npm ci
 
-      # 34 erros pré-existentes no lint (não relacionados a este workflow) —
+      # 37 erros pré-existentes no lint (não relacionados a este workflow) —
       # não-bloqueante por enquanto, só informativo até virarem dívida paga.
       - run: npm run lint
+        continue-on-error: true
+
+      # 10 erros pré-existentes de tipo (useSessionStore, useTableZones, CRMTab,
+      # ActiveOrdersPanel). Informativo por enquanto; o objetivo é não aumentar.
+      - run: npx tsc -p tsconfig.app.json --noEmit
         continue-on-error: true
 
       - run: npm run test
