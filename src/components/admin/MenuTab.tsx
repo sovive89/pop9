@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { useAdminData, type DbMenuItem, type DbIngredient, type DbVariant, type DbMenuCategory } from "@/hooks/useAdminData";
 import { supabase } from "@/integrations/supabase/client";
 import { formatCurrency } from "@/utils/orders";
+import { CATEGORY_ICON_OPTIONS, CATEGORY_COLORS, getCategoryIcon, safeCategoryColor, suggestCategoryIcon } from "@/utils/categoryIcons";
 import { toast } from "sonner";
 import RecipeBuilder, { type RecipeBuilderHandle } from "@/components/admin/RecipeBuilder";
 
@@ -63,6 +64,11 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
   const [destination, setDestination] = useState(category?.destination ?? "kitchen");
   const [sortOrder, setSortOrder] = useState(category?.sort_order?.toString() ?? "0");
   const [saving, setSaving] = useState(false);
+  const [iconName, setIconName] = useState(category?.icon_name ?? suggestCategoryIcon(category?.label ?? ""));
+  const [iconColor, setIconColor] = useState(safeCategoryColor(category?.icon_color));
+  const [iconTouched, setIconTouched] = useState(!!category?.icon_name);
+  const [iconSearch, setIconSearch] = useState("");
+  const PreviewIcon = getCategoryIcon(iconName, label);
 
   const handleSave = async () => {
     if (!key.trim() || !label.trim()) {
@@ -71,7 +77,7 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
     }
     setSaving(true);
     const ok = await onSave(
-      { id: category?.id, key: key.trim().toLowerCase(), label: label.trim(), destination, sort_order: parseInt(sortOrder) || 0 },
+      { id: category?.id, key: key.trim().toLowerCase(), label: label.trim(), icon_name: iconName, icon_color: iconColor, destination, sort_order: parseInt(sortOrder) || 0 },
       isNew
     );
     setSaving(false);
@@ -91,7 +97,7 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
         </div>
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Nome</label>
-          <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="ex: Saladas" className="h-8 text-sm" />
+          <Input value={label} onChange={(e) => { setLabel(e.target.value); if (!iconTouched) setIconName(suggestCategoryIcon(e.target.value)); }} placeholder="ex: Saladas" className="h-8 text-sm" />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -105,6 +111,32 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Ordem</label>
           <Input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-8 text-sm" />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <label className="text-xs font-medium text-muted-foreground">Ícone da categoria</label>
+        <div className="flex items-center gap-3 rounded-lg border border-border p-3">
+          <PreviewIcon className="h-7 w-7 shrink-0" style={{ color: iconColor }} />
+          <span className="text-sm font-medium text-foreground truncate">{label || "Nova categoria"}</span>
+        </div>
+        <Input value={iconSearch} onChange={(e) => setIconSearch(e.target.value)} placeholder="Buscar ícone..." className="h-8 text-sm" />
+        <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-48 overflow-y-auto">
+          {CATEGORY_ICON_OPTIONS.filter((option) => (option.label + " " + option.name).toLowerCase().includes(iconSearch.toLowerCase())).map(({ name, label: iconLabel, Icon }) => (
+            <button key={name} type="button" title={iconLabel} aria-label={iconLabel} aria-pressed={iconName === name}
+              onClick={() => { setIconName(name); setIconTouched(true); }}
+              className={`flex flex-col items-center gap-1 rounded-lg border p-2 min-w-0 ${iconName === name ? "border-primary bg-primary/10" : "border-border hover:bg-muted"}`}>
+              <Icon className="h-5 w-5" />
+              <span className="text-[10px] truncate max-w-full">{iconLabel}</span>
+            </button>
+          ))}
+        </div>
+        <label className="text-xs font-medium text-muted-foreground">Cor do ícone</label>
+        <div className="flex gap-3 flex-wrap">
+          {CATEGORY_COLORS.map((color) => (
+            <button key={color} type="button" aria-label={`Cor ${color}`} aria-pressed={iconColor === color}
+              onClick={() => setIconColor(color)} style={{ backgroundColor: color }}
+              className={`h-8 w-8 rounded-full border-2 ${iconColor === color ? "ring-2 ring-offset-2 ring-primary border-foreground" : "border-transparent"}`} />
+          ))}
         </div>
       </div>
       <div className="flex gap-2">
@@ -559,8 +591,9 @@ const MenuTab = () => {
           <div className="divide-y divide-border rounded-lg border border-border overflow-hidden">
             {categories.map((cat) => (
               <div key={cat.id} className="flex items-center gap-3 px-3 py-2 bg-card">
-                <span className="flex-1 text-sm font-medium text-foreground">{cat.label}</span>
-                <span className="text-xs text-muted-foreground">{cat.key}</span>
+                {(() => { const Icon = getCategoryIcon(cat.icon_name, cat.label); return <Icon className="h-5 w-5 shrink-0" style={{ color: safeCategoryColor(cat.icon_color) }} />; })()}
+                <span className="flex-1 min-w-0 text-sm font-medium text-foreground truncate">{cat.label}</span>
+                <span className="hidden sm:inline text-xs text-muted-foreground truncate">{cat.key}</span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
                   {cat.destination === "kitchen" ? "Cozinha" : "Bar"}
                 </span>

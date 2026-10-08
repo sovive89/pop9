@@ -14,6 +14,8 @@ interface DbCategory {
   label: string;
   destination: string;
   sort_order: number;
+  icon_name: string | null;
+  icon_color: string | null;
 }
 
 /**
@@ -38,7 +40,7 @@ export const useMenuItems = () => {
       // Load categories
       const { data: cats } = await supabase
         .from("menu_categories")
-        .select("key, label, destination, sort_order")
+        .select("key, label, destination, sort_order, icon_name, icon_color")
         .eq("business_unit_id", unitId)
         .order("sort_order");
 
