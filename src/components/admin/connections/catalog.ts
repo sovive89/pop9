@@ -465,6 +465,41 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
     implemented: false,
   },
 
+  // ── GESTÃO / FISCAL ───────────────────────────────────────────────────
+  // Cards de provedores reais, ainda sem provider operacional no Pop9.
+  // NFC-e (modelo 65), NF-e (modelo 55) e NFS-e são tipos de documento,
+  // não marcas de integração. Cada provedor abaixo suporta os três.
+  {
+    id: "focusnfe",
+    slug: "focusnfe",
+    domain: "focusnfe.com.br",
+    name: "Focus NFe",
+    category: "FISCAL",
+    type: "OPERATIONAL",
+    capabilities: caps({ READ: "YES", WRITE: "YES", WEBHOOK: "YES" }),
+    description: "API fiscal para NFC-e, NF-e e NFS-e; emissão, consulta e documentos fiscais.",
+    whatItEnables: "Futuramente emitir NFC-e de vendas ao consumidor, NF-e de produtos e NFS-e de serviços, conforme habilitação fiscal e cobertura local.",
+    configType: "api_key",
+    fields: API_KEY_FIELD,
+    implemented: false,
+    docsUrl: "https://doc.focusnfe.com.br/reference/introducao",
+  },
+  {
+    id: "nuvemfiscal",
+    slug: "nuvemfiscal",
+    domain: "nuvemfiscal.com.br",
+    name: "Nuvem Fiscal",
+    category: "FISCAL",
+    type: "OPERATIONAL",
+    capabilities: caps({ READ: "YES", WRITE: "YES", WEBHOOK: "YES" }),
+    description: "API fiscal para NFC-e, NF-e e NFS-e; autorização, consulta, XML e cancelamento.",
+    whatItEnables: "Futuramente emitir e consultar documentos fiscais pelo Pop9, com cadastro da empresa, certificado digital e credenciais.",
+    configType: "oauth",
+    fields: OAUTH_FIELDS,
+    implemented: false,
+    docsUrl: "https://dev.nuvemfiscal.com.br/docs/",
+  },
+
   // ── E-COMMERCE ───────────────────────────────────────────────────────
   {
     id: "shopify",
