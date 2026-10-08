@@ -20,7 +20,7 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
  * de procurar algo aqui: "quero ligar um canal de venda" e "quero puxar os
  * dados do meu PDV antigo" são tarefas diferentes. */
 const VISIBLE_CATEGORIES: IntegrationCategory[] = [
-  "DELIVERY", "COMMUNICATION", "MENU", "PAYMENTS", "MANAGEMENT", "AI",
+  "DELIVERY", "COMMUNICATION", "MENU", "PAYMENTS", "FISCAL", "AI",
 ];
 const VISIBLE_AI = new Set(["openai", "anthropic", "google-gemini", "xai-grok"]);
 
