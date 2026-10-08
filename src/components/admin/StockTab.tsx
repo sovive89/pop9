@@ -104,6 +104,9 @@ const StockTab = () => {
 
   const [pQuantity, setPQuantity] = useState("");
   const [pUnitCost, setPUnitCost] = useState("");
+  const [pTotalCost, setPTotalCost] = useState("");
+  const [pPurchaseUnit, setPPurchaseUnit] = useState("");
+  const [pConversion, setPConversion] = useState("1");
   const [pSupplierId, setPSupplierId] = useState<string>("");
   const [pIsBox, setPIsBox] = useState(false);
   const [pBoxCount, setPBoxCount] = useState("");
@@ -163,6 +166,9 @@ const StockTab = () => {
   const resetPurchaseForm = () => {
     setPQuantity("");
     setPUnitCost("");
+    setPTotalCost("");
+    setPPurchaseUnit("");
+    setPConversion("1");
     setPSupplierId("");
     setPIsBox(false);
     setPBoxCount("");
@@ -215,17 +221,47 @@ const StockTab = () => {
   };
 
   const openPurchase = (rawMaterialId: string) => {
+    resetPurchaseForm();
+    const material = materialsById[rawMaterialId];
+    const previous = lotes
+      .filter((l) => l.rawMaterialId === rawMaterialId && l.origem === "compra")
+      .sort((a, b) => b.dataEntrada.localeCompare(a.dataEntrada))[0];
+    // Prefill only; all values remain independently editable.
+    setPPurchaseUnit(previous?.unidadeCompra || material?.unit || "");
+    setPConversion(String(previous?.fatorConversao ?? 1));
+    setPQuantity(previous?.quantidadeCompra != null ? String(previous.quantidadeCompra) : "");
+    setPTotalCost(previous?.custoTotal != null ? String(previous.custoTotal) : "");
+    setPUnitCost(previous?.custoTotal != null && previous?.quantidadeCompra
+      ? String(previous.custoTotal / previous.quantidadeCompra) : "");
+    setPSupplierId(previous?.fornecedorId || "");
+    setPIsBox(previous?.caixas != null);
+    setPBoxCount(previous?.caixas != null ? String(previous.caixas) : "");
+    setPUnitsPerBox(previous?.conteudoPorCaixa != null ? String(previous.conteudoPorCaixa) : "");
+    setPValidade(previous?.validade || "");
+    setPNumeroLote(""); // Never reuse the previous lot identifier.
     setPurchaseTarget(rawMaterialId);
     setPurchaseOpen(true);
   };
 
   const handleRegisterPurchase = async () => {
-    if (!purchaseTarget || !pQuantity) return;
+    if (!purchaseTarget || !pQuantity || !pPurchaseUnit.trim()) return;
+    const purchaseQuantity = Number(pQuantity);
+    const conversionFactor = Number(pConversion);
+    if (!Number.isFinite(purchaseQuantity) || purchaseQuantity <= 0 ||
+        !Number.isFinite(conversionFactor) || conversionFactor <= 0) return;
+    if (pIsBox && (!(Number(pBoxCount) > 0) || !(Number(pUnitsPerBox) > 0))) return;
+    const normalizedQuantity = purchaseQuantity * conversionFactor;
+    const totalCost = pTotalCost === "" ? null : Number(pTotalCost);
+    if (totalCost !== null && (!Number.isFinite(totalCost) || totalCost < 0)) return;
     setSaving(true);
     const ok = await registerPurchase({
       rawMaterialId: purchaseTarget,
-      quantity: Number(pQuantity),
-      unitCost: pUnitCost ? Number(pUnitCost) : null,
+      quantity: normalizedQuantity,
+      purchaseQuantity,
+      purchaseUnit: pPurchaseUnit,
+      conversionFactor,
+      totalCost,
+      unitCost: totalCost === null ? null : totalCost / normalizedQuantity,
       supplierId: pSupplierId || null,
       boxCount: pIsBox ? Number(pBoxCount) : undefined,
       unitsPerBox: pIsBox ? Number(pUnitsPerBox) : undefined,
@@ -583,55 +619,66 @@ const StockTab = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <button
-              type="button"
-              onClick={() => setPIsBox((v) => !v)}
-              className={`w-full flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
-                pIsBox ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-muted-foreground"
-              }`}
-            >
-              <Package className="h-4 w-4" />
-              Comprado em caixa fechada (várias unidades)
-            </button>
-
-            {pIsBox ? (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">Nº de caixas</Label>
-                  <Input
-                    type="number"
-                    value={pBoxCount}
-                    onChange={(e) => {
-                      setPBoxCount(e.target.value);
-                      const total = Number(e.target.value || 0) * Number(pUnitsPerBox || 0);
-                      setPQuantity(total ? String(total) : "");
-                    }}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">Unidades por caixa</Label>
-                  <Input
-                    type="number"
-                    value={pUnitsPerBox}
-                    onChange={(e) => {
-                      setPUnitsPerBox(e.target.value);
-                      const total = Number(pBoxCount || 0) * Number(e.target.value || 0);
-                      setPQuantity(total ? String(total) : "");
-                    }}
-                  />
-                </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Unidade da compra</Label>
+                <Select value={pPurchaseUnit} onValueChange={(v) => {
+                  setPPurchaseUnit(v);
+                  const base = purchaseTarget ? materialsById[purchaseTarget]?.unit : "";
+                  const factor: Record<string, number> = { "kg:g": 1000, "g:kg": 0.001, "L:ml": 1000, "ml:L": 0.001 };
+                  setPConversion(String(v === base ? 1 : factor[`${v}:${base}`] ?? ""));
+                }}>
+                  <SelectTrigger><SelectValue placeholder="Escolha..." /></SelectTrigger>
+                  <SelectContent>
+                    {[...new Set([purchaseTarget ? materialsById[purchaseTarget]?.unit : "", "kg", "g", "L", "ml", "un", "caixa", "pacote", "saco"].filter(Boolean))].map((u) => (
+                      <SelectItem key={u} value={u!}>{u}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            ) : null}
-
-            <div className="space-y-2">
-              <Label className="text-sm text-muted-foreground">
-                Quantidade total {purchaseTarget && `(${materialsById[purchaseTarget]?.unit})`}
-              </Label>
-              <Input type="number" value={pQuantity} onChange={(e) => setPQuantity(e.target.value)} disabled={pIsBox} />
+              <div className="space-y-2">
+                <Label>Quantidade comprada</Label>
+                <Input type="number" min="0" step="any" value={pQuantity} onChange={(e) => {
+                  const q = e.target.value;
+                  setPQuantity(q);
+                  if (pUnitCost !== "" && q !== "") setPTotalCost(String(Number(q) * Number(pUnitCost)));
+                }} />
+              </div>
             </div>
             <div className="space-y-2">
-              <Label className="text-sm text-muted-foreground">Preço pago (por unidade, opcional)</Label>
-              <Input type="number" step="0.01" value={pUnitCost} onChange={(e) => setPUnitCost(e.target.value)} placeholder="R$" />
+              <Label>Equivalência: 1 {pPurchaseUnit || "unidade de compra"} corresponde a quantos {purchaseTarget ? materialsById[purchaseTarget]?.unit : "na unidade de estoque"}?</Label>
+              <Input type="number" min="0" step="any" value={pConversion} onChange={(e) => setPConversion(e.target.value)} placeholder="Informe a conversão exata" />
+              <p className="text-xs text-muted-foreground">
+                Entrada no estoque: {Number(pQuantity) > 0 && Number(pConversion) > 0
+                  ? (Number(pQuantity) * Number(pConversion)).toLocaleString("pt-BR") : "—"} {purchaseTarget ? materialsById[purchaseTarget]?.unit : ""}.
+                Para caixa, pacote ou unidade sem equivalência conhecida, informe a conversão; o sistema não estima pesos.
+              </p>
+            </div>
+            <button type="button" onClick={() => setPIsBox((v) => !v)}
+              className="w-full flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+              <Package className="h-4 w-4" /> {pIsBox ? "✓ " : ""}Detalhar embalagem em caixas (opcional)
+            </button>
+            {pIsBox && <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2"><Label>Nº de caixas</Label>
+                <Input type="number" min="0" step="any" value={pBoxCount} onChange={(e) => setPBoxCount(e.target.value)} /></div>
+              <div className="space-y-2"><Label>Conteúdo por caixa</Label>
+                <Input type="number" min="0" step="any" value={pUnitsPerBox} onChange={(e) => setPUnitsPerBox(e.target.value)} /></div>
+            </div>}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Custo unitário (R$/{pPurchaseUnit || "un"})</Label>
+                <Input type="number" min="0" step="0.01" value={pUnitCost} onChange={(e) => {
+                  setPUnitCost(e.target.value);
+                  setPTotalCost(e.target.value === "" || pQuantity === "" ? "" : String(Number(e.target.value) * Number(pQuantity)));
+                }} />
+              </div>
+              <div className="space-y-2">
+                <Label>Custo total do lote (R$)</Label>
+                <Input type="number" min="0" step="0.01" value={pTotalCost} onChange={(e) => {
+                  setPTotalCost(e.target.value);
+                  setPUnitCost(e.target.value === "" || !(Number(pQuantity) > 0) ? "" : String(Number(e.target.value) / Number(pQuantity)));
+                }} />
+              </div>
             </div>
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Fornecedor (opcional)</Label>
@@ -659,7 +706,7 @@ const StockTab = () => {
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setPurchaseOpen(false)} disabled={saving}>Cancelar</Button>
-            <Button onClick={handleRegisterPurchase} disabled={saving || !pQuantity}>
+            <Button onClick={handleRegisterPurchase} disabled={saving || !(Number(pQuantity) > 0) || !(Number(pConversion) > 0) || !pPurchaseUnit}>
               {saving ? "Aguarde..." : "Registrar"}
             </Button>
           </DialogFooter>
