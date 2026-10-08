@@ -47,6 +47,13 @@ Detalha o critério 1 acima para orientar a **etapa 4**. É apenas uma decisão 
 
 **Caso nos dois lados:** se uma mesma integração (ex.: iFood) precisar tanto receber pedido (operação → ERP) quanto fornecer relatório consolidado de vendas entre lojas (análise → Hub), ela pode existir nos dois produtos, cada um implementando só a parte que lhe interessa, sem compartilhar código ou banco.
 
+### Integrações de IA (registrado em 08/10/2026)
+
+Mesmo princípio, aplicado a integrações genéricas de IA. Também só decisão registrada; nada novo foi implementado.
+
+- **ERP:** IA que ajuda a operação de **uma** loja, na hora: gerar imagem de prato (já existe, ver [etapa 3](./etapa-3-ai-studio.md)), sugerir descrição, apoiar resposta de atendimento ao cliente.
+- **Hub:** IA que analisa **dados consolidados de várias lojas/fontes**: padrões, previsão de demanda, relatórios comparativos entre unidades. Depende de o dado já ter sido consolidado e, por isso, nasce no Hub (e só será definida no projeto arquitetural futuro, conforme o critério 6).
+
 ## O que o ERP mantém
 
 Tudo o que já existe (ver tabela de módulos no diagnóstico), incluindo integrações operacionais (delivery, pagamentos, fiscal, comunicação, hardware, contabilidade), AI Studio do ERP (geração/edição de imagem e texto ligados ao cardápio) e dashboards/relatórios operacionais de uma unidade.
