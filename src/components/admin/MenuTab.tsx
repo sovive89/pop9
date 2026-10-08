@@ -507,6 +507,7 @@ const MenuTab = () => {
   const [editingItem, setEditingItem] = useState<DbMenuItem | null>(null);
   const [creating, setCreating] = useState(false);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [showCategories, setShowCategories] = useState(false);
   const [editingCategory, setEditingCategory] = useState<DbMenuCategory | null>(null);
   const [creatingCategory, setCreatingCategory] = useState(false);
@@ -593,40 +594,70 @@ const MenuTab = () => {
             </button>
             {isExpanded && (
               <div className="divide-y divide-border">
-                {items.map((item) => (
-                  <div key={item.id} className={`px-4 py-3 flex items-center gap-3 ${!item.active ? "opacity-50" : ""}`}>
-                    {item.image_url ? (
-                      <img src={item.image_url} alt={item.name} className="w-10 h-10 rounded-lg object-cover border border-border flex-shrink-0" />
-                    ) : (
-                      <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
-                        <Image className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-foreground">{item.name}</span>
-                        <span className="text-xs text-muted-foreground">({item.id})</span>
-                        {!item.active && <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Inativo</span>}
-                        {item.status === "draft" && <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-warning">Rascunho</span>}
-                      </div>
-                      <p className="text-xs text-muted-foreground truncate">{item.description}</p>
-                      {item.ingredients.length > 0 && <p className="text-[10px] text-muted-foreground">{item.ingredients.length} ingredientes</p>}
-                      {item.variants.length > 0 && <p className="text-[10px] text-muted-foreground">{item.variants.length} variantes</p>}
-                    </div>
-                    <span className="font-semibold text-primary whitespace-nowrap">{formatCurrency(item.price)}</span>
-                    <div className="flex gap-1">
-                      <button onClick={() => setEditingItem(item)} className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground">
-                        <Pencil className="h-4 w-4" />
-                      </button>
+                {items.map((item) => {
+                  const isItemExpanded = expandedItem === item.id;
+                  return (
+                    <div key={item.id} className={`min-w-0 ${!item.active ? "opacity-60" : ""}`}>
                       <button
-                        onClick={() => { if (confirm(`Excluir "${item.name}"?`)) deleteMenuItem(item.id); }}
-                        className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                        type="button"
+                        aria-expanded={isItemExpanded}
+                        onClick={() => setExpandedItem(isItemExpanded ? null : item.id)}
+                        className="w-full min-w-0 px-3 py-3 flex items-center gap-3 text-left hover:bg-secondary/30 transition-colors"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        {item.image_url ? (
+                          <img src={item.image_url} alt={item.name} className="w-12 h-12 rounded-lg object-cover border border-border shrink-0" />
+                        ) : (
+                          <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                            <Image className="h-5 w-5 text-muted-foreground" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <p className="font-semibold text-foreground truncate">{item.name}</p>
+                          <p className="text-sm font-semibold text-primary">{formatCurrency(item.price)}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {item.ingredients.length} ingredientes{item.variants.length > 0 ? ` · ${item.variants.length} variantes` : ""}
+                          </p>
+                        </div>
+                        {isItemExpanded ? <ChevronUp className="h-4 w-4 shrink-0 text-primary" /> : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
                       </button>
+                      {isItemExpanded && (
+                        <div className="border-t border-border bg-muted/20 px-4 py-4 space-y-3 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs text-muted-foreground">Status</span>
+                            <span className="text-xs font-medium text-foreground">{!item.active ? "Inativo" : item.status === "draft" ? "Rascunho" : "Publicado"}</span>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Descrição</p>
+                            <p className="text-sm text-foreground break-words">{item.description || "Sem descrição"}</p>
+                          </div>
+                          <div className="flex justify-between gap-2 text-sm">
+                            <span className="text-muted-foreground">Categoria</span>
+                            <span className="text-foreground">{cat.label}</span>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Ingredientes ({item.ingredients.length})</p>
+                            <p className="text-sm text-foreground break-words">{item.ingredients.length ? item.ingredients.map((ing) => ing.name).join(", ") : "Nenhum ingrediente vinculado"}</p>
+                          </div>
+                          {item.variants.length > 0 && (
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Variações ({item.variants.length})</p>
+                              <p className="text-sm text-foreground break-words">{item.variants.map((variant) => variant.name).join(", ")}</p>
+                            </div>
+                          )}
+                          <div className="flex gap-2 pt-2">
+                            <Button size="sm" className="flex-1 gap-2" onClick={() => setEditingItem(item)}>
+                              <Pencil className="h-4 w-4" /> Editar / Ficha técnica
+                            </Button>
+                            <Button size="sm" variant="outline" aria-label={`Excluir ${item.name}`}
+                              onClick={() => { if (confirm(`Excluir "${item.name}"?`)) deleteMenuItem(item.id); }}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {items.length === 0 && (
                   <p className="px-4 py-6 text-center text-sm text-muted-foreground">Nenhum item nesta categoria</p>
                 )}
