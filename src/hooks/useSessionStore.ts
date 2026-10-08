@@ -195,7 +195,7 @@ export const useSessionStore = () => {
   const startSession = async (
     tableNumber: number,
     zone: Zone,
-    clientData: { name: string; phone?: string; email?: string; cep?: string; bairro?: string; genero?: string }
+    clientData: { name: string; phone?: string; email?: string; cep?: string; bairro?: string; genero?: string; faixa_etaria?: string; origem_conhecimento?: string }
   ) => {
     if (authLoading) {
       toast.error("Aguarde a autenticação para iniciar a sessão");
@@ -232,8 +232,10 @@ export const useSessionStore = () => {
         cep: clientData.cep,
         bairro: clientData.bairro,
         genero: clientData.genero,
+        faixa_etaria: clientData.faixa_etaria,
+        origem_conhecimento: clientData.origem_conhecimento,
         business_unit_id: businessUnitId,
-      })
+      } as any)
       .select()
       .single();
 
@@ -270,7 +272,7 @@ export const useSessionStore = () => {
 
   const addClient = async (
     tableNumber: number,
-    clientData: { name: string; phone?: string; email?: string; cep?: string; bairro?: string; genero?: string }
+    clientData: { name: string; phone?: string; email?: string; cep?: string; bairro?: string; genero?: string; faixa_etaria?: string; origem_conhecimento?: string }
   ) => {
     if (authLoading || !user?.id) {
       toast.error("Usuário não autenticado. Faça login novamente.");
@@ -294,8 +296,10 @@ export const useSessionStore = () => {
         cep: clientData.cep,
         bairro: clientData.bairro,
         genero: clientData.genero,
+        faixa_etaria: clientData.faixa_etaria,
+        origem_conhecimento: clientData.origem_conhecimento,
         business_unit_id: businessUnitId,
-      })
+      } as any)
       .select()
       .single();
 
