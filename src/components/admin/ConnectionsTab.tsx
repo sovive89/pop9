@@ -55,6 +55,10 @@ export function ConnectionsTab() {
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return views.filter((view) => {
+      // Catálogo completo permanece intacto para reutilização futura no Pop9 Hub.
+      // O ERP exibe apenas conexões utilizadas diretamente na operação.
+      if (view.definition.type === "IMPORT" || view.definition.type === "SUPPORT") return false;
+      if (view.definition.category === "ECOMMERCE") return false;
       if (category !== "all" && view.definition.category !== category) return false;
       if (type !== "all" && view.definition.type !== type) return false;
       if (status === "connected" && view.status !== "CONNECTED") return false;
