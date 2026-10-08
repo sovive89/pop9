@@ -34,6 +34,19 @@ Passam a existir dois produtos independentes:
 5. **`.env` sai do versionamento**, entra no `.gitignore`, e fica só o `.env.example` sem valores reais. *(Executado na etapa 7 do plano, não agora.)*
 6. **Nada de camadas futuras agora:** não estruturar canonical, MDM, analytics, insights, predictions, Event Bus, Data Lake, RAG etc. O Hub nasce **mínimo e limpo**; essas camadas serão definidas depois, num projeto arquitetural próprio.
 
+## Critério de classificação de Conexões/Integrações (registrado em 08/10/2026)
+
+Detalha o critério 1 acima para orientar a **etapa 4**. É apenas uma decisão registrada: **a etapa 4 ainda não foi executada** e nenhuma integração mudou de lugar no código.
+
+**Fica no Pop9 ERP** toda integração que serve à operação do próprio restaurante, de dentro para fora (uso diário de balcão, cozinha e caixa):
+1. **Comunicação com o cliente**, ex.: WhatsApp (já implementado).
+2. **Pagamento**: maquininha, gateway, PIX e qualquer integração de fechamento de conta.
+3. **Delivery e canal de venda direto da loja**: inclui explicitamente **iFood** e **99Food** (ainda não implementados no código, só citados na documentação), além de link de pedido próprio e impressora térmica.
+
+**Vai para o Pop9 Hub** os conectores de POS concorrentes que funcionam como **fonte de dados** para consolidação entre lojas/unidades (leitura e análise, não operação diária), ex.: Saipos, Consumer, Linx, Colibri, Everest, Sischef.
+
+**Caso nos dois lados:** se uma mesma integração (ex.: iFood) precisar tanto receber pedido (operação → ERP) quanto fornecer relatório consolidado de vendas entre lojas (análise → Hub), ela pode existir nos dois produtos, cada um implementando só a parte que lhe interessa, sem compartilhar código ou banco.
+
 ## O que o ERP mantém
 
 Tudo o que já existe (ver tabela de módulos no diagnóstico), incluindo integrações operacionais (delivery, pagamentos, fiscal, comunicação, hardware, contabilidade), AI Studio do ERP (geração/edição de imagem e texto ligados ao cardápio) e dashboards/relatórios operacionais de uma unidade.
