@@ -19,16 +19,22 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
 /** Filtro por papel na arquitetura. É a distinção que mais importa na hora
  * de procurar algo aqui: "quero ligar um canal de venda" e "quero puxar os
  * dados do meu PDV antigo" são tarefas diferentes. */
+const VISIBLE_CATEGORIES: IntegrationCategory[] = [
+  "DELIVERY", "COMMUNICATION", "MENU", "PAYMENTS", "MANAGEMENT", "AI",
+];
+const VISIBLE_AI = new Set(["openai", "anthropic", "google-gemini", "xai-grok"]);
+
 const TYPE_OPTIONS: { value: IntegrationType | "all"; label: string }[] = [
   { value: "all", label: "Todos os tipos" },
-  ...(Object.entries(TYPE_LABELS) as [IntegrationType, string][]).map(([value, label]) => ({ value, label })),
+  { value: "OPERATIONAL", label: TYPE_LABELS.OPERATIONAL },
+  { value: "SUPPORT", label: TYPE_LABELS.SUPPORT },
 ];
 
 const CATEGORY_OPTIONS: { value: IntegrationCategory | "all"; label: string }[] = [
   { value: "all", label: "Todas as categorias" },
-  ...(Object.entries(CATEGORY_LABELS) as [IntegrationCategory, string][]).map(([value, label]) => ({
+  ...VISIBLE_CATEGORIES.map((value) => ({
+    label: CATEGORY_LABELS[value],
     value,
-    label,
   })),
 ];
 
@@ -57,8 +63,9 @@ export function ConnectionsTab() {
     return views.filter((view) => {
       // Catálogo completo permanece intacto para reutilização futura no Pop9 Hub.
       // O ERP exibe apenas conexões utilizadas diretamente na operação.
-      if (view.definition.type === "IMPORT" || view.definition.type === "SUPPORT") return false;
-      if (view.definition.category === "ECOMMERCE") return false;
+      if (!VISIBLE_CATEGORIES.includes(view.definition.category)) return false;
+      if (view.definition.type === "IMPORT") return false;
+      if (view.definition.category === "AI" && !VISIBLE_AI.has(view.definition.slug)) return false;
       if (category !== "all" && view.definition.category !== category) return false;
       if (type !== "all" && view.definition.type !== type) return false;
       if (status === "connected" && view.status !== "CONNECTED") return false;
