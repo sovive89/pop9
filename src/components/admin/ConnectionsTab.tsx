@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AIConnectionsPanel } from "@/components/admin/connections/AIConnectionsPanel";
 import { IntegrationGrid } from "@/components/admin/connections/IntegrationGrid";
 import { IntegrationConfigModal } from "@/components/admin/connections/IntegrationConfigModal";
 import { CATEGORY_LABELS, TYPE_LABELS } from "@/components/admin/connections/types";
@@ -144,6 +145,8 @@ export function ConnectionsTab() {
           </SelectContent>
         </Select>
       </div>
+
+      <AIConnectionsPanel />
 
       {tableMissing && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-muted-foreground">
