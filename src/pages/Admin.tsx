@@ -17,6 +17,7 @@ import {
   Printer,
   QrCode,
   Building2,
+  FolderOpen,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -31,6 +32,7 @@ import StockTab from "@/components/admin/StockTab";
 import PrintersTab from "@/components/admin/PrintersTab";
 import QrCodesTab from "@/components/admin/QrCodesTab";
 import BusinessUnitsTab from "@/components/admin/BusinessUnitsTab";
+import DocumentsTab from "@/components/admin/DocumentsTab";
 import {
   SidebarProvider,
   Sidebar,
@@ -48,7 +50,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-type SectionKey = "menu" | "users" | "password" | "connections" | "hub" | "crm" | "stock" | "printers" | "qrcodes" | "units";
+type SectionKey = "menu" | "users" | "password" | "connections" | "hub" | "crm" | "stock" | "printers" | "qrcodes" | "units" | "documents";
 
 const SECTIONS: { key: SectionKey; label: string; icon: LucideIcon }[] = [
   { key: "menu", label: "Cardápio", icon: UtensilsCrossed },
@@ -59,6 +61,7 @@ const SECTIONS: { key: SectionKey; label: string; icon: LucideIcon }[] = [
   { key: "crm", label: "CRM", icon: Contact },
   { key: "stock", label: "Estoque", icon: Package },
   { key: "printers", label: "Impressoras", icon: Printer },
+  { key: "documents", label: "Central de Documentos", icon: FolderOpen },
   { key: "qrcodes", label: "QR Codes", icon: QrCode },
   { key: "units", label: "Unidades", icon: Building2 },
 ];
@@ -80,12 +83,15 @@ function SectionMenuButton({
 }) {
   const { isMobile, setOpenMobile } = useSidebar();
   const Icon = section.icon;
+  const descriptions: Record<SectionKey, string> = {
+    menu: "Gerencie produtos e categorias do cardápio.", users: "Gerencie os acessos dos funcionários.", password: "Altere as credenciais de acesso.", connections: "Configure integrações externas.", hub: "Integração futura com o Pop9 Hub.", crm: "Consulte e organize os clientes.", stock: "Controle insumos e movimentações.", printers: "Cadastre impressoras e configure os gatilhos disponíveis.", documents: "Consulte fichas técnicas e documentos do estabelecimento.", qrcodes: "Gerencie os códigos QR.", units: "Gerencie as unidades do estabelecimento."
+  };
 
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
         isActive={isActive}
-        tooltip={section.label}
+        tooltip={`${section.label} — ${descriptions[section.key]}`}
         onClick={() => {
           onSelect();
           if (isMobile) setOpenMobile(false);
@@ -251,6 +257,7 @@ const Admin = () => {
             {activeSection === "crm" && <CRMTab />}
             {activeSection === "stock" && <StockTab />}
             {activeSection === "printers" && <PrintersTab />}
+            {activeSection === "documents" && <DocumentsTab />}
             {activeSection === "qrcodes" && <QrCodesTab />}
             {activeSection === "units" && <BusinessUnitsTab />}
             {activeSection === "connections" && <ConnectionsTab />}
