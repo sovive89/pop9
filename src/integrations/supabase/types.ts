@@ -322,6 +322,8 @@ export type Database = {
           id: string
           key: string
           label: string
+          icon_name: string | null
+          icon_color: string | null
           sort_order: number
         }
         Insert: {
@@ -331,6 +333,8 @@ export type Database = {
           id?: string
           key: string
           label: string
+          icon_name: string | null
+          icon_color: string | null
           sort_order?: number
         }
         Update: {
