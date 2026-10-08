@@ -12,6 +12,7 @@ import {
   ChefHat,
   Settings,
   Plug,
+  Network,
   Contact,
   Printer,
   QrCode,
@@ -24,6 +25,7 @@ import MenuTab from "@/components/admin/MenuTab";
 import UsersTab from "@/components/admin/UsersTab";
 import ResetPasswordTab from "@/components/admin/ResetPasswordTab";
 import { ConnectionsTab } from "@/components/admin/ConnectionsTab";
+import { Pop9HubTab } from "@/components/admin/Pop9HubTab";
 import CRMTab from "@/components/admin/CRMTab";
 import StockTab from "@/components/admin/StockTab";
 import PrintersTab from "@/components/admin/PrintersTab";
@@ -46,13 +48,14 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-type SectionKey = "menu" | "users" | "password" | "connections" | "crm" | "stock" | "printers" | "qrcodes" | "units";
+type SectionKey = "menu" | "users" | "password" | "connections" | "hub" | "crm" | "stock" | "printers" | "qrcodes" | "units";
 
 const SECTIONS: { key: SectionKey; label: string; icon: LucideIcon }[] = [
   { key: "menu", label: "Cardápio", icon: UtensilsCrossed },
   { key: "users", label: "Usuários", icon: Users },
   { key: "password", label: "Senha", icon: KeyRound },
   { key: "connections", label: "Conexões", icon: Plug },
+  { key: "hub", label: "Pop9 Hub", icon: Network },
   { key: "crm", label: "CRM", icon: Contact },
   { key: "stock", label: "Estoque", icon: Package },
   { key: "printers", label: "Impressoras", icon: Printer },
@@ -251,6 +254,7 @@ const Admin = () => {
             {activeSection === "qrcodes" && <QrCodesTab />}
             {activeSection === "units" && <BusinessUnitsTab />}
             {activeSection === "connections" && <ConnectionsTab />}
+            {activeSection === "hub" && <Pop9HubTab />}
           </div>
         </main>
       </SidebarInset>
