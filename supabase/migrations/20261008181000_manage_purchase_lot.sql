@@ -13,6 +13,7 @@ declare
   v_consumed numeric;
   v_delta numeric;
   v_cost numeric;
+  v_average numeric;
 begin
   select * into v_lote from public.lotes where id = p_lote_id for update;
   if not found or v_lote.origem <> 'compra' or v_lote.cancelado_em is not null then
@@ -75,7 +76,28 @@ begin
       (v_lote.raw_material_id,case when v_delta > 0 then 'entrada' else 'saida' end,
        abs(v_delta),'ajuste',p_lote_id,auth.uid(),v_lote.business_unit_id,v_entry.id,'lote_correcao');
   end if;
+  -- Revalue only the remaining, traceable purchase inventory; never rewrite
+  -- historical movement costs. Keep previous average if none can be valued.
+  select sum(greatest(0, l.quantidade_entrada - coalesce(c.consumed,0)) * l.preco_unitario)
+       / nullif(sum(case when l.preco_unitario is not null
+              then greatest(0,l.quantidade_entrada - coalesce(c.consumed,0)) else 0 end),0)
+    into v_average
+  from public.lotes l
+  left join lateral (
+    select
+      (select coalesce(sum(sm.quantity),0) from public.stock_movements sm
+       where sm.lote_id=l.id and sm.type='saida' and sm.reference_type is distinct from 'lote_correcao')
+      + (select coalesce(sum(pi.quantity_used),0) from public.production_batch_inputs pi
+         where pi.lote_id=l.id) as consumed
+  ) c on true
+  where l.raw_material_id=v_lote.raw_material_id
+    and l.business_unit_id=v_lote.business_unit_id
+    and l.cancelado_em is null and l.origem='compra';
+  if v_average is not null then
+    update public.raw_materials set average_cost=v_average, updated_at=now()
+    where id=v_lote.raw_material_id and business_unit_id=v_lote.business_unit_id;
+  end if;
 end;
-$$;
+$;
 revoke all on function public.manage_purchase_lot(uuid,text,jsonb) from public;
 grant execute on function public.manage_purchase_lot(uuid,text,jsonb) to authenticated;
