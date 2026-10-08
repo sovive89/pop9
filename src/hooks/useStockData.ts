@@ -194,6 +194,7 @@ export const useStockData = () => {
     const { data: lotesData, error } = await supabase
       .from("lotes")
       .select("*")
+      .is("cancelado_em", null)
       .order("validade", { ascending: true, nullsFirst: false });
     if (error) {
       // Tabela pode ainda não existir localmente se a migration
@@ -622,6 +623,19 @@ export const useStockData = () => {
     return true;
   };
 
+  const managePurchaseLot = async (loteId: string, action: "edit" | "cancel", data?: Record<string, unknown>) => {
+    const { error } = await supabase.rpc("manage_purchase_lot" as any, {
+      p_lote_id: loteId, p_action: action, p_data: data ?? {},
+    } as any);
+    if (error) {
+      toast.error("Não foi possível alterar o lote: " + error.message);
+      return false;
+    }
+    toast.success(action === "cancel" ? "Lote cancelado com histórico preservado" : "Lote atualizado");
+    await Promise.all([loadRawMaterials(), loadAlerts(), loadLotes()]);
+    return true;
+  };
+
   return {
     rawMaterials,
     suppliers,
@@ -633,6 +647,7 @@ export const useStockData = () => {
     refreshAll,
     createRawMaterial,
     registerPurchase,
+    managePurchaseLot,
     createSupplier,
     createRecipe,
     produceBatch,
