@@ -1,0 +1,3 @@
+As migrations SQL deste arquivo colidem com o schema real do Pop9.
+NAO RODAR. Mantido apenas como referencia de ideias.
+Ver secao "O QUE DESCARTAR DO PACK ANTERIOR" no 1-PLANO.md.

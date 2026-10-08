@@ -1,0 +1,968 @@
+import { useState, useMemo } from "react";
+import {
+  Flame,
+  Plus,
+  Package,
+  Factory,
+  Truck,
+  AlertTriangle,
+  Tag,
+  Trash2,
+  Search,
+  CalendarClock,
+  Boxes,
+} from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { useStockData, ProductionRecipeInput, ItemType, FichaTipo, alocarFefo } from "@/hooks/useStockData";
+
+type SubView = "insumos" | "producao" | "fornecedores";
+
+const STATUS_LABELS: Record<string, string> = {
+  valido: "Válido",
+  vence_hoje: "Vence hoje",
+  vence_em_breve: "Vence em breve",
+  vencido: "Vencido",
+  sem_validade: "Sem validade",
+};
+const STATUS_COLORS: Record<string, string> = {
+  valido: "bg-success/15 text-success-foreground border-success/30",
+  vence_hoje: "bg-yellow-500/15 text-yellow-600 border-yellow-500/30",
+  vence_em_breve: "bg-yellow-500/15 text-yellow-600 border-yellow-500/30",
+  vencido: "bg-destructive/15 text-destructive border-destructive/30",
+  sem_validade: "bg-muted text-muted-foreground border-border",
+};
+
+const ITEM_TYPE_OPTIONS: { value: ItemType; label: string; hint: string }[] = [
+  { value: "insumo", label: "Insumo", hint: "comprado de fornecedor, usado em receitas" },
+  { value: "semiacabado", label: "Semiacabado", hint: "produzido internamente, vira insumo de outra receita" },
+  { value: "produto_acabado", label: "Produto acabado", hint: "produzido internamente, pronto para venda" },
+  { value: "revenda", label: "Revenda", hint: "comprado pronto, vendido sem transformação" },
+];
+const ITEM_TYPE_LABELS: Record<ItemType, string> = {
+  insumo: "Insumo",
+  semiacabado: "Semiacabado",
+  produto_acabado: "Produto acabado",
+  revenda: "Revenda",
+};
+
+const FICHA_TIPO_OPTIONS: { value: FichaTipo; label: string }[] = [
+  { value: "producao", label: "Produção" },
+  { value: "mise_en_place", label: "Mise en place" },
+  { value: "porcionamento", label: "Porcionamento" },
+];
+
+const StockTab = () => {
+  const {
+    rawMaterials,
+    suppliers,
+    recipes,
+    labels,
+    alerts,
+    lotes,
+    loading,
+    createRawMaterial,
+    registerPurchase,
+    managePurchaseLot,
+    createSupplier,
+    createRecipe,
+    produceBatch,
+  } = useStockData();
+
+  const [view, setView] = useState<SubView>("insumos");
+  const [search, setSearch] = useState("");
+
+  const [newMaterialOpen, setNewMaterialOpen] = useState(false);
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [purchaseTarget, setPurchaseTarget] = useState<string | null>(null);
+  const [editingLotId, setEditingLotId] = useState<string | null>(null);
+  const [newSupplierOpen, setNewSupplierOpen] = useState(false);
+  const [newRecipeOpen, setNewRecipeOpen] = useState(false);
+  const [produceOpen, setProduceOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const [matName, setMatName] = useState("");
+  const [matUnit, setMatUnit] = useState("");
+  const [matItemType, setMatItemType] = useState<ItemType>("insumo");
+  const [matCategoria, setMatCategoria] = useState("");
+  const [matMinStock, setMatMinStock] = useState("");
+
+  const [pQuantity, setPQuantity] = useState("");
+  const [pUnitCost, setPUnitCost] = useState("");
+  const [pTotalCost, setPTotalCost] = useState("");
+  const [pPurchaseUnit, setPPurchaseUnit] = useState("");
+  const [pConversion, setPConversion] = useState("1");
+  const [pSupplierId, setPSupplierId] = useState<string>("");
+  const [pIsBox, setPIsBox] = useState(false);
+  const [pBoxCount, setPBoxCount] = useState("");
+  const [pUnitsPerBox, setPUnitsPerBox] = useState("");
+  const [pValidade, setPValidade] = useState("");
+  const [pNumeroLote, setPNumeroLote] = useState("");
+
+  const [supName, setSupName] = useState("");
+  const [supDocument, setSupDocument] = useState("");
+  const [supPhone, setSupPhone] = useState("");
+  const [supEmail, setSupEmail] = useState("");
+
+  const [recName, setRecName] = useState("");
+  const [recOutputId, setRecOutputId] = useState<string>("");
+  const [recOutputQty, setRecOutputQty] = useState("");
+  const [recShelfDays, setRecShelfDays] = useState("");
+  const [recTipo, setRecTipo] = useState<FichaTipo>("producao");
+  const [recPerdaEsperada, setRecPerdaEsperada] = useState("");
+  const [recTempoProducao, setRecTempoProducao] = useState("");
+  const [recInputs, setRecInputs] = useState<ProductionRecipeInput[]>([{ rawMaterialId: "", quantity: 0 }]);
+
+  const [prodRecipeId, setProdRecipeId] = useState<string>("");
+  const [prodQuantity, setProdQuantity] = useState("");
+  const [prodNotes, setProdNotes] = useState("");
+  const [prodInputs, setProdInputs] = useState<{ rawMaterialId: string; quantityUsed: number }[]>([]);
+
+  // Prévia do FEFO: de qual(is) lote(s) cada insumo do "Produzir Lote" vai
+  // sair, antes de confirmar. Puramente informativo — quem decide de
+  // verdade, na hora de salvar, é a mesma função (alocarFefo) rodando
+  // dentro de produceBatch, com os mesmos dados.
+  const fefoPreview = useMemo(() => {
+    const preview: Record<string, ReturnType<typeof alocarFefo>> = {};
+    prodInputs.forEach((inp) => {
+      if (!inp.rawMaterialId || inp.quantityUsed <= 0) return;
+      preview[inp.rawMaterialId] = alocarFefo(inp.rawMaterialId, inp.quantityUsed, lotes);
+    });
+    return preview;
+  }, [prodInputs, lotes]);
+
+  const materialsById = useMemo(
+    () => Object.fromEntries(rawMaterials.map((m) => [m.id, m])),
+    [rawMaterials]
+  );
+
+  const filteredMaterials = rawMaterials.filter((m) =>
+    m.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const resetMaterialForm = () => {
+    setMatName("");
+    setMatUnit("");
+    setMatItemType("insumo");
+    setMatCategoria("");
+    setMatMinStock("");
+  };
+
+  const resetPurchaseForm = () => {
+    setPQuantity("");
+    setPUnitCost("");
+    setPTotalCost("");
+    setPPurchaseUnit("");
+    setPConversion("1");
+    setPSupplierId("");
+    setPIsBox(false);
+    setPBoxCount("");
+    setPUnitsPerBox("");
+    setPValidade("");
+    setPNumeroLote("");
+    setPurchaseTarget(null);
+    setEditingLotId(null);
+  };
+
+  const resetSupplierForm = () => {
+    setSupName("");
+    setSupDocument("");
+    setSupPhone("");
+    setSupEmail("");
+  };
+
+  const resetRecipeForm = () => {
+    setRecName("");
+    setRecOutputId("");
+    setRecOutputQty("");
+    setRecShelfDays("");
+    setRecTipo("producao");
+    setRecPerdaEsperada("");
+    setRecTempoProducao("");
+    setRecInputs([{ rawMaterialId: "", quantity: 0 }]);
+  };
+
+  const resetProduceForm = () => {
+    setProdRecipeId("");
+    setProdQuantity("");
+    setProdNotes("");
+    setProdInputs([]);
+  };
+
+  const handleCreateMaterial = async () => {
+    if (!matName.trim() || !matUnit.trim()) return;
+    setSaving(true);
+    const ok = await createRawMaterial({
+      name: matName.trim(),
+      unit: matUnit.trim(),
+      itemType: matItemType,
+      minStock: Number(matMinStock) || 0,
+      categoria: matCategoria.trim() || null,
+    });
+    setSaving(false);
+    if (ok) {
+      setNewMaterialOpen(false);
+      resetMaterialForm();
+    }
+  };
+
+  const openPurchase = (rawMaterialId: string) => {
+    resetPurchaseForm();
+    const material = materialsById[rawMaterialId];
+    const previous = lotes
+      .filter((l) => l.rawMaterialId === rawMaterialId && l.origem === "compra")
+      .sort((a, b) => b.dataEntrada.localeCompare(a.dataEntrada))[0];
+    // Prefill only; all values remain independently editable.
+    setPPurchaseUnit(previous?.unidadeCompra || material?.unit || "");
+    setPConversion(String(previous?.fatorConversao ?? 1));
+    setPQuantity(previous?.quantidadeCompra != null ? String(previous.quantidadeCompra) : "");
+    setPTotalCost(previous?.custoTotal != null ? String(previous.custoTotal) : "");
+    setPUnitCost(previous?.custoTotal != null && previous?.quantidadeCompra
+      ? String(previous.custoTotal / previous.quantidadeCompra) : "");
+    setPSupplierId(previous?.fornecedorId || "");
+    setPIsBox(previous?.caixas != null);
+    setPBoxCount(previous?.caixas != null ? String(previous.caixas) : "");
+    setPUnitsPerBox(previous?.conteudoPorCaixa != null ? String(previous.conteudoPorCaixa) : "");
+    setPValidade(previous?.validade || "");
+    setPNumeroLote(""); // Never reuse the previous lot identifier.
+    setEditingLotId(null);
+    setPurchaseTarget(rawMaterialId);
+    setPurchaseOpen(true);
+  };
+
+  const openEditLot = (lot: (typeof lotes)[number]) => {
+    resetPurchaseForm();
+    setEditingLotId(lot.id);
+    setPurchaseTarget(lot.rawMaterialId);
+    setPQuantity(String(lot.quantidadeCompra ?? lot.quantidadeEntrada));
+    setPPurchaseUnit(lot.unidadeCompra || materialsById[lot.rawMaterialId]?.unit || "");
+    setPConversion(String(lot.fatorConversao ?? 1));
+    const cost = lot.custoTotal ?? (lot.precoUnitario == null ? null : lot.precoUnitario * lot.quantidadeEntrada);
+    setPTotalCost(cost == null ? "" : String(cost));
+    setPUnitCost(cost == null ? "" : String(cost / (lot.quantidadeCompra ?? lot.quantidadeEntrada)));
+    setPSupplierId(lot.fornecedorId || "");
+    setPValidade(lot.validade || "");
+    setPNumeroLote(lot.numeroLote);
+    setPIsBox(lot.caixas != null);
+    setPBoxCount(lot.caixas == null ? "" : String(lot.caixas));
+    setPUnitsPerBox(lot.conteudoPorCaixa == null ? "" : String(lot.conteudoPorCaixa));
+    setPurchaseOpen(true);
+  };
+
+  const handleRegisterPurchase = async () => {
+    if (!purchaseTarget || !pQuantity || !pPurchaseUnit.trim()) return;
+    const purchaseQuantity = Number(pQuantity);
+    const conversionFactor = Number(pConversion);
+    if (!Number.isFinite(purchaseQuantity) || purchaseQuantity <= 0 ||
+        !Number.isFinite(conversionFactor) || conversionFactor <= 0) return;
+    if (pIsBox && (!(Number(pBoxCount) > 0) || !(Number(pUnitsPerBox) > 0))) return;
+    const normalizedQuantity = purchaseQuantity * conversionFactor;
+    const totalCost = pTotalCost === "" ? null : Number(pTotalCost);
+    if (totalCost !== null && (!Number.isFinite(totalCost) || totalCost < 0)) return;
+    setSaving(true);
+    const ok = editingLotId
+      ? await managePurchaseLot(editingLotId, "edit", {
+          quantidade_compra: purchaseQuantity,
+          fator_conversao: conversionFactor,
+          unidade_compra: pPurchaseUnit,
+          custo_total: totalCost,
+          fornecedor_id: pSupplierId || null,
+          validade: pValidade || null,
+          numero_lote: pNumeroLote.trim(),
+          caixas: pIsBox ? Number(pBoxCount) : null,
+          conteudo_por_caixa: pIsBox ? Number(pUnitsPerBox) : null,
+        })
+      : await registerPurchase({
+      rawMaterialId: purchaseTarget,
+      quantity: normalizedQuantity,
+      purchaseQuantity,
+      purchaseUnit: pPurchaseUnit,
+      conversionFactor,
+      totalCost,
+      unitCost: totalCost === null ? null : totalCost / normalizedQuantity,
+      supplierId: pSupplierId || null,
+      boxCount: pIsBox ? Number(pBoxCount) : undefined,
+      unitsPerBox: pIsBox ? Number(pUnitsPerBox) : undefined,
+      validade: pValidade || null,
+      numeroLote: pNumeroLote.trim() || null,
+    });
+    setSaving(false);
+    if (ok) {
+      setPurchaseOpen(false);
+      resetPurchaseForm();
+    }
+  };
+
+  const handleCreateSupplier = async () => {
+    if (!supName.trim()) return;
+    setSaving(true);
+    const ok = await createSupplier({
+      name: supName.trim(),
+      document: supDocument.trim(),
+      phone: supPhone.trim(),
+      email: supEmail.trim(),
+    });
+    setSaving(false);
+    if (ok) {
+      setNewSupplierOpen(false);
+      resetSupplierForm();
+    }
+  };
+
+  const updateRecInput = (idx: number, patch: Partial<ProductionRecipeInput>) => {
+    setRecInputs((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  };
+
+  const handleCreateRecipe = async () => {
+    if (!recName.trim() || !recOutputId || !recOutputQty) return;
+    setSaving(true);
+    const ok = await createRecipe({
+      name: recName.trim(),
+      outputRawMaterialId: recOutputId,
+      outputQuantity: Number(recOutputQty),
+      shelfLifeDays: recShelfDays ? Number(recShelfDays) : null,
+      tipo: recTipo,
+      perdaEsperada: recPerdaEsperada ? Number(recPerdaEsperada) : null,
+      tempoProducao: recTempoProducao ? Number(recTempoProducao) : null,
+      inputs: recInputs.filter((i) => i.rawMaterialId && i.quantity > 0),
+    });
+    setSaving(false);
+    if (ok) {
+      setNewRecipeOpen(false);
+      resetRecipeForm();
+    }
+  };
+
+  const openProduce = (recipeId: string) => {
+    const recipe = recipes.find((r) => r.id === recipeId);
+    setProdRecipeId(recipeId);
+    setProdQuantity(recipe ? String(recipe.outputQuantity) : "");
+    setProdInputs(recipe ? recipe.inputs.map((i) => ({ rawMaterialId: i.rawMaterialId, quantityUsed: i.quantity })) : []);
+    setProduceOpen(true);
+  };
+
+  const handleProduceBatch = async () => {
+    if (!prodRecipeId || !prodQuantity) return;
+    setSaving(true);
+    const ok = await produceBatch({
+      recipeId: prodRecipeId,
+      quantityProduced: Number(prodQuantity),
+      notes: prodNotes,
+      inputsUsed: prodInputs.filter((i) => i.rawMaterialId && i.quantityUsed > 0),
+    });
+    setSaving(false);
+    if (ok) {
+      setProduceOpen(false);
+      resetProduceForm();
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-12">
+        <Flame className="h-6 w-6 animate-pulse text-primary" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {alerts.length > 0 && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3">
+          <div className="flex items-center gap-2 text-destructive text-sm font-medium mb-2">
+            <AlertTriangle className="h-4 w-4" />
+            {alerts.length} insumo{alerts.length > 1 ? "s" : ""} no estoque mínimo ou abaixo
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {alerts.map((a) => (
+              <Badge key={a.id} variant="outline" className="border-destructive/40 text-destructive">
+                {a.name}: {a.currentStock} {a.unit} (mín. {a.minStock})
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex gap-1 rounded-xl border border-border bg-muted/30 p-1">
+        {[
+          { key: "insumos" as const, label: "Insumos", icon: Package },
+          { key: "producao" as const, label: "Produção", icon: Factory },
+          { key: "fornecedores" as const, label: "Fornecedores", icon: Truck },
+        ].map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => setView(key)}
+            className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs sm:text-sm font-medium transition-colors ${
+              view === key
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            }`}
+          >
+            <Icon className="h-4 w-4" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === "insumos" && (
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar insumo..."
+                className="h-10 pl-9"
+              />
+            </div>
+            <Button onClick={() => setNewMaterialOpen(true)} size="icon" className="h-10 w-10 shrink-0">
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {filteredMaterials.map((m) => {
+            const low = m.currentStock <= m.minStock;
+            return (
+              <div key={m.id} className="rounded-xl border border-border bg-card p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold text-foreground flex items-center gap-2">
+                      {m.name}
+                      {m.itemType !== "insumo" && (
+                        <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">
+                          {ITEM_TYPE_LABELS[m.itemType]}
+                        </Badge>
+                      )}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {m.categoria ? `${m.categoria} · ` : ""}Custo médio: R$ {m.averageCost.toFixed(2)} / {m.unit}
+                    </p>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => openPurchase(m.id)}>
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Entrada
+                  </Button>
+                </div>
+                <div className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
+                  low ? "bg-destructive/10 text-destructive" : "bg-muted/50 text-foreground"
+                }`}>
+                  <span>
+                    Estoque: <strong>{m.currentStock}</strong> {m.unit}
+                  </span>
+                  <span className="text-xs opacity-80">mín. {m.minStock} {m.unit}</span>
+                </div>
+              </div>
+            );
+          })}
+          {filteredMaterials.length === 0 && (
+            <p className="text-center text-muted-foreground py-8">Nenhum insumo cadastrado</p>
+          )}
+        </div>
+      )}
+
+      {view === "producao" && (
+        <div className="space-y-5">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-foreground">Receitas de produção</h3>
+              <Button size="sm" variant="outline" onClick={() => setNewRecipeOpen(true)}>
+                <Plus className="h-3.5 w-3.5 mr-1" /> Nova receita
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {recipes.map((r) => (
+                <div key={r.id} className="rounded-xl border border-border bg-card p-4 flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-foreground">{r.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Rende {r.outputQuantity} {materialsById[r.outputRawMaterialId]?.unit ?? ""} de{" "}
+                      {materialsById[r.outputRawMaterialId]?.name ?? "?"}
+                      {r.shelfLifeDays ? ` · validade ${r.shelfLifeDays}d` : ""}
+                    </p>
+                  </div>
+                  <Button size="sm" onClick={() => openProduce(r.id)}>
+                    <Factory className="h-3.5 w-3.5 mr-1" /> Produzir
+                  </Button>
+                </div>
+              ))}
+              {recipes.length === 0 && (
+                <p className="text-center text-muted-foreground py-6 text-sm">Nenhuma receita cadastrada</p>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-1.5">
+              <Tag className="h-4 w-4" /> Etiquetas de lotes produzidos
+            </h3>
+            <div className="space-y-2">
+              {labels.map((l) => (
+                <div key={l.batchId} className="rounded-xl border border-border bg-card p-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="font-medium text-foreground">{l.productName}</p>
+                    <Badge variant="outline" className={STATUS_COLORS[l.statusValidade]}>
+                      {STATUS_LABELS[l.statusValidade]}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Lote {l.batchCode} · {l.quantityProduced} {l.unit} · produzido em{" "}
+                    {new Date(l.producedAt).toLocaleDateString("pt-BR")}
+                    {l.expiresAt && ` · válido até ${new Date(l.expiresAt).toLocaleDateString("pt-BR")}`}
+                  </p>
+                </div>
+              ))}
+              {labels.length === 0 && (
+                <p className="text-center text-muted-foreground py-6 text-sm">Nenhum lote produzido ainda</p>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-1.5">
+              <Boxes className="h-4 w-4" /> Lotes (compra + produção)
+            </h3>
+            <div className="space-y-2">
+              {lotes.map((l) => (
+                <div key={l.id} className="rounded-xl border border-border bg-card p-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="font-medium text-foreground">
+                      {materialsById[l.rawMaterialId]?.name ?? "?"}
+                    </p>
+                    <Badge variant="outline" className={STATUS_COLORS[l.statusValidade]}>
+                      {STATUS_LABELS[l.statusValidade]}
+                    </Badge>
+                  </div>
+                  {l.origem === "compra" && (
+                    <div className="flex gap-2 mb-2">
+                      <Button size="sm" variant="outline" disabled={saving} onClick={() => openEditLot(l)}>Editar</Button>
+                      <Button size="sm" variant="destructive" disabled={saving} onClick={async () => {
+                        if (!window.confirm(`Cancelar lote ${l.numeroLote}? O histórico será preservado. Lotes consumidos não podem ser cancelados.`)) return;
+                        setSaving(true);
+                        try { await managePurchaseLot(l.id, "cancel"); }
+                        finally { setSaving(false); }
+                      }}>Excluir</Button>
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <CalendarClock className="h-3 w-3" />
+                    Lote {l.numeroLote} · {l.origem === "compra" ? "compra" : "produção"} ·{" "}
+                    {l.quantidadeRestante} / {l.quantidadeEntrada} {materialsById[l.rawMaterialId]?.unit ?? ""} restantes
+                    {l.validade && ` · válido até ${new Date(l.validade).toLocaleDateString("pt-BR")}`}
+                  </p>
+                </div>
+              ))}
+              {lotes.length === 0 && (
+                <p className="text-center text-muted-foreground py-6 text-sm">
+                  Nenhum lote registrado ainda (aplique a migration de lotes para ativar esta seção)
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {view === "fornecedores" && (
+        <div className="space-y-3">
+          <div className="flex justify-end">
+            <Button onClick={() => setNewSupplierOpen(true)} size="sm">
+              <Plus className="h-3.5 w-3.5 mr-1" /> Novo fornecedor
+            </Button>
+          </div>
+          {suppliers.map((s) => (
+            <div key={s.id} className="rounded-xl border border-border bg-card p-4">
+              <p className="font-medium text-foreground">{s.name}</p>
+              <p className="text-xs text-muted-foreground">
+                {[s.document, s.phone, s.email].filter(Boolean).join(" · ") || "Sem contato registrado"}
+              </p>
+            </div>
+          ))}
+          {suppliers.length === 0 && (
+            <p className="text-center text-muted-foreground py-8">Nenhum fornecedor cadastrado</p>
+          )}
+        </div>
+      )}
+
+      <Dialog open={newMaterialOpen} onOpenChange={(o) => { setNewMaterialOpen(o); if (!o) resetMaterialForm(); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Novo Insumo</DialogTitle>
+            <DialogDescription>
+              Cadastre um insumo bruto (comprado) ou um item que só existe depois de produzido internamente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Nome</Label>
+              <Input value={matName} onChange={(e) => setMatName(e.target.value)} placeholder="Ex: Carne bovina" />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Unidade de medida</Label>
+              <Input value={matUnit} onChange={(e) => setMatUnit(e.target.value)} placeholder="kg, un, l, porção..." />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Estoque mínimo (para alerta)</Label>
+              <Input type="number" value={matMinStock} onChange={(e) => setMatMinStock(e.target.value)} placeholder="0" />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Categoria (opcional)</Label>
+              <Input value={matCategoria} onChange={(e) => setMatCategoria(e.target.value)} placeholder="Ex: carnes, bebidas, embalagens..." />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Tipo de item</Label>
+              <div className="grid grid-cols-1 gap-2">
+                {ITEM_TYPE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setMatItemType(opt.value)}
+                    className={`w-full flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                      matItemType === opt.value
+                        ? "border-primary/40 bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 font-medium">
+                      <Factory className="h-4 w-4" /> {opt.label}
+                    </span>
+                    <span className="text-xs opacity-80">{opt.hint}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setNewMaterialOpen(false)} disabled={saving}>Cancelar</Button>
+            <Button onClick={handleCreateMaterial} disabled={saving || !matName.trim() || !matUnit.trim()}>
+              {saving ? "Aguarde..." : "Criar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={purchaseOpen} onOpenChange={(o) => { setPurchaseOpen(o); if (!o) resetPurchaseForm(); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingLotId ? "Editar lote" : "Registrar Entrada"}</DialogTitle>
+            <DialogDescription>
+              {purchaseTarget && `Compra de ${materialsById[purchaseTarget]?.name}. Toda entrada fica salva no histórico.`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Unidade da compra</Label>
+                <Select value={pPurchaseUnit} onValueChange={(v) => {
+                  setPPurchaseUnit(v);
+                  const base = purchaseTarget ? materialsById[purchaseTarget]?.unit : "";
+                  const factor: Record<string, number> = { "kg:g": 1000, "g:kg": 0.001, "L:ml": 1000, "ml:L": 0.001 };
+                  setPConversion(String(v === base ? 1 : factor[`${v}:${base}`] ?? ""));
+                }}>
+                  <SelectTrigger><SelectValue placeholder="Escolha..." /></SelectTrigger>
+                  <SelectContent>
+                    {[...new Set([purchaseTarget ? materialsById[purchaseTarget]?.unit : "", "kg", "g", "L", "ml", "un", "caixa", "pacote", "saco"].filter(Boolean))].map((u) => (
+                      <SelectItem key={u} value={u!}>{u}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Quantidade comprada</Label>
+                <Input type="number" min="0" step="any" value={pQuantity} onChange={(e) => {
+                  const q = e.target.value;
+                  setPQuantity(q);
+                  if (pUnitCost !== "" && q !== "") setPTotalCost(String(Number(q) * Number(pUnitCost)));
+                }} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Equivalência: 1 {pPurchaseUnit || "unidade de compra"} corresponde a quantos {purchaseTarget ? materialsById[purchaseTarget]?.unit : "na unidade de estoque"}?</Label>
+              <Input type="number" min="0" step="any" value={pConversion} onChange={(e) => setPConversion(e.target.value)} placeholder="Informe a conversão exata" />
+              <p className="text-xs text-muted-foreground">
+                Entrada no estoque: {Number(pQuantity) > 0 && Number(pConversion) > 0
+                  ? (Number(pQuantity) * Number(pConversion)).toLocaleString("pt-BR") : "—"} {purchaseTarget ? materialsById[purchaseTarget]?.unit : ""}.
+                Para caixa, pacote ou unidade sem equivalência conhecida, informe a conversão; o sistema não estima pesos.
+              </p>
+            </div>
+            <button type="button" onClick={() => setPIsBox((v) => !v)}
+              className="w-full flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+              <Package className="h-4 w-4" /> {pIsBox ? "✓ " : ""}Detalhar embalagem em caixas (opcional)
+            </button>
+            {pIsBox && <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2"><Label>Nº de caixas</Label>
+                <Input type="number" min="0" step="any" value={pBoxCount} onChange={(e) => setPBoxCount(e.target.value)} /></div>
+              <div className="space-y-2"><Label>Conteúdo por caixa</Label>
+                <Input type="number" min="0" step="any" value={pUnitsPerBox} onChange={(e) => setPUnitsPerBox(e.target.value)} /></div>
+            </div>}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Custo unitário (R$/{pPurchaseUnit || "un"})</Label>
+                <Input type="number" min="0" step="0.01" value={pUnitCost} onChange={(e) => {
+                  setPUnitCost(e.target.value);
+                  setPTotalCost(e.target.value === "" || pQuantity === "" ? "" : String(Number(e.target.value) * Number(pQuantity)));
+                }} />
+              </div>
+              <div className="space-y-2">
+                <Label>Custo total do lote (R$)</Label>
+                <Input type="number" min="0" step="0.01" value={pTotalCost} onChange={(e) => {
+                  setPTotalCost(e.target.value);
+                  setPUnitCost(e.target.value === "" || !(Number(pQuantity) > 0) ? "" : String(Number(e.target.value) / Number(pQuantity)));
+                }} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Fornecedor (opcional)</Label>
+              <Select value={pSupplierId} onValueChange={setPSupplierId}>
+                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                <SelectContent>
+                  {suppliers.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3 border-t border-border pt-3">
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground flex items-center gap-1">
+                  <CalendarClock className="h-3.5 w-3.5" /> Validade (opcional)
+                </Label>
+                <Input type="date" value={pValidade} onChange={(e) => setPValidade(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Nº do lote (opcional)</Label>
+                <Input value={pNumeroLote} onChange={(e) => setPNumeroLote(e.target.value)} placeholder="Gerado automaticamente" />
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setPurchaseOpen(false)} disabled={saving}>Cancelar</Button>
+            <Button onClick={handleRegisterPurchase} disabled={saving || !(Number(pQuantity) > 0) || !(Number(pConversion) > 0) || !pPurchaseUnit}>
+              {saving ? "Aguarde..." : editingLotId ? "Salvar alterações" : "Registrar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={newSupplierOpen} onOpenChange={(o) => { setNewSupplierOpen(o); if (!o) resetSupplierForm(); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Novo Fornecedor</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Nome</Label>
+              <Input value={supName} onChange={(e) => setSupName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">CNPJ/CPF</Label>
+              <Input value={supDocument} onChange={(e) => setSupDocument(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Telefone</Label>
+              <Input value={supPhone} onChange={(e) => setSupPhone(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">E-mail</Label>
+              <Input value={supEmail} onChange={(e) => setSupEmail(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setNewSupplierOpen(false)} disabled={saving}>Cancelar</Button>
+            <Button onClick={handleCreateSupplier} disabled={saving || !supName.trim()}>
+              {saving ? "Aguarde..." : "Criar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={newRecipeOpen} onOpenChange={(o) => { setNewRecipeOpen(o); if (!o) resetRecipeForm(); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Nova Receita de Produção</DialogTitle>
+            <DialogDescription>Defina o porcionamento: quais insumos entram e o que sai.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Nome da receita</Label>
+              <Input value={recName} onChange={(e) => setRecName(e.target.value)} placeholder="Ex: Porcionamento hambúrguer 100g" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Item produzido (saída)</Label>
+                <Select value={recOutputId} onValueChange={setRecOutputId}>
+                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>
+                    {rawMaterials
+                      .filter((m) => m.itemType === "semiacabado" || m.itemType === "produto_acabado")
+                      .map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Rendimento padrão</Label>
+                <Input type="number" value={recOutputQty} onChange={(e) => setRecOutputQty(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Validade padrão (dias, opcional)</Label>
+              <Input type="number" value={recShelfDays} onChange={(e) => setRecShelfDays(e.target.value)} placeholder="Ex: 3" />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Tipo de ficha</Label>
+              <Select value={recTipo} onValueChange={(v) => setRecTipo(v as FichaTipo)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {FICHA_TIPO_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Perda esperada % (opcional)</Label>
+                <Input type="number" value={recPerdaEsperada} onChange={(e) => setRecPerdaEsperada(e.target.value)} placeholder="Ex: 5" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Tempo de produção (min, opcional)</Label>
+                <Input type="number" value={recTempoProducao} onChange={(e) => setRecTempoProducao(e.target.value)} placeholder="Ex: 30" />
+              </div>
+            </div>
+
+            <div className="space-y-2 border-t border-border pt-3">
+              <Label className="text-sm text-muted-foreground">Insumos consumidos por lote</Label>
+              {recInputs.map((inp, idx) => (
+                <div key={idx} className="flex gap-2 items-center">
+                  <Select value={inp.rawMaterialId} onValueChange={(v) => updateRecInput(idx, { rawMaterialId: v })}>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="Insumo..." /></SelectTrigger>
+                    <SelectContent>
+                      {rawMaterials.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number"
+                    className="w-24"
+                    value={inp.quantity || ""}
+                    onChange={(e) => updateRecInput(idx, { quantity: Number(e.target.value) })}
+                    placeholder="Qtd"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setRecInputs((prev) => prev.filter((_, i) => i !== idx))}
+                    className="p-2 text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setRecInputs((prev) => [...prev, { rawMaterialId: "", quantity: 0 }])}
+              >
+                <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar insumo
+              </Button>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setNewRecipeOpen(false)} disabled={saving}>Cancelar</Button>
+            <Button onClick={handleCreateRecipe} disabled={saving || !recName.trim() || !recOutputId || !recOutputQty}>
+              {saving ? "Aguarde..." : "Criar receita"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={produceOpen} onOpenChange={(o) => { setProduceOpen(o); if (!o) resetProduceForm(); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Produzir Lote</DialogTitle>
+            <DialogDescription>
+              Ao confirmar, gera etiqueta automaticamente (código + validade) e credita o item produzido no estoque.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Quantidade produzida (real)</Label>
+              <Input type="number" value={prodQuantity} onChange={(e) => setProdQuantity(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Insumos consumidos (ajuste se necessário)</Label>
+              {prodInputs.map((inp, idx) => {
+                const alocacao = fefoPreview[inp.rawMaterialId];
+                return (
+                  <div key={idx} className="space-y-1">
+                    <div className="flex gap-2 items-center">
+                      <span className="flex-1 text-sm text-foreground">
+                        {materialsById[inp.rawMaterialId]?.name ?? "?"}
+                      </span>
+                      <Input
+                        type="number"
+                        className="w-24"
+                        value={inp.quantityUsed || ""}
+                        onChange={(e) =>
+                          setProdInputs((prev) =>
+                            prev.map((p, i) => (i === idx ? { ...p, quantityUsed: Number(e.target.value) } : p))
+                          )
+                        }
+                      />
+                      <span className="text-xs text-muted-foreground w-8">{materialsById[inp.rawMaterialId]?.unit}</span>
+                    </div>
+                    {alocacao && alocacao.length > 0 && (
+                      <p className="text-[11px] text-muted-foreground pl-1 flex items-center gap-1">
+                        <Boxes className="h-3 w-3 shrink-0" />
+                        FEFO: {alocacao.map((a, i) => (
+                          <span key={i}>
+                            {i > 0 && " + "}
+                            {a.quantidade.toFixed(a.quantidade % 1 === 0 ? 0 : 2)}
+                            {" "}
+                            {a.loteId
+                              ? `do lote ${a.numeroLote}${a.validade ? ` (val. ${new Date(a.validade).toLocaleDateString("pt-BR")})` : ""}`
+                              : "sem lote rastreado"}
+                          </span>
+                        ))}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Observações (opcional)</Label>
+              <Input value={prodNotes} onChange={(e) => setProdNotes(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setProduceOpen(false)} disabled={saving}>Cancelar</Button>
+            <Button onClick={handleProduceBatch} disabled={saving || !prodQuantity}>
+              {saving ? "Aguarde..." : "Confirmar produção"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
+
+export default StockTab;

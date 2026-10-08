@@ -16,6 +16,7 @@ import {
   Eye,
   EyeOff,
   Printer,
+  QrCode,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -34,6 +35,8 @@ export interface ClientInfo {
   cep?: string;
   bairro?: string;
   genero?: string;
+  faixa_etaria?: string;
+  origem_conhecimento?: string;
 }
 
 export interface TableSession {
@@ -87,6 +90,9 @@ const TableSessionPanel = ({
   const [clientCep, setClientCep] = useState("");
   const [clientBairro, setClientBairro] = useState("");
   const [clientGenero, setClientGenero] = useState("");
+  const [clientFaixa, setClientFaixa] = useState("");
+  const [clientOrigem, setClientOrigem] = useState("");
+  const [formStep, setFormStep] = useState<"identification" | "survey">("identification");
   const [nameError, setNameError] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(!session);
 
@@ -105,6 +111,10 @@ const TableSessionPanel = ({
   const [showPassword, setShowPassword] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [showCloseAccount, setShowCloseAccount] = useState(false);
+
+  const [accessCode, setAccessCode] = useState<string | null>(null);
+  const [accessCodeExpiresAt, setAccessCodeExpiresAt] = useState<Date | null>(null);
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
 
   const tableTotal = getTableTotal(orders);
   const [includeServiceCharge, setIncludeServiceCharge] = useState(false);
@@ -142,6 +152,27 @@ const TableSessionPanel = ({
     }
   };
 
+  const handleGenerateAccessCode = async () => {
+    setIsGeneratingCode(true);
+    try {
+      const { data: { session: authSession } } = await supabase.auth.getSession();
+      const { data, error } = await supabase.functions.invoke("customer-checkin", {
+        body: { action: "staff_generate_code", table_number: tableId },
+        headers: authSession ? { Authorization: `Bearer ${authSession.access_token}` } : undefined,
+      });
+      if (error || data?.error) {
+        toast.error(data?.error ?? "Erro ao gerar código");
+        return;
+      }
+      setAccessCode(data.code);
+      setAccessCodeExpiresAt(new Date(data.expires_at));
+    } catch {
+      toast.error("Erro ao gerar código");
+    } finally {
+      setIsGeneratingCode(false);
+    }
+  };
+
   const handleSubmit = () => {
     const error = validateFullName(clientName);
     if (error) {
@@ -155,6 +186,11 @@ const TableSessionPanel = ({
       toast.error("Celular inválido");
       return;
     }
+    setFormStep("survey");
+  };
+
+  const handleFinish = () => {
+    const phoneDigits = clientPhone.replace(/\\D/g, "");
     const clientData = {
       name: clientName.trim(),
       phone: phoneDigits.length >= 10 ? clientPhone : undefined,
@@ -162,6 +198,8 @@ const TableSessionPanel = ({
       cep: clientCep.replace(/\D/g, "").length === 8 ? clientCep.replace(/\D/g, "") : undefined,
       bairro: clientBairro.trim() || undefined,
       genero: clientGenero || undefined,
+      faixa_etaria: clientFaixa || undefined,
+      origem_conhecimento: clientOrigem || undefined,
     };
     if (session) {
       onAddClient(clientData);
@@ -175,6 +213,9 @@ const TableSessionPanel = ({
     setClientCep("");
     setClientBairro("");
     setClientGenero("");
+    setClientFaixa("");
+    setClientOrigem("");
+    setFormStep("identification");
   };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -221,6 +262,38 @@ const TableSessionPanel = ({
                 <span className="text-sm font-semibold text-foreground">{session.clients.length}</span>
               </div>
             </div>
+          )}
+
+          {/* Liberar acesso do cliente (check-in via QR) */}
+          {session && (
+            accessCode ? (
+              <div className="mt-2 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Código de acesso do cliente</p>
+                  <p className="text-2xl font-bold text-primary tracking-widest">{accessCode}</p>
+                  {accessCodeExpiresAt && (
+                    <p className="text-[10px] text-muted-foreground">
+                      Válido até {formatTime(accessCodeExpiresAt)}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={() => { setAccessCode(null); setAccessCodeExpiresAt(null); }}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleGenerateAccessCode}
+                disabled={isGeneratingCode}
+                className="mt-2 w-full flex items-center justify-center gap-2 rounded-lg border border-dashed border-muted-foreground/30 px-4 py-2 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
+              >
+                <QrCode className="h-3.5 w-3.5" />
+                {isGeneratingCode ? "Gerando..." : "Liberar acesso do cliente"}
+              </button>
+            )
           )}
         </div>
 
@@ -285,6 +358,7 @@ const TableSessionPanel = ({
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 {session ? "Novo cliente" : "Registrar primeiro cliente"}
               </p>
+              {formStep === "identification" ? <>
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Nome completo</label>
                 <input
@@ -314,74 +388,30 @@ const TableSessionPanel = ({
                   onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
                 />
               </div>
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">
-                  E-mail <span className="text-muted-foreground/60">(opcional)</span>
+              </> : <div className="space-y-3">
+                <p className="text-sm font-medium">Pesquisa de perfil (opcional)</p>
+                <p className="text-xs text-muted-foreground">Mesa ${String(tableId).padStart(2, "0")} · {clientName.trim()}</p>
+                <label className="block text-sm">E-mail (opcional)<input type="email" value={clientEmail} onChange={e => setClientEmail(e.target.value)} className="mt-1 w-full h-10 rounded-md border bg-background px-3" /></label>
+                <label className="block text-sm">Região administrativa do DF
+                  <select value={clientBairro} onChange={e => setClientBairro(e.target.value)} className="mt-1 w-full h-10 rounded-md border bg-background px-3">
+                    <option value="">Selecione (opcional)</option>
+                    {["Águas Claras","Arniqueira","Brazlândia","Candangolândia","Ceilândia","Cruzeiro","Fercal","Gama","Guará","Itapoã","Jardim Botânico","Lago Norte","Lago Sul","Núcleo Bandeirante","Paranoá","Park Way","Planaltina","Plano Piloto","Recanto das Emas","Riacho Fundo","Riacho Fundo II","Samambaia","Santa Maria","São Sebastião","SCIA/Estrutural","SIA","Sobradinho","Sobradinho II","Sol Nascente/Pôr do Sol","Sudoeste/Octogonal","Taguatinga","Varjão","Vicente Pires","Arapoanga","Água Quente"].sort((a,b)=>a.localeCompare(b,"pt-BR")).map(v=><option key={v} value={v}>{v}</option>)}
+                  </select>
                 </label>
-                <input
-                  type="email"
-                  value={clientEmail}
-                  onChange={(e) => setClientEmail(e.target.value)}
-                  placeholder="email@exemplo.com"
-                  className="mt-1 w-full h-11 rounded-lg border border-border bg-muted px-4 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                  onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">
-                    CEP <span className="text-muted-foreground/60">(opcional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={clientCep}
-                    onChange={(e) => {
-                      const v = e.target.value.replace(/\D/g, "").slice(0, 8);
-                      setClientCep(v.length > 5 ? `${v.slice(0, 5)}-${v.slice(5)}` : v);
-                    }}
-                    placeholder="00000-000"
-                    className="mt-1 w-full h-11 rounded-lg border border-border bg-muted px-4 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                    onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">
-                    Bairro <span className="text-muted-foreground/60">(opcional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={clientBairro}
-                    onChange={(e) => setClientBairro(e.target.value)}
-                    placeholder="Bairro"
-                    maxLength={80}
-                    className="mt-1 w-full h-11 rounded-lg border border-border bg-muted px-4 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                    onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">
-                  Gênero <span className="text-muted-foreground/60">(opcional)</span>
-                </label>
-                <select
-                  value={clientGenero}
-                  onChange={(e) => setClientGenero(e.target.value)}
-                  className="mt-1 w-full h-11 rounded-lg border border-border bg-muted px-4 text-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                >
-                  {GENERO_OPTIONS.map((o) => (
-                    <option key={o.value || "x"} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
+                <label className="block text-sm">Gênero<select value={clientGenero} onChange={e => setClientGenero(e.target.value)} className="mt-1 w-full h-10 rounded-md border bg-background px-3">{GENERO_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></label>
+                <label className="block text-sm">Faixa etária<select value={clientFaixa} onChange={e => setClientFaixa(e.target.value)} className="mt-1 w-full h-10 rounded-md border bg-background px-3"><option value="">Selecione (opcional)</option>{["18–24","25–34","35–44","45–54","55–64","65 ou mais","Menor de 18"].map(v=><option key={v} value={v}>{v}</option>)}</select></label>
+                <label className="block text-sm">Como conheceu o bar?<select value={clientOrigem} onChange={e => setClientOrigem(e.target.value)} className="mt-1 w-full h-10 rounded-md border bg-background px-3"><option value="">Selecione (opcional)</option>{["Indicação de amigos","Instagram","Google/Maps","Passando na rua","Já conhecia","Evento","Outro"].map(v=><option key={v} value={v}>{v}</option>)}</select></label>
+                <Button type="button" variant="outline" className="w-full" onClick={handleFinish}>Pular pesquisa e continuar para o pedido</Button>
+              </div>}
               <div className="flex gap-2">
                 {session && (
                   <Button variant="outline" className="flex-1" onClick={() => setShowAddForm(false)}>
                     Cancelar
                   </Button>
                 )}
-                <Button className="flex-1 gap-2" onClick={handleSubmit}>
+                <Button className="flex-1 gap-2" onClick={formStep === "identification" ? handleSubmit : handleFinish}>
                   <UserPlus className="h-4 w-4" />
-                  {session ? "Adicionar" : "Iniciar Sessão"}
+                  {formStep === "identification" ? "Continuar" : session ? "Adicionar e continuar" : "Iniciar comanda"}
                 </Button>
                 {!session && (
                   <Button variant="outline" className="flex-1" onClick={onClose}>
