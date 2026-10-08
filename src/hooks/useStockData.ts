@@ -29,6 +29,12 @@ export interface Lote {
   validade: string | null;
   fornecedorId: string | null;
   precoUnitario: number | null;
+  unidadeCompra: string | null;
+  quantidadeCompra: number | null;
+  fatorConversao: number | null;
+  custoTotal: number | null;
+  caixas: number | null;
+  conteudoPorCaixa: number | null;
   statusValidade: "sem_validade" | "vencido" | "vence_em_breve" | "valido";
 }
 
@@ -238,6 +244,12 @@ export const useStockData = () => {
           validade: l.validade,
           fornecedorId: l.fornecedor_id,
           precoUnitario: l.preco_unitario !== null ? Number(l.preco_unitario) : null,
+          unidadeCompra: (l as any).unidade_compra ?? null,
+          quantidadeCompra: (l as any).quantidade_compra == null ? null : Number((l as any).quantidade_compra),
+          fatorConversao: (l as any).fator_conversao == null ? null : Number((l as any).fator_conversao),
+          custoTotal: (l as any).custo_total == null ? null : Number((l as any).custo_total),
+          caixas: (l as any).caixas == null ? null : Number((l as any).caixas),
+          conteudoPorCaixa: (l as any).conteudo_por_caixa == null ? null : Number((l as any).conteudo_por_caixa),
           statusValidade: statusValidade(l.validade),
         };
       })
@@ -384,11 +396,20 @@ export const useStockData = () => {
     supplierId: string | null;
     boxCount?: number;
     unitsPerBox?: number;
+    purchaseUnit: string;
+    purchaseQuantity: number;
+    conversionFactor: number;
+    totalCost: number | null;
     validade?: string | null; // YYYY-MM-DD, opcional — pilar "Lotes/Validade"
     numeroLote?: string | null; // opcional; se vazio, gera um código
   }) => {
     if (!businessUnitId) {
       toast.error("Nenhuma unidade ativa encontrada");
+      return false;
+    }
+    if (!(input.quantity > 0) || !(input.purchaseQuantity > 0) || !(input.conversionFactor > 0) ||
+        Math.abs(input.quantity - input.purchaseQuantity * input.conversionFactor) > 0.000001) {
+      toast.error("Quantidade e conversão do lote inconsistentes");
       return false;
     }
     const { data: userData } = await supabase.auth.getUser();
@@ -414,17 +435,20 @@ export const useStockData = () => {
         validade: input.validade || null,
         fornecedor_id: input.supplierId,
         preco_unitario: input.unitCost,
+        unidade_compra: input.purchaseUnit,
+        quantidade_compra: input.purchaseQuantity,
+        fator_conversao: input.conversionFactor,
+        custo_total: input.totalCost,
+        caixas: input.boxCount ?? null,
+        conteudo_por_caixa: input.unitsPerBox ?? null,
         business_unit_id: businessUnitId,
-      })
+      } as any)
       .select()
       .single();
 
-    // Se a tabela `lotes` ainda não existir neste ambiente (migration
-    // 20260828041000 não aplicada), não bloqueia a entrada: cai para o
-    // comportamento anterior, sem lote_id. Loga o motivo para não confundir
-    // um erro real de dado com "banco desatualizado".
-    if (loteErr) {
-      console.warn("Não foi possível criar lote (tabela pode não existir ainda):", loteErr.message);
+    if (loteErr || !loteRow) {
+      toast.error("Não foi possível criar o lote. Verifique a migration de estoque: " + (loteErr?.message ?? ""));
+      return false;
     }
 
     const { error } = await supabase.from("stock_movements").insert({
@@ -435,15 +459,16 @@ export const useStockData = () => {
       supplier_id: input.supplierId,
       unit_cost: input.unitCost,
       batch_info: batchInfo,
-      lote_id: loteRow?.id ?? null,
+      lote_id: loteRow.id,
       created_by: userData.user?.id,
       business_unit_id: businessUnitId,
     });
     if (error) {
+      await supabase.from("lotes").delete().eq("id", loteRow.id);
       toast.error("Erro ao registrar entrada: " + error.message);
       return false;
     }
-    toast.success(loteRow ? `Entrada registrada — lote ${numeroLote}` : "Entrada registrada");
+    toast.success(`Entrada registrada — lote ${numeroLote}`);
     await Promise.all([loadRawMaterials(), loadAlerts(), loadLotes()]);
     return true;
   };
