@@ -333,11 +333,13 @@ export type Database = {
           id?: string
           key: string
           label: string
-          icon_name: string | null
-          icon_color: string | null
+          icon_name?: string | null
+          icon_color?: string | null
           sort_order?: number
         }
         Update: {
+          icon_name?: string | null
+          icon_color?: string | null
           business_unit_id?: string
           created_at?: string
           destination?: string
