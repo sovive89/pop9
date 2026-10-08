@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { formatCurrency } from "@/utils/orders";
 import { toast } from "sonner";
 import RecipeBuilder, { type RecipeBuilderHandle } from "@/components/admin/RecipeBuilder";
+import { AI_IMAGE_MODELS } from "@/ai-studio";
 
 // ── Image Upload Helper ──
 // O nome do arquivo é gerado aqui (não depende do ID do item, que só existe
@@ -40,14 +41,7 @@ const removeMenuImages = async (urls: (string | null | undefined)[]) => {
 };
 
 // ── Geração de foto com IA (Edge Function generate-menu-image) ──
-const AI_IMAGE_MODELS = [
-  { id: "google/gemini-3.1-flash-image", label: "Nano Banana 2 (Google)" },
-  { id: "openai/gpt-image-2", label: "GPT Image 2 (OpenAI)" },
-  { id: "bfl/flux-2-pro", label: "Flux 2 Pro (fotorrealista)" },
-  { id: "bytedance/seedream-5.0-lite", label: "Seedream 5 Lite (econômico)" },
-  { id: "spacexai/grok-imagine-image-2.0", label: "Grok Imagine 2 (xAI)" },
-  { id: "spacexai/grok-imagine-image", label: "Grok Imagine (xAI, econômico)" },
-];
+// Catálogo de modelos: ver src/ai-studio.
 
 // ── Category Editor ──
 interface CategoryEditorProps {
