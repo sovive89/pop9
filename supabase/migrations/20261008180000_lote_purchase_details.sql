@@ -9,9 +9,7 @@ alter table public.lotes
   add column if not exists conteudo_por_caixa numeric;
 
 alter table public.lotes
-  add constraint lotes_quantidade_compra_positiva check (quantidade_compra is null or quantidade_compra > 0),
-  add constraint lotes_fator_conversao_positivo check (fator_conversao is null or fator_conversao > 0),
-  add constraint lotes_custo_total_nao_negativo check (custo_total is null or custo_total >= 0);
+  add column if not exists cancelado_em timestamptz;
 
 comment on column public.lotes.quantidade_entrada is 'Quantity normalized to raw_materials.unit for inventory and FEFO.';
 comment on column public.lotes.quantidade_compra is 'Original purchased quantity in unidade_compra, independently set for each lot.';
