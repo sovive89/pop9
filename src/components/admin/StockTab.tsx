@@ -80,6 +80,7 @@ const StockTab = () => {
     loading,
     createRawMaterial,
     registerPurchase,
+    managePurchaseLot,
     createSupplier,
     createRecipe,
     produceBatch,
@@ -91,6 +92,7 @@ const StockTab = () => {
   const [newMaterialOpen, setNewMaterialOpen] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [purchaseTarget, setPurchaseTarget] = useState<string | null>(null);
+  const [editingLotId, setEditingLotId] = useState<string | null>(null);
   const [newSupplierOpen, setNewSupplierOpen] = useState(false);
   const [newRecipeOpen, setNewRecipeOpen] = useState(false);
   const [produceOpen, setProduceOpen] = useState(false);
@@ -176,6 +178,7 @@ const StockTab = () => {
     setPValidade("");
     setPNumeroLote("");
     setPurchaseTarget(null);
+    setEditingLotId(null);
   };
 
   const resetSupplierForm = () => {
@@ -239,7 +242,27 @@ const StockTab = () => {
     setPUnitsPerBox(previous?.conteudoPorCaixa != null ? String(previous.conteudoPorCaixa) : "");
     setPValidade(previous?.validade || "");
     setPNumeroLote(""); // Never reuse the previous lot identifier.
+    setEditingLotId(null);
     setPurchaseTarget(rawMaterialId);
+    setPurchaseOpen(true);
+  };
+
+  const openEditLot = (lot: (typeof lotes)[number]) => {
+    resetPurchaseForm();
+    setEditingLotId(lot.id);
+    setPurchaseTarget(lot.rawMaterialId);
+    setPQuantity(String(lot.quantidadeCompra ?? lot.quantidadeEntrada));
+    setPPurchaseUnit(lot.unidadeCompra || materialsById[lot.rawMaterialId]?.unit || "");
+    setPConversion(String(lot.fatorConversao ?? 1));
+    const cost = lot.custoTotal ?? (lot.precoUnitario == null ? null : lot.precoUnitario * lot.quantidadeEntrada);
+    setPTotalCost(cost == null ? "" : String(cost));
+    setPUnitCost(cost == null ? "" : String(cost / (lot.quantidadeCompra ?? lot.quantidadeEntrada)));
+    setPSupplierId(lot.fornecedorId || "");
+    setPValidade(lot.validade || "");
+    setPNumeroLote(lot.numeroLote);
+    setPIsBox(lot.caixas != null);
+    setPBoxCount(lot.caixas == null ? "" : String(lot.caixas));
+    setPUnitsPerBox(lot.conteudoPorCaixa == null ? "" : String(lot.conteudoPorCaixa));
     setPurchaseOpen(true);
   };
 
@@ -254,7 +277,19 @@ const StockTab = () => {
     const totalCost = pTotalCost === "" ? null : Number(pTotalCost);
     if (totalCost !== null && (!Number.isFinite(totalCost) || totalCost < 0)) return;
     setSaving(true);
-    const ok = await registerPurchase({
+    const ok = editingLotId
+      ? await managePurchaseLot(editingLotId, "edit", {
+          quantidade_compra: purchaseQuantity,
+          fator_conversao: conversionFactor,
+          unidade_compra: pPurchaseUnit,
+          custo_total: totalCost,
+          fornecedor_id: pSupplierId || null,
+          validade: pValidade || null,
+          numero_lote: pNumeroLote.trim(),
+          caixas: pIsBox ? Number(pBoxCount) : null,
+          conteudo_por_caixa: pIsBox ? Number(pUnitsPerBox) : null,
+        })
+      : await registerPurchase({
       rawMaterialId: purchaseTarget,
       quantity: normalizedQuantity,
       purchaseQuantity,
@@ -514,6 +549,17 @@ const StockTab = () => {
                       {STATUS_LABELS[l.statusValidade]}
                     </Badge>
                   </div>
+                  {l.origem === "compra" && (
+                    <div className="flex gap-2 mb-2">
+                      <Button size="sm" variant="outline" disabled={saving} onClick={() => openEditLot(l)}>Editar</Button>
+                      <Button size="sm" variant="destructive" disabled={saving} onClick={async () => {
+                        if (!window.confirm(`Cancelar lote ${l.numeroLote}? O histórico será preservado. Lotes consumidos não podem ser cancelados.`)) return;
+                        setSaving(true);
+                        try { await managePurchaseLot(l.id, "cancel"); }
+                        finally { setSaving(false); }
+                      }}>Excluir</Button>
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     <CalendarClock className="h-3 w-3" />
                     Lote {l.numeroLote} · {l.origem === "compra" ? "compra" : "produção"} ·{" "}
@@ -613,7 +659,7 @@ const StockTab = () => {
       <Dialog open={purchaseOpen} onOpenChange={(o) => { setPurchaseOpen(o); if (!o) resetPurchaseForm(); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Registrar Entrada</DialogTitle>
+            <DialogTitle>{editingLotId ? "Editar lote" : "Registrar Entrada"}</DialogTitle>
             <DialogDescription>
               {purchaseTarget && `Compra de ${materialsById[purchaseTarget]?.name}. Toda entrada fica salva no histórico.`}
             </DialogDescription>
@@ -707,7 +753,7 @@ const StockTab = () => {
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setPurchaseOpen(false)} disabled={saving}>Cancelar</Button>
             <Button onClick={handleRegisterPurchase} disabled={saving || !(Number(pQuantity) > 0) || !(Number(pConversion) > 0) || !pPurchaseUnit}>
-              {saving ? "Aguarde..." : "Registrar"}
+              {saving ? "Aguarde..." : editingLotId ? "Salvar alterações" : "Registrar"}
             </Button>
           </DialogFooter>
         </DialogContent>
