@@ -372,65 +372,6 @@ const TableSessionPanel = ({
                   onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
                 />
               </div>
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">
-                  E-mail <span className="text-muted-foreground/60">(opcional)</span>
-                </label>
-                <input
-                  type="email"
-                  value={clientEmail}
-                  onChange={(e) => setClientEmail(e.target.value)}
-                  placeholder="email@exemplo.com"
-                  className="mt-1 w-full h-11 rounded-lg border border-border bg-muted px-4 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                  onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">
-                    CEP <span className="text-muted-foreground/60">(opcional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={clientCep}
-                    onChange={(e) => {
-                      const v = e.target.value.replace(/\D/g, "").slice(0, 8);
-                      setClientCep(v.length > 5 ? `${v.slice(0, 5)}-${v.slice(5)}` : v);
-                    }}
-                    placeholder="00000-000"
-                    className="mt-1 w-full h-11 rounded-lg border border-border bg-muted px-4 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                    onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">
-                    Bairro <span className="text-muted-foreground/60">(opcional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={clientBairro}
-                    onChange={(e) => setClientBairro(e.target.value)}
-                    placeholder="Bairro"
-                    maxLength={80}
-                    className="mt-1 w-full h-11 rounded-lg border border-border bg-muted px-4 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                    onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">
-                  Gênero <span className="text-muted-foreground/60">(opcional)</span>
-                </label>
-                <select
-                  value={clientGenero}
-                  onChange={(e) => setClientGenero(e.target.value)}
-                  className="mt-1 w-full h-11 rounded-lg border border-border bg-muted px-4 text-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                >
-                  {GENERO_OPTIONS.map((o) => (
-                    <option key={o.value || "x"} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
               <div className="flex gap-2">
                 {session && (
                   <Button variant="outline" className="flex-1" onClick={() => setShowAddForm(false)}>
