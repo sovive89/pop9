@@ -14,6 +14,8 @@ interface DbCategory {
   label: string;
   destination: string;
   sort_order: number;
+  icon_name: string | null;
+  icon_color: string | null;
 }
 
 /**
