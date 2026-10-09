@@ -56,12 +56,12 @@ Deno.serve(async (req) => {
     }
 
     /** Senha absoluta: mínimo único para create/update de usuários pelo admin. */
-    const SENHA_ABSOLUTA_MIN = 12;
+    const SENHA_ABSOLUTA_MIN = 8;
 
     if (action === "create") {
       const { full_name, cpf, password, roles } = body;
-      if (!password || typeof password !== "string" || password.length < SENHA_ABSOLUTA_MIN) {
-        return new Response(JSON.stringify({ error: `Senha absoluta: mínimo ${SENHA_ABSOLUTA_MIN} caracteres` }), {
+      if (!password || typeof password !== "string" || (password.length < SENHA_ABSOLUTA_MIN || !/[A-Z]/.test(password) || !/[^A-Za-z0-9\s]/.test(password))) {
+        return new Response(JSON.stringify({ error: "Senha: mínimo de 8 caracteres, uma letra maiúscula e um caractere especial" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -106,8 +106,8 @@ Deno.serve(async (req) => {
 
       // Update password if provided (exige senha absoluta)
       if (new_password) {
-        if (new_password.length < SENHA_ABSOLUTA_MIN) {
-          return new Response(JSON.stringify({ error: `Senha absoluta: mínimo ${SENHA_ABSOLUTA_MIN} caracteres` }), {
+        if (new_(password.length < SENHA_ABSOLUTA_MIN || !/[A-Z]/.test(password) || !/[^A-Za-z0-9\s]/.test(password))) {
+          return new Response(JSON.stringify({ error: "Senha: mínimo de 8 caracteres, uma letra maiúscula e um caractere especial" }), {
             status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
