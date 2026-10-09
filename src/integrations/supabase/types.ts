@@ -771,6 +771,13 @@ export type Database = {
       }
       printer_configs: {
         Row: {
+          host: string | null
+          port: number
+          paper_width: number
+          copies: number
+          auto_cut: boolean
+          encoding: string
+          transport: string
           active: boolean
           business_unit_id: string | null
           connection_type: string
@@ -782,6 +789,13 @@ export type Database = {
           tipo: string
         }
         Insert: {
+          host?: string | null
+          port?: number
+          paper_width?: number
+          copies?: number
+          auto_cut?: boolean
+          encoding?: string
+          transport?: string
           active?: boolean
           business_unit_id?: string | null
           connection_type?: string
@@ -793,6 +807,13 @@ export type Database = {
           tipo: string
         }
         Update: {
+          host?: string | null
+          port?: number
+          paper_width?: number
+          copies?: number
+          auto_cut?: boolean
+          encoding?: string
+          transport?: string
           active?: boolean
           business_unit_id?: string | null
           connection_type?: string
