@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAdminData } from "@/hooks/useAdminData";
 import { toast } from "sonner";
-import { SENHA_ABSOLUTA_MIN } from "@/constants/auth";
+import { SENHA_ABSOLUTA_MIN, SENHA_REQUISITOS, senhaValida } from "@/constants/auth";
 
 const formatCPF = (cpf: string) => {
   if (cpf.length !== 11) return cpf;
@@ -22,7 +22,7 @@ const ResetPasswordTab = () => {
 
   const handleReset = async () => {
     if (!selectedUser) { toast.error("Selecione um usuário"); return; }
-    if (newPassword.length < SENHA_ABSOLUTA_MIN) { toast.error(`Senha absoluta: mínimo ${SENHA_ABSOLUTA_MIN} caracteres`); return; }
+    if (!senhaValida(newPassword)) { toast.error(SENHA_REQUISITOS); return; }
     setLoading(true);
     const ok = await resetPassword(selectedUser.cpf, newPassword);
     if (ok) {
