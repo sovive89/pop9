@@ -34,8 +34,11 @@ const Login = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateEmail(email)) {
-      toast.error("Digite um e-mail válido");
+    const identifier = email.trim();
+    const cpfDigits = identifier.replace(/\D/g, "");
+    const isCpf = /^\d{11}$/.test(cpfDigits) && /^[\d.\-\s]+$/.test(identifier);
+    if (!isCpf && !validateEmail(identifier)) {
+      toast.error("Digite um CPF ou e-mail válido");
       return;
     }
     if (!password) {
@@ -45,7 +48,7 @@ const Login = () => {
     setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
+        email: isCpf ? `${cpfDigits}@burgerhouse.sys` : identifier.toLowerCase(),
         password,
       });
       if (error) throw error;
@@ -54,7 +57,7 @@ const Login = () => {
     } catch (err: unknown) {
       const msg = err && typeof err === "object" && "message" in err ? String((err as { message: string }).message) : "";
       if (msg.includes("Invalid login credentials") || msg.includes("invalid_credentials")) {
-        toast.error("E-mail ou senha incorretos");
+        toast.error("CPF/e-mail ou senha incorretos");
       } else if (msg.includes("Email not confirmed") || msg.includes("email_not_confirmed")) {
         toast.error("E-mail ainda não confirmado. Verifique sua caixa de entrada e clique no link que enviamos.");
       } else {
@@ -185,14 +188,14 @@ const Login = () => {
                 <h2 className="mb-6 text-center text-3xl text-foreground">ENTRAR</h2>
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="email" className="text-sm font-medium text-muted-foreground">E-mail</Label>
+                    <Label htmlFor="email" className="text-sm font-medium text-muted-foreground">CPF ou e-mail</Label>
                     <Input
                       id="email"
-                      type="email"
-                      autoComplete="email"
+                      type="text"
+                      autoComplete="username"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="seu@email.com"
+                      placeholder="CPF ou seu@email.com"
                       required
                       className="h-12 bg-muted border-border text-foreground placeholder:text-muted-foreground focus:ring-primary"
                     />
