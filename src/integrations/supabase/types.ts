@@ -1783,6 +1783,10 @@ export type Database = {
       }
     }
     Functions: {
+      create_dining_table: {
+        Args: { p_business_unit_id: string }
+        Returns: Database["public"]["Tables"]["dining_tables"]["Row"]
+      }
       current_user_id: { Args: never; Returns: string }
       has_role: {
         Args: {
