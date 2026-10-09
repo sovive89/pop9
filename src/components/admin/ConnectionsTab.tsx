@@ -1,3 +1,4 @@
+import { PAGE_HELP } from "@/lib/page-help";
 import WhatsAppTab from "@/components/admin/WhatsAppTab";
 import {useCurrentBusinessUnit} from "@/hooks/useCurrentBusinessUnit";
 import { useEffect, useMemo, useState } from "react";
@@ -89,7 +90,7 @@ export function ConnectionsTab() {
     <div className="space-y-6">
       <WhatsAppTab />
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold text-foreground">Conexões</h2>
+        <h2 tabIndex={0} data-tooltip={PAGE_HELP["connections"]} className="text-lg font-semibold text-foreground">Conexões</h2>
         <p className="text-sm text-muted-foreground">
           Conecte o Pipeline aos serviços que sua operação utiliza.
         </p>

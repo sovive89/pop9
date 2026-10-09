@@ -181,7 +181,7 @@ const ActiveOrdersPanel = () => {
                       <AlertTriangle className="h-4 w-4 text-destructive animate-pulse" />
                     )}
                     {isReady && fo.isDelivery && (
-                      <Truck className="h-4 w-4 text-primary shrink-0" aria-label="Pedido pedido(s) online pronto(s)" />
+                      <span tabIndex={0} data-tooltip="Pedido online pronto para entregar."><Truck className="h-4 w-4 text-primary shrink-0" aria-label="Pedido online pronto" /></span>
                     )}
                     <div className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${statusBadge[fo.order.status]}`}>
                       {statusIcon[fo.order.status]}
@@ -216,7 +216,7 @@ const ActiveOrdersPanel = () => {
                       {formatCurrency(orderTotal(fo.order))}
                     </span>
                     {isReady && (
-                      <Button
+                      <Button data-tooltip="Confirme que este pedido foi entregue ao cliente."
                         size="sm"
                         variant="outline"
                         disabled={deliveringId === fo.order.id}

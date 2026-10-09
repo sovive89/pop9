@@ -264,7 +264,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
         animate={{ opacity: 1, y: 0 }}
         className="space-y-3"
       >
-        <button
+        <button data-tooltip="Abra a conta individual do cliente ou volte para o resumo da mesa."
           onClick={() => setSelectedClient(null)}
           className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
@@ -374,12 +374,12 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
         )}
 
         <div className="flex gap-2">
-          <Button variant="outline" className="flex-1 gap-2" onClick={() => handlePrintClient(clientId)}>
+          <Button data-tooltip="Abra a impressão da conta com os valores e a taxa de serviço selecionados." variant="outline" className="flex-1 gap-2" onClick={() => handlePrintClient(clientId)}>
             <Printer className="h-4 w-4" />
             Imprimir
           </Button>
           {!isClientFullyPaid(clientId) && clientTotal > 0 && (
-            <Button
+            <Button data-tooltip="Registre o pagamento deste cliente e atualize o valor em aberto."
               className="flex-1 gap-2"
               disabled={paymentsLoading || paymentsError || isProcessing}
               onClick={() => { setPayingClientId(clientId); setPaymentMethod("dinheiro"); setUseCustomAmount(false); setCustomAmount(""); setCashReceived(""); }}
@@ -404,7 +404,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
         <div className="p-5 pb-3 border-b border-border">
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-3">
-              <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors">
+              <button data-tooltip="Volte para a tela anterior." aria-label="Volte para a tela anterior." onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors">
                 <ArrowLeft className="h-5 w-5" />
               </button>
               <Receipt className="h-5 w-5 text-primary" />
@@ -412,7 +412,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
                 FECHAR CONTA — {pickupLabel(tableId).toLocaleUpperCase("pt-BR")}
               </h3>
             </div>
-            <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors">
+            <button data-tooltip="Volte para a tela anterior." aria-label="Volte para a tela anterior." onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors">
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -423,7 +423,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
               { key: "geral" as Tab, label: "Conta Geral", icon: Users },
               { key: "individual" as Tab, label: "Individual", icon: User },
             ]).map(({ key, label, icon: Icon }) => (
-              <button
+              <button data-tooltip="Abra a conta individual do cliente ou volte para o resumo da mesa."
                 key={key}
                 onClick={() => { setTab(key); setSelectedClient(null); }}
                 className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -444,7 +444,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {/* Service charge toggle */}
-          <button
+          <button data-tooltip="Inclua ou retire a taxa de serviço de 10% no cálculo da conta."
             onClick={() => setServiceCharge(!serviceCharge)}
             className={`w-full flex items-center justify-between rounded-lg border px-4 py-2.5 transition-colors ${
               serviceCharge ? "border-primary bg-primary/10" : "border-border bg-secondary/30"
@@ -532,7 +532,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
                         {formatCurrency(clientTotalWithCharge)}
                       </span>
                       {!isClientFullyPaid(client.id) && clientTotal > 0 && (
-                        <button
+                        <button data-tooltip="Registre o pagamento deste cliente e atualize o valor em aberto."
                           onClick={() => { setPayingClientId(client.id); setPaymentMethod("dinheiro"); setUseCustomAmount(false); setCustomAmount(""); setCashReceived(""); }}
                           className="h-7 px-2 rounded-md bg-primary text-primary-foreground text-[10px] font-semibold hover:bg-primary/90 transition-colors"
                         >
@@ -577,12 +577,12 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
                 <div className="flex items-center gap-3">
                   <SplitSquareHorizontal className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm text-muted-foreground">por</span>
-                  <button
+                  <button data-tooltip="Diminua o número de pessoas na divisão da conta." aria-label="Diminua o número de pessoas na divisão da conta."
                     onClick={() => setCalcPeople(Math.max(2, calcPeople - 1))}
                     className="h-8 w-8 rounded-lg border border-border flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
                   >-</button>
                   <span className="w-6 text-center text-sm font-bold text-foreground">{calcPeople}</span>
-                  <button
+                  <button data-tooltip="Aumente o número de pessoas na divisão da conta." aria-label="Aumente o número de pessoas na divisão da conta."
                     onClick={() => setCalcPeople(Math.min(20, calcPeople + 1))}
                     className="h-8 w-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors"
                   >+</button>
@@ -594,7 +594,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
                 </div>
               </div>
 
-              <Button variant="outline" className="w-full gap-2" onClick={handlePrintGeneral}>
+              <Button data-tooltip="Abra a impressão da conta com os valores e a taxa de serviço selecionados." variant="outline" className="w-full gap-2" onClick={handlePrintGeneral}>
                 <Printer className="h-4 w-4" />
                 Imprimir Conta da Mesa
               </Button>
@@ -611,7 +611,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
                 const clientTotalWithCharge = clientTotal + clientCharge;
                 const paid = isClientPaid(client.id);
                 return (
-                  <motion.button
+                  <motion.button data-tooltip="Abra a conta individual do cliente ou volte para o resumo da mesa."
                     key={client.id}
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.99 }}
@@ -650,7 +650,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
           <p className="text-sm text-muted-foreground">{closureRequested ? "Solicitação enviada ao caixa. A mesa aguarda confirmação com senha." : "Após registrar os pagamentos, solicite o encerramento ao caixa."}</p>
           <div className="flex gap-3">
             <Button variant="outline" className="flex-1" onClick={onBack}>Voltar</Button>
-            <Button className="flex-1" disabled={isProcessing || isRequesting || paymentsLoading || paymentsError} onClick={handleRequestClosure}>
+            <Button data-tooltip="Solicite ao caixa a confirmação do encerramento com senha." className="flex-1" disabled={isProcessing || isRequesting || paymentsLoading || paymentsError} onClick={handleRequestClosure}>
               {isRequesting ? "Solicitando..." : closureRequested ? "Atualizar solicitação" : "Solicitar encerramento"}
             </Button>
           </div>
@@ -685,7 +685,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
                   <>
                     <div className="flex items-center justify-between">
                       <h4 className="text-lg font-bold text-foreground">Registrar Pagamento</h4>
-                      <button onClick={() => { setPayingClientId(null); setUseCustomAmount(false); setCustomAmount(""); setCashReceived(""); }} className="text-muted-foreground hover:text-foreground">
+                      <button data-tooltip="Feche o formulário de pagamento e volte para a conta." aria-label="Feche o formulário de pagamento e volte para a conta." onClick={() => { setPayingClientId(null); setUseCustomAmount(false); setCustomAmount(""); setCashReceived(""); }} className="text-muted-foreground hover:text-foreground">
                         <X className="h-5 w-5" />
                       </button>
                     </div>
@@ -720,7 +720,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Forma de Pagamento</p>
                       <div className="grid grid-cols-3 gap-2">
                         {METHODS.map(({ key, label, icon: Icon }) => (
-                          <button
+                          <button data-tooltip="Selecione a forma de pagamento."
                             key={key}
                             onClick={() => setPaymentMethod(key)}
                             className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 transition-colors ${
@@ -761,7 +761,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
                             const relevant = denoms.filter(d => d >= payVal);
                             const show = relevant.length > 0 ? relevant.slice(0, 4) : denoms.slice(-4);
                             return show.map(d => (
-                              <button
+                              <button data-tooltip="Use este valor como quantia recebida em dinheiro para calcular o troco."
                                 key={d}
                                 onClick={() => setCashReceived(String(d))}
                                 className={`text-xs py-2 rounded-lg border font-semibold transition-colors ${
@@ -812,7 +812,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
 
                     {/* Custom amount toggle */}
                     <div className="space-y-2">
-                      <button
+                      <button data-tooltip="Preencha o valor parcial deste pagamento."
                         onClick={() => {
                           setUseCustomAmount(!useCustomAmount);
                           if (!useCustomAmount) setCustomAmount("");
@@ -847,7 +847,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
                           </div>
                           <div className="flex gap-1.5">
                             {[0.25, 0.5, 0.75].map((pct) => (
-                              <button
+                              <button data-tooltip="Preencha o valor parcial deste pagamento." aria-label="Preencha o valor parcial deste pagamento."
                                 key={pct}
                                 onClick={() => setCustomAmount((clientRem * pct).toFixed(2))}
                                 className="flex-1 text-[10px] py-1.5 rounded-md bg-secondary/50 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors font-medium"
@@ -861,10 +861,10 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
                     </div>
 
                     <div className="flex gap-2">
-                      <Button variant="outline" className="flex-1" onClick={() => { setPayingClientId(null); setUseCustomAmount(false); setCustomAmount(""); setCashReceived(""); }}>
+                      <Button data-tooltip="Feche o formulário de pagamento e volte para a conta." variant="outline" className="flex-1" onClick={() => { setPayingClientId(null); setUseCustomAmount(false); setCustomAmount(""); setCashReceived(""); }}>
                         Cancelar
                       </Button>
-                      <Button
+                      <Button data-tooltip="Registre o pagamento deste cliente e atualize o valor em aberto."
                         className="flex-1 gap-2"
                         disabled={isProcessing || (useCustomAmount && (!customAmount || parseFloat(customAmount) <= 0)) || (paymentMethod === "dinheiro" && cashReceived !== "" && parseFloat(cashReceived) < (useCustomAmount && customAmount ? parseFloat(customAmount) : clientRem))}
                         onClick={() => {

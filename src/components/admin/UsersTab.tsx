@@ -182,7 +182,7 @@ const UsersTab = () => {
             className="h-10 pl-9"
           />
         </div>
-        <Button onClick={openCreate} size="icon" className="h-10 w-10 shrink-0">
+        <Button data-tooltip="Cadastre um novo funcionário e configure seus acessos." aria-label="Cadastre um novo funcionário e configure seus acessos." onClick={openCreate} size="icon" className="h-10 w-10 shrink-0">
           <Plus className="h-4 w-4" />
         </Button>
       </div>
@@ -196,13 +196,13 @@ const UsersTab = () => {
               <p className="text-xs text-muted-foreground">{formatCPF(user.cpf)}</p>
             </div>
             <div className="flex gap-1">
-              <button
+              <button data-tooltip="Edite o cadastro deste funcionário." aria-label="Edite o cadastro deste funcionário."
                 onClick={() => openEdit(user)}
                 className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               >
                 <Pencil className="h-4 w-4" />
               </button>
-              <button
+              <button data-tooltip="Abra a confirmação para excluir este funcionário." aria-label="Abra a confirmação para excluir este funcionário."
                 onClick={() => openDelete(user)}
                 className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
               >
@@ -214,7 +214,7 @@ const UsersTab = () => {
             {ALL_ROLES.map((role) => {
               const hasRole = user.roles.includes(role);
               return (
-                <button
+                <button data-tooltip="Ative ou remova este perfil de acesso para o funcionário." aria-label="Ative ou remova este perfil de acesso para o funcionário."
                   key={role}
                   onClick={() => hasRole ? removeRole(user.userId, role) : addRole(user.userId, role)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-all ${
@@ -280,7 +280,7 @@ const UsersTab = () => {
                       placeholder={`Mínimo ${SENHA_ABSOLUTA_MIN} caracteres`}
                       minLength={SENHA_ABSOLUTA_MIN}
                     />
-                    <button type="button" onClick={() => setShowFormPassword(!showFormPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    <button data-tooltip="Mostre ou oculte a senha digitada." aria-label="Mostre ou oculte a senha digitada." type="button" onClick={() => setShowFormPassword(!showFormPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                       {showFormPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
@@ -291,7 +291,7 @@ const UsersTab = () => {
                     {ALL_ROLES.map((role) => {
                       const active = formRoles.includes(role);
                       return (
-                        <button
+                        <button data-tooltip="Ative ou remova este perfil de acesso para o funcionário." aria-label="Ative ou remova este perfil de acesso para o funcionário."
                           key={role}
                           type="button"
                           onClick={() => toggleFormRole(role)}
@@ -325,7 +325,7 @@ const UsersTab = () => {
                       onChange={(e) => setFormPassword(e.target.value)}
                       placeholder="Deixe em branco para manter"
                     />
-                    <button type="button" onClick={() => setShowFormPassword(!showFormPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    <button data-tooltip="Mostre ou oculte a senha digitada." aria-label="Mostre ou oculte a senha digitada." type="button" onClick={() => setShowFormPassword(!showFormPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                       {showFormPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
@@ -346,7 +346,7 @@ const UsersTab = () => {
                   onChange={(e) => setAdminPassword(e.target.value)}
                   placeholder="Confirme com sua senha"
                 />
-                <button type="button" onClick={() => setShowAdminPassword(!showAdminPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <button data-tooltip="Mostre ou oculte a senha digitada." aria-label="Mostre ou oculte a senha digitada." type="button" onClick={() => setShowAdminPassword(!showAdminPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                   {showAdminPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
@@ -355,7 +355,7 @@ const UsersTab = () => {
 
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={closeModal} disabled={formLoading}>Cancelar</Button>
-            <Button
+            <Button data-tooltip="Salve os dados preenchidos e continue para a próxima etapa."
               onClick={handleSubmit}
               disabled={formLoading || !adminPassword}
               variant={modalMode === "delete" ? "destructive" : "default"}

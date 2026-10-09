@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { useNavigate, Navigate } from "react-router-dom";
+import { PAGE_HELP } from "@/lib/page-help";
+import { useNavigate, Navigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Flame,
@@ -92,7 +93,7 @@ function SectionMenuButton({
     <SidebarMenuItem>
       <SidebarMenuButton
         isActive={isActive}
-        tooltip={`${section.label} — ${descriptions[section.key]}`}
+        tooltip={`${section.label} — ${PAGE_HELP[section.key]}`}
         onClick={() => {
           onSelect();
           if (isMobile) setOpenMobile(false);
@@ -114,7 +115,10 @@ const Admin = () => {
     kitchen: false,
     admin: false,
   });
-  const [activeSection, setActiveSection] = useState<SectionKey>("menu");
+  const [searchParams,setSearchParams] = useSearchParams();
+  const requestedSection=searchParams.get("sec");
+  const activeSection:SectionKey = SECTIONS.some(s=>s.key===requestedSection) ? requestedSection as SectionKey : "menu";
+  const setActiveSection=(section:SectionKey)=>setSearchParams({sec:section});
 
   useEffect(() => {
     if (!user) return;
@@ -233,7 +237,7 @@ const Admin = () => {
         >
           <SidebarTrigger />
           <div className="h-5 w-px bg-border" />
-          <h1 className="text-lg font-medium text-foreground truncate">{activeLabel}</h1>
+          <h1 tabIndex={0} data-tooltip={PAGE_HELP[activeSection]} className="text-lg font-medium text-foreground truncate">{activeLabel}</h1>
 
           <div className="ml-auto flex items-center gap-1.5">
             {navRoles.admin && (
@@ -241,7 +245,7 @@ const Admin = () => {
                 <Settings className="h-3.5 w-3.5" /> Admin
               </span>
             )}
-            <button
+            <button data-tooltip="Consulte os indicadores e relatórios da operação."
               onClick={() => navigate("/relatorios")}
               className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >

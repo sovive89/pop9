@@ -1,3 +1,4 @@
+import { PAGE_HELP } from "@/lib/page-help";
 import { useState, useEffect, useMemo } from "react";
 import { useUnitRoles } from "@/hooks/useUnitRoles";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
@@ -81,14 +82,14 @@ const Index = () => {
               <Flame className="h-5 w-5 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-2xl text-foreground leading-none">PØP9</h1>
+              <h1 tabIndex={0} data-tooltip={PAGE_HELP["/"]} className="text-2xl text-foreground leading-none">PØP9</h1>
               <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Atendente</p>
             </div>
             <AnimatePresence>
               {readyCount > 0 && (
                 <>
                   {readyCount - readyDeliveryCount > 0 && (
-                    <motion.button
+                    <motion.button data-tooltip="Veja os pedidos prontos para entregar aos clientes."
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       exit={{ scale: 0 }}
@@ -100,7 +101,7 @@ const Index = () => {
                     </motion.button>
                   )}
                   {readyDeliveryCount > 0 && (
-                    <motion.button
+                    <motion.button data-tooltip="Veja os pedidos prontos para entregar aos clientes."
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       exit={{ scale: 0 }}
@@ -130,7 +131,7 @@ const Index = () => {
             {(roles.attendant || roles.kitchen || roles.admin || roles.cashier) && (
               <div className="flex items-center gap-1.5">
                 {roles.attendant && (
-                  <Button
+                  <Button data-tooltip="Abra o atendimento e acompanhe mesas e pedidos."
                     variant="outline"
                     size="sm"
                     onClick={() => navigate("/atendimento")}
@@ -141,7 +142,7 @@ const Index = () => {
                   </Button>
                 )}
                 {(roles.kitchen || roles.admin) && (
-                  <Button
+                  <Button data-tooltip="Abra a cozinha e acompanhe o preparo dos pedidos."
                     variant="outline"
                     size="sm"
                     onClick={() => navigate("/cozinha")}
@@ -153,7 +154,7 @@ const Index = () => {
                 )}
                 {(roles.cashier || roles.admin) && <Button variant="outline" size="sm" onClick={() => navigate("/caixa")}><Wallet className="mr-1.5 h-4 w-4" />Caixa</Button>}
                 {roles.admin && (
-                  <Button
+                  <Button data-tooltip="Abra a administração do estabelecimento."
                     variant="outline"
                     size="sm"
                     onClick={() => navigate("/admin")}
@@ -165,7 +166,7 @@ const Index = () => {
                 )}
               </div>
             )}
-            <Button
+            <Button data-tooltip="Encerre sua sessão e volte para a tela de entrada."
               variant="outline"
               size="sm"
               onClick={signOut}
@@ -185,7 +186,7 @@ const Index = () => {
             { key: "mesas" as const, label: "Mesas", icon: Map },
             { key: "pedidos" as const, label: "Pedidos", icon: ClipboardList },
           ]).map(({ key, label, icon: Icon }) => (
-            <button
+            <button data-tooltip="Abra esta seção do painel."
               key={key}
               onClick={() => setTab(key)}
               className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors border-b-2 ${

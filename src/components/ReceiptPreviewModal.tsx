@@ -25,7 +25,7 @@ const ReceiptPreviewModal = ({ receiptHtml, onClose, title = "Conta para impress
         <div className="flex items-center justify-between p-3 border-b border-border shrink-0">
           <h3 className="text-sm font-semibold text-foreground">{title}</h3>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={handlePrintAgain}>
+            <Button data-tooltip="Abra a impressão da conta com os valores e a taxa de serviço selecionados." variant="outline" size="sm" className="gap-1.5" onClick={handlePrintAgain}>
               <Printer className="h-4 w-4" />
               Imprimir
             </Button>

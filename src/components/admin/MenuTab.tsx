@@ -85,7 +85,7 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
     <div className="rounded-xl border border-border bg-card p-4 space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-foreground">{isNew ? "Nova Categoria" : "Editar Categoria"}</h3>
-        <button onClick={onCancel} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+        <button data-tooltip="Feche a edição sem salvar as alterações pendentes." aria-label="Feche a edição sem salvar as alterações pendentes." onClick={onCancel} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
@@ -100,7 +100,7 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Destino</label>
-          <select value={destination} onChange={(e) => setDestination(e.target.value)} className="w-full h-8 rounded-md border border-border bg-muted px-3 text-sm text-foreground">
+          <select data-tooltip="Defina se os pedidos desta categoria serão encaminhados à cozinha ou ao bar." aria-label="Defina se os pedidos desta categoria serão encaminhados à cozinha ou ao bar." value={destination} onChange={(e) => setDestination(e.target.value)} className="w-full h-8 rounded-md border border-border bg-muted px-3 text-sm text-foreground">
             <option value="kitchen">Cozinha</option>
             <option value="bar">Bar</option>
           </select>
@@ -137,10 +137,10 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
         </div>
       </div>
       <div className="flex gap-2">
-        <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1">
+        <Button data-tooltip="Salve as configurações preenchidas." size="sm" onClick={handleSave} disabled={saving} className="gap-1">
           <Save className="h-3.5 w-3.5" /> {saving ? "Salvando..." : "Salvar"}
         </Button>
-        <Button size="sm" variant="outline" onClick={onCancel}>Cancelar</Button>
+        <Button data-tooltip="Feche a edição sem salvar as alterações pendentes." size="sm" variant="outline" onClick={onCancel}>Cancelar</Button>
       </div>
     </div>
   );
@@ -329,6 +329,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       return;
     }
     setSaving(true);
+    if (recipeBuilderRef.current && !recipeBuilderRef.current.validate()) { setSaving(false); return; }
     const finalImage = imageUrl.trim() || null;
     const savedId = await onSave(
       {
@@ -410,7 +411,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       <div className="grid grid-cols-1 gap-3">
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Categoria</label>
-          <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full h-9 rounded-md border border-border bg-muted px-3 text-sm text-foreground">
+          <select data-tooltip="Escolha a categoria em que o item aparecerá no cardápio." aria-label="Escolha a categoria em que o item aparecerá no cardápio." value={category} onChange={(e) => setCategory(e.target.value)} className="w-full h-9 rounded-md border border-border bg-muted px-3 text-sm text-foreground">
             {categories.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
           </select>
         </div>
@@ -458,16 +459,16 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
           <div className="relative w-32 h-32 rounded-lg overflow-hidden border border-border group">
             <img src={imageUrl} alt="Preview" onError={() => setImageFailed(true)} onLoad={() => setImageFailed(false)} className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-              <button onClick={() => fileInputRef.current?.click()} className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-white/30">
+              <button data-tooltip="Escolha uma foto para o item do cardápio." aria-label="Escolha uma foto para o item do cardápio." onClick={() => fileInputRef.current?.click()} className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-white/30">
                 <Pencil className="h-4 w-4" />
               </button>
-              <button onClick={removeImage} className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-red-500/60">
+              <button data-tooltip="Retire a foto deste item. A imagem permanece no acervo." aria-label="Retire a foto deste item. A imagem permanece no acervo." onClick={removeImage} className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-red-500/60">
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>
           </div>
         ) : (
-          <button
+          <button data-tooltip="Escolha uma foto para o item do cardápio."
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
             className="flex items-center gap-2 px-4 py-3 rounded-lg border-2 border-dashed border-border hover:border-primary/50 text-muted-foreground hover:text-foreground transition-colors"
@@ -485,7 +486,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
         <div className="space-y-2 rounded-lg border border-border p-3">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-medium">Acervo de fotos · Storage</span>
-            <Button type="button" variant="outline" size="sm" disabled={libraryLoading || !businessUnitId} onClick={() => void loadPhotoLibrary()}>{libraryLoading ? "Carregando..." : "Ver fotos"}</Button>
+            <Button data-tooltip="Veja as fotos armazenadas no acervo desta unidade para reutilizar no cardápio." type="button" variant="outline" size="sm" disabled={libraryLoading || !businessUnitId} onClick={() => void loadPhotoLibrary()}>{libraryLoading ? "Carregando..." : "Ver fotos"}</Button>
           </div>
           {libraryPhotos.length > 0 && <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 max-h-64 overflow-y-auto">
             {libraryPhotos.map(url => <button type="button" key={url} onClick={() => { setImageUrl(url); setImageFailed(false); }} aria-label="Usar foto do acervo" className={`aspect-square rounded-md overflow-hidden border-2 ${imageUrl === url ? "border-primary" : "border-border"}`}><img src={url} alt="Foto armazenada" loading="lazy" className="h-full w-full object-cover" /></button>)}
@@ -511,7 +512,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
               placeholder="Ajuste opcional (ex: em tábua de madeira)"
               className="h-9 flex-1 min-w-[180px]"
             />
-            <Button type="button" variant="outline" onClick={handleGenerateImage} disabled={generating || availableModels.length === 0} className="gap-2 h-9">
+            <Button data-tooltip="Gere uma foto do item com a IA conectada nesta unidade. A geração pode ter custo no provedor." type="button" variant="outline" onClick={handleGenerateImage} disabled={generating || availableModels.length === 0} className="gap-2 h-9">
               {generating ? <Flame className="h-4 w-4 animate-pulse text-primary" /> : <Sparkles className="h-4 w-4" />}
               {generating ? "Gerando..." : imageUrl ? "Gerar outra" : "Gerar"}
             </Button>
@@ -523,8 +524,8 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       {/* Ingredients */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Ingredientes</label>
-          <button onClick={addIngredient} className="text-xs text-primary hover:underline flex items-center gap-1">
+          <label data-tooltip="Ingredientes exibidos ao cliente e opções de retirar ou adicionar. Os insumos e quantidades do estoque são definidos na ficha técnica." tabIndex={0} className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Ingredientes do cardápio</label>
+          <button data-tooltip="Adicione um ingrediente visível ao cliente. Para cadastrar insumos do estoque, use a ficha técnica abaixo." onClick={addIngredient} className="text-xs text-primary hover:underline flex items-center gap-1">
             <Plus className="h-3 w-3" /> Adicionar
           </button>
         </div>
@@ -536,26 +537,26 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
               <input type="checkbox" checked={ing.removable} onChange={(e) => updateIngredient(idx, "removable", e.target.checked)} />
               Removível
             </label>
-            <button onClick={() => removeIngredient(idx)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-3.5 w-3.5" /></button>
+            <button data-tooltip="Retire este ingrediente da lista exibida ao cliente. A ficha técnica é editada separadamente." aria-label="Retire este ingrediente da lista exibida ao cliente. A ficha técnica é editada separadamente." onClick={() => removeIngredient(idx)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-3.5 w-3.5" /></button>
           </div>
         ))}
       </div>
 
       {/* Ficha técnica (recipe_items → raw_materials, separado dos ingredientes de exibição acima) */}
-      <RecipeBuilder ref={recipeBuilderRef} menuItemId={item?.id} />
+      <RecipeBuilder ref={recipeBuilderRef} menuItemId={item?.id} disabled={saving || uploading || generating} />
 
       {/* Variants */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Variantes</label>
-          <button onClick={addVariant} className="text-xs text-primary hover:underline flex items-center gap-1">
+          <button data-tooltip="Adicione uma variante que o cliente poderá escolher neste item." onClick={addVariant} className="text-xs text-primary hover:underline flex items-center gap-1">
             <Plus className="h-3 w-3" /> Adicionar
           </button>
         </div>
         {variants.map((v, idx) => (
           <div key={idx} className="flex items-center gap-2 rounded-lg bg-secondary/30 p-2">
             <Input value={v.name} onChange={(e) => setVariants(variants.map((vv, i) => i === idx ? { ...vv, name: e.target.value } : vv))} placeholder="Nome da variante" className="h-8 text-xs flex-1" />
-            <button onClick={() => removeVariant(idx)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-3.5 w-3.5" /></button>
+            <button data-tooltip="Remova esta variante do item em edição." aria-label="Remova esta variante do item em edição." onClick={() => removeVariant(idx)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-3.5 w-3.5" /></button>
           </div>
         ))}
       </div>
@@ -563,20 +564,20 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       <div className="flex gap-2 pt-2">
         {isPublished ? (
           <>
-            <Button onClick={() => handleSave("published")} disabled={saving || uploading || generating} className="gap-2">
+            <Button data-tooltip="Salve o item e a ficha técnica e publique no cardápio." onClick={() => handleSave("published")} disabled={saving || uploading || generating} className="gap-2">
               <Save className="h-4 w-4" /> {saving ? "Salvando..." : "Salvar"}
             </Button>
-            <Button variant="outline" onClick={() => handleSave("draft")} disabled={saving || uploading || generating}>Voltar para rascunho</Button>
+            <Button data-tooltip="Salve o item e a ficha técnica como rascunho, fora do cardápio publicado." variant="outline" onClick={() => handleSave("draft")} disabled={saving || uploading || generating}>Voltar para rascunho</Button>
           </>
         ) : (
           <>
-            <Button variant="outline" onClick={() => handleSave("draft")} disabled={saving || uploading || generating} className="gap-2">
+            <Button data-tooltip="Salve o item e a ficha técnica como rascunho, fora do cardápio publicado." variant="outline" onClick={() => handleSave("draft")} disabled={saving || uploading || generating} className="gap-2">
               <Save className="h-4 w-4" /> {saving ? "Salvando..." : "Salvar rascunho"}
             </Button>
-            <Button onClick={() => handleSave("published")} disabled={saving || uploading || generating}>Publicar</Button>
+            <Button data-tooltip="Salve o item e a ficha técnica e publique no cardápio." onClick={() => handleSave("published")} disabled={saving || uploading || generating}>Publicar</Button>
           </>
         )}
-        <Button variant="outline" onClick={handleCancel} disabled={saving}>Cancelar</Button>
+        <Button data-tooltip="Feche a edição sem salvar as alterações pendentes." variant="outline" onClick={handleCancel} disabled={saving}>Cancelar</Button>
       </div>
     </div>
   );
@@ -611,10 +612,10 @@ const MenuTab = () => {
   return (
     <div className="space-y-4">
       <div className="flex gap-2 flex-wrap">
-        <Button onClick={() => setCreating(true)} className="gap-2">
+        <Button data-tooltip="Monte um novo item do cardápio e sua ficha técnica." onClick={() => setCreating(true)} className="gap-2">
           <Plus className="h-4 w-4" /> Novo Item
         </Button>
-        <Button variant="outline" onClick={() => setShowCategories(!showCategories)} className="gap-2">
+        <Button data-tooltip="Abra ou recolha o cadastro das categorias do cardápio." variant="outline" onClick={() => setShowCategories(!showCategories)} className="gap-2">
           <Tags className="h-4 w-4" /> Categorias ({categories.length})
         </Button>
       </div>
@@ -624,7 +625,7 @@ const MenuTab = () => {
         <div className="rounded-xl border border-border p-4 space-y-3 bg-muted/30">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-foreground">Gerenciar Categorias</h3>
-            <button onClick={() => setCreatingCategory(true)} className="text-xs text-primary hover:underline flex items-center gap-1">
+            <button data-tooltip="Cadastre uma categoria para organizar os itens do cardápio." onClick={() => setCreatingCategory(true)} className="text-xs text-primary hover:underline flex items-center gap-1">
               <Plus className="h-3 w-3" /> Nova
             </button>
           </div>
@@ -646,7 +647,7 @@ const MenuTab = () => {
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
                   {cat.destination === "kitchen" ? "Cozinha" : "Bar"}
                 </span>
-                <button onClick={() => setEditingCategory(cat)} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground">
+                <button data-tooltip="Edite o nome, o ícone e a cor desta categoria." aria-label="Edite o nome, o ícone e a cor desta categoria." onClick={() => setEditingCategory(cat)} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground">
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
                 <button
@@ -727,7 +728,7 @@ const MenuTab = () => {
                             </div>
                           )}
                           <div className="flex gap-2 pt-2">
-                            <Button size="sm" className="flex-1 gap-2" onClick={() => setEditingItem(item)}>
+                            <Button data-tooltip="Edite este item, seus ingredientes de exibição e sua ficha técnica." size="sm" className="flex-1 gap-2" onClick={() => setEditingItem(item)}>
                               <Pencil className="h-4 w-4" /> Editar / Ficha técnica
                             </Button>
                             <Button size="sm" variant="outline" aria-label={`Excluir ${item.name}`}

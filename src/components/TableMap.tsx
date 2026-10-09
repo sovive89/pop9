@@ -567,23 +567,23 @@ const TableMap = () => {
         <div className="ml-auto flex items-center gap-2">
           {mode === "normal" && editable && (
             <>
-              <Button variant="outline" size="sm" onClick={() => changeMode("join")} disabled={ungroupedCount < 2}>
+              <Button data-tooltip="Selecione duas ou mais mesas para unir o atendimento." variant="outline" size="sm" onClick={() => changeMode("join")} disabled={ungroupedCount < 2}>
                 <Link2 className="mr-1.5 h-4 w-4" /> Unir mesas
               </Button>
               {isAdmin && (
-                <Button variant="outline" size="sm" onClick={() => changeMode("edit")}>
+                <Button data-tooltip="Edite a organização das mesas, suas áreas e lugares." variant="outline" size="sm" onClick={() => changeMode("edit")}>
                   <Pencil className="mr-1.5 h-4 w-4" /> Editar mesas
                 </Button>
               )}
             </>
           )}
           {mode === "edit" && (
-            <Button size="sm" onClick={() => changeMode("normal")}>
+            <Button data-tooltip="Volte para o atendimento normal das mesas." size="sm" onClick={() => changeMode("normal")}>
               <Check className="mr-1.5 h-4 w-4" /> Concluir
             </Button>
           )}
           {mode === "join" && (
-            <Button variant="outline" size="sm" onClick={() => changeMode("normal")}>
+            <Button data-tooltip="Volte para o atendimento normal das mesas." variant="outline" size="sm" onClick={() => changeMode("normal")}>
               <X className="mr-1.5 h-4 w-4" /> Cancelar
             </Button>
           )}
@@ -645,7 +645,7 @@ const TableMap = () => {
               className="h-9 w-24"
               aria-label="Lugares por mesa"
             />
-            <Button size="sm" variant="outline" onClick={handleApplySeats} disabled={!seatsValid}>
+            <Button data-tooltip="Aplique a quantidade de lugares às mesas selecionadas." size="sm" variant="outline" onClick={handleApplySeats} disabled={!seatsValid}>
               <Armchair className="mr-1.5 h-4 w-4" /> Aplicar
             </Button>
           </div>
@@ -663,7 +663,7 @@ const TableMap = () => {
             ))}
             <option value={NONE}>Sem área</option>
           </select>
-          <Button
+          <Button data-tooltip="Arquive as mesas selecionadas após confirmar a ação."
             variant="destructive"
             size="sm"
             onClick={handleArchiveSelected}
@@ -704,7 +704,7 @@ const TableMap = () => {
                 Unir <strong>Mesas {selectedTables.map((t) => pad(t.number)).join(" + ")}</strong> —{" "}
                 <strong>{selectedSeats} lugares</strong>.
               </p>
-              <Button size="sm" onClick={handleJoin} disabled={busy}>
+              <Button data-tooltip="Una as mesas selecionadas em um grupo de atendimento." size="sm" onClick={handleJoin} disabled={busy}>
                 <Link2 className="mr-1.5 h-4 w-4" />
                 {busy ? "Unindo…" : "Unir"}
               </Button>
@@ -733,7 +733,7 @@ const TableMap = () => {
                   <Armchair className="h-3 w-3" />
                   {groupSeats} lugares
                   {mode === "normal" && (
-                    <button
+                    <button data-tooltip="Separe este grupo de mesas após confirmar a ação."
                       onClick={() => handleSplit(item.groupId)}
                       disabled={busy}
                       className="ml-0.5 flex items-center gap-0.5 font-medium text-primary hover:underline"
@@ -747,7 +747,7 @@ const TableMap = () => {
             );
           })}
           {showAddTile && (
-            <button
+            <button data-tooltip="Crie uma mesa; configure a área e os lugares na edição."
               onClick={async () => {
                 if (busy) return;
                 setBusy(true);

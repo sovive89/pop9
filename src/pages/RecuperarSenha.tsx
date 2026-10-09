@@ -1,3 +1,4 @@
+import { PAGE_HELP } from "@/lib/page-help";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -65,7 +66,7 @@ const RecuperarSenha = () => {
           <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-primary">
             <Flame className="h-10 w-10 text-primary-foreground" />
           </div>
-          <h1 className="text-3xl text-foreground">Pøp9</h1>
+          <h1 tabIndex={0} data-tooltip={PAGE_HELP["/recuperar-senha"]} className="text-3xl text-foreground">Pøp9</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Defina uma nova senha para sua conta.
           </p>
@@ -86,7 +87,7 @@ const RecuperarSenha = () => {
                   autoComplete="new-password"
                   className="h-12 bg-muted border-border text-foreground placeholder:text-muted-foreground focus:ring-primary pr-12"
                 />
-                <button
+                <button data-tooltip="Mostre ou oculte a senha digitada." aria-label="Mostre ou oculte a senha digitada."
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
@@ -114,7 +115,7 @@ const RecuperarSenha = () => {
             </Button>
           </form>
           <p className="mt-4 text-center">
-            <button
+            <button data-tooltip="Volte para a tela de entrada."
               type="button"
               onClick={() => navigate("/login")}
               className="text-sm text-muted-foreground hover:text-primary transition-colors"

@@ -433,7 +433,7 @@ const StockTab = () => {
                 className="h-10 pl-9"
               />
             </div>
-            <Button onClick={() => setNewMaterialOpen(true)} size="icon" className="h-10 w-10 shrink-0">
+            <Button data-tooltip="Cadastre um insumo teórico, com saldo zero. Registre a compra ou produção depois." aria-label="Cadastre um insumo teórico, com saldo zero. Registre a compra ou produção depois." onClick={() => setNewMaterialOpen(true)} size="icon" className="h-10 w-10 shrink-0">
               <Plus className="h-4 w-4" />
             </Button>
           </div>
@@ -456,7 +456,7 @@ const StockTab = () => {
                       {m.categoria ? `${m.categoria} · ` : ""}Custo médio: R$ {m.averageCost.toFixed(2)} / {m.unit}
                     </p>
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => openPurchase(m.id)}>
+                  <Button data-tooltip="Registre uma compra real deste insumo, com quantidade, custo e dados do lote." size="sm" variant="outline" onClick={() => openPurchase(m.id)}>
                     <Plus className="h-3.5 w-3.5 mr-1" /> Entrada
                   </Button>
                 </div>
@@ -482,7 +482,7 @@ const StockTab = () => {
           <div>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-semibold text-foreground">Receitas de produção</h3>
-              <Button size="sm" variant="outline" onClick={() => setNewRecipeOpen(true)}>
+              <Button data-tooltip="Cadastre uma receita de produção e os insumos necessários, sem produzir um lote." size="sm" variant="outline" onClick={() => setNewRecipeOpen(true)}>
                 <Plus className="h-3.5 w-3.5 mr-1" /> Nova receita
               </Button>
             </div>
@@ -497,7 +497,7 @@ const StockTab = () => {
                       {r.shelfLifeDays ? ` · validade ${r.shelfLifeDays}d` : ""}
                     </p>
                   </div>
-                  <Button size="sm" onClick={() => openProduce(r.id)}>
+                  <Button data-tooltip="Informe a quantidade produzida para registrar um lote real desta receita." size="sm" onClick={() => openProduce(r.id)}>
                     <Factory className="h-3.5 w-3.5 mr-1" /> Produzir
                   </Button>
                 </div>
@@ -551,8 +551,8 @@ const StockTab = () => {
                   </div>
                   {l.origem === "compra" && (
                     <div className="flex gap-2 mb-2">
-                      <Button size="sm" variant="outline" disabled={saving} onClick={() => openEditLot(l)}>Editar</Button>
-                      <Button size="sm" variant="destructive" disabled={saving} onClick={async () => {
+                      <Button data-tooltip="Corrija os dados deste lote de compra, mantendo o histórico." size="sm" variant="outline" disabled={saving} onClick={() => openEditLot(l)}>Editar</Button>
+                      <Button data-tooltip="Abra a confirmação para cancelar o lote de compra e ajustar o saldo." size="sm" variant="destructive" disabled={saving} onClick={async () => {
                         if (!window.confirm(`Cancelar lote ${l.numeroLote}? O histórico será preservado. Lotes consumidos não podem ser cancelados.`)) return;
                         setSaving(true);
                         try { await managePurchaseLot(l.id, "cancel"); }
@@ -581,7 +581,7 @@ const StockTab = () => {
       {view === "fornecedores" && (
         <div className="space-y-3">
           <div className="flex justify-end">
-            <Button onClick={() => setNewSupplierOpen(true)} size="sm">
+            <Button data-tooltip="Cadastre um fornecedor para associar às compras de insumos." onClick={() => setNewSupplierOpen(true)} size="sm">
               <Plus className="h-3.5 w-3.5 mr-1" /> Novo fornecedor
             </Button>
           </div>
@@ -649,7 +649,7 @@ const StockTab = () => {
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setNewMaterialOpen(false)} disabled={saving}>Cancelar</Button>
-            <Button onClick={handleCreateMaterial} disabled={saving || !matName.trim() || !matUnit.trim()}>
+            <Button data-tooltip="Salve o cadastro do insumo sem lançar uma entrada de estoque." onClick={handleCreateMaterial} disabled={saving || !matName.trim() || !matUnit.trim()}>
               {saving ? "Aguarde..." : "Criar"}
             </Button>
           </DialogFooter>
@@ -700,7 +700,7 @@ const StockTab = () => {
                 Para caixa, pacote ou unidade sem equivalência conhecida, informe a conversão; o sistema não estima pesos.
               </p>
             </div>
-            <button type="button" onClick={() => setPIsBox((v) => !v)}
+            <button data-tooltip="Informe a embalagem em caixas e a conversão para a unidade do estoque." type="button" onClick={() => setPIsBox((v) => !v)}
               className="w-full flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm">
               <Package className="h-4 w-4" /> {pIsBox ? "✓ " : ""}Detalhar embalagem em caixas (opcional)
             </button>
@@ -752,7 +752,7 @@ const StockTab = () => {
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setPurchaseOpen(false)} disabled={saving}>Cancelar</Button>
-            <Button onClick={handleRegisterPurchase} disabled={saving || !(Number(pQuantity) > 0) || !(Number(pConversion) > 0) || !pPurchaseUnit}>
+            <Button data-tooltip="Salve os dados da compra ou da correção do lote e atualize o estoque real." onClick={handleRegisterPurchase} disabled={saving || !(Number(pQuantity) > 0) || !(Number(pConversion) > 0) || !pPurchaseUnit}>
               {saving ? "Aguarde..." : editingLotId ? "Salvar alterações" : "Registrar"}
             </Button>
           </DialogFooter>
@@ -784,7 +784,7 @@ const StockTab = () => {
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setNewSupplierOpen(false)} disabled={saving}>Cancelar</Button>
-            <Button onClick={handleCreateSupplier} disabled={saving || !supName.trim()}>
+            <Button data-tooltip="Salve o cadastro do fornecedor." onClick={handleCreateSupplier} disabled={saving || !supName.trim()}>
               {saving ? "Aguarde..." : "Criar"}
             </Button>
           </DialogFooter>
@@ -866,7 +866,7 @@ const StockTab = () => {
                     onChange={(e) => updateRecInput(idx, { quantity: Number(e.target.value) })}
                     placeholder="Qtd"
                   />
-                  <button
+                  <button data-tooltip="Remova este insumo da receita em edição." aria-label="Remova este insumo da receita em edição."
                     type="button"
                     onClick={() => setRecInputs((prev) => prev.filter((_, i) => i !== idx))}
                     className="p-2 text-muted-foreground hover:text-destructive"
@@ -875,7 +875,7 @@ const StockTab = () => {
                   </button>
                 </div>
               ))}
-              <Button
+              <Button data-tooltip="Adicione um insumo e sua quantidade à receita de produção."
                 type="button"
                 variant="outline"
                 size="sm"
@@ -887,7 +887,7 @@ const StockTab = () => {
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setNewRecipeOpen(false)} disabled={saving}>Cancelar</Button>
-            <Button onClick={handleCreateRecipe} disabled={saving || !recName.trim() || !recOutputId || !recOutputQty}>
+            <Button data-tooltip="Salve a receita e suas quantidades de referência. A produção real será lançada depois." onClick={handleCreateRecipe} disabled={saving || !recName.trim() || !recOutputId || !recOutputQty}>
               {saving ? "Aguarde..." : "Criar receita"}
             </Button>
           </DialogFooter>
@@ -955,7 +955,7 @@ const StockTab = () => {
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setProduceOpen(false)} disabled={saving}>Cancelar</Button>
-            <Button onClick={handleProduceBatch} disabled={saving || !prodQuantity}>
+            <Button data-tooltip="Confirme a produção: registre o lote e o consumo dos insumos." onClick={handleProduceBatch} disabled={saving || !prodQuantity}>
               {saving ? "Aguarde..." : "Confirmar produção"}
             </Button>
           </DialogFooter>
