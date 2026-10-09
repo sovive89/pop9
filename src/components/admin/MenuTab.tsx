@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Flame, Plus, Trash2, Pencil, Save, X, ChevronDown, ChevronUp, Tags, ImagePlus, Image, Sparkles } from "lucide-react";
+import { Flame, Plus, Trash2, Pencil, Save, X, ChevronDown, ChevronUp, Tags, ImagePlus, Image, Sparkles, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAdminData, type DbMenuItem, type DbIngredient, type DbVariant, type DbMenuCategory } from "@/hooks/useAdminData";
@@ -45,6 +45,8 @@ const removeMenuImages = async (urls: (string | null | undefined)[]) => {
 const AI_IMAGE_MODELS = [
   { id: "google/gemini-2.5-flash-image", label: "Nano Banana (Google)", provider: "google" },
   { id: "openai/gpt-image-1", label: "GPT Image (OpenAI)", provider: "openai" },
+  { id: "stability/stable-image-core", label: "Stable Image Core (Stability AI)", provider: "stability" },
+  { id: "stability/stable-image-ultra", label: "Stable Image Ultra — premium (Stability AI)", provider: "stability" },
 ];
 
 // ── Category Editor ──
@@ -204,10 +206,44 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     return () => { cancelled = true; };
   }, [businessUnitId]);
   const [aiExtra, setAiExtra] = useState("");
+  const [promptEdited,setPromptEdited]=useState(false);
+  const [imagePrompt,setImagePrompt]=useState("");
+
+  const [showPhotoSettings,setShowPhotoSettings]=useState(false);
+  const [photoSettings,setPhotoSettings]=useState({style:"studio",angle:"three-quarter",lighting:"soft",custom:""});
+  const [savingPhotoSettings,setSavingPhotoSettings]=useState(false);
+  useEffect(()=>{
+    if(!businessUnitId)return;
+    let active=true;
+    void supabase.functions.invoke("generate-menu-image",{body:{action:"photo-settings",businessUnitId}}).then(({data,error})=>{
+      if(active&&!error&&data?.settings)setPhotoSettings(data.settings);
+    });
+    return ()=>{active=false;};
+  },[businessUnitId]);
+  const savePhotoSettings=async()=>{
+    if(!businessUnitId)return;
+    setSavingPhotoSettings(true);
+    try{
+      const {data,error}=await supabase.functions.invoke("generate-menu-image",{body:{action:"save-photo-settings",businessUnitId,settings:photoSettings}});
+      if(error||data?.error)throw new Error(data?.error??error?.message??"Erro ao salvar");
+      toast.success("Padrão fotográfico salvo para esta unidade");
+      setShowPhotoSettings(false);
+    }catch(e){toast.error(e instanceof Error?e.message:String(e));}
+    finally{setSavingPhotoSettings(false);}
+  };
   const [generating, setGenerating] = useState(false);
   const [ingredients, setIngredients] = useState<Omit<DbIngredient, "id">[]>(
     item?.ingredients?.map(({ id: _, ...rest }) => rest) ?? []
   );
+  const importedImagePrompt = [
+    name.trim() && `Produto: ${name.trim()}`,
+    description.trim() && `Descrição: ${description.trim()}`,
+    ingredients.filter(i=>i.name.trim()).length>0 && `Ficha técnica / ingredientes: ${ingredients.map(i=>i.name.trim()).filter(Boolean).join(", ")}`,
+    "Fotografia gastronômica fotorrealista, composição fiel aos ingredientes informados, sem adicionar ingredientes, guarnições ou acompanhamentos não cadastrados."
+  ].filter(Boolean).join("\\n");
+  useEffect(()=>{
+    if(!promptEdited)setImagePrompt(importedImagePrompt);
+  },[importedImagePrompt,promptEdited]);
   const [variants, setVariants] = useState<Omit<DbVariant, "id">[]>(
     item?.variants?.map(({ id: _, ...rest }) => rest) ?? []
   );
@@ -248,6 +284,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
           ingredients: ingredients.map((i) => i.name.trim()).filter(Boolean),
           model: aiModel,
           extra: aiExtra.trim() || undefined,
+          imagePrompt: imagePrompt.trim() || undefined,
         },
       }));
     } catch (err) {
@@ -477,12 +514,43 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
               placeholder="Ajuste opcional (ex: em tábua de madeira)"
               className="h-9 flex-1 min-w-[180px]"
             />
+            <div className="w-full space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor="menu-ai-prompt" className="text-xs font-medium">Prompt da imagem — importado da descrição e ficha técnica</label>
+                <Button type="button" variant="ghost" size="sm" onClick={()=>{setPromptEdited(false);setImagePrompt(importedImagePrompt);}}>Reimportar dados</Button>
+              </div>
+              <textarea id="menu-ai-prompt" value={imagePrompt} onChange={e=>{setImagePrompt(e.target.value);setPromptEdited(true);}} maxLength={2500} rows={5} className="w-full rounded-md border border-border bg-background p-3 text-sm text-foreground" aria-label="Prompt editável para geração de imagem"/>
+              <p className="text-[11px] text-muted-foreground">O texto pode ser ajustado. A descrição e os ingredientes continuam sendo enviados separadamente para orientar a fidelidade da imagem.</p>
+            </div>
+            <Button type="button" variant="outline" aria-label="Configurar padrão fotográfico" title="Configurar padrão fotográfico" onClick={()=>setShowPhotoSettings(v=>!v)} className="h-9 px-3"><Settings2 className="h-4 w-4"/></Button>
             <Button type="button" variant="outline" onClick={handleGenerateImage} disabled={generating || availableModels.length === 0} className="gap-2 h-9">
               {generating ? <Flame className="h-4 w-4 animate-pulse text-primary" /> : <Sparkles className="h-4 w-4" />}
               {generating ? "Gerando..." : imageUrl ? "Gerar outra" : "Gerar"}
             </Button>
           </div>
-          <p className="text-[11px] text-muted-foreground">{availableModels.length === 0 ? "Conecte Google ou OpenAI em Integrações → Inteligência Artificial para habilitar a geração nesta unidade." : "Usa nome, descrição e ingredientes do item. Cada geração tem custo na sua conta de IA."}</p>
+          {showPhotoSettings && <div className="rounded-md border border-border p-3 space-y-3">
+            <p className="text-sm font-medium">Padrão fotográfico da unidade</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <label className="text-xs space-y-1">Estilo
+                <select aria-label="Estilo fotográfico" value={photoSettings.style} onChange={e=>setPhotoSettings(s=>({...s,style:e.target.value}))} className="w-full h-9 rounded-md border border-border bg-background px-2">
+                  <option value="studio">Estúdio claro</option><option value="dark">Estúdio escuro</option><option value="natural">Restaurante natural</option><option value="catalog">Catálogo</option>
+                </select>
+              </label>
+              <label className="text-xs space-y-1">Ângulo
+                <select aria-label="Ângulo fotográfico" value={photoSettings.angle} onChange={e=>setPhotoSettings(s=>({...s,angle:e.target.value}))} className="w-full h-9 rounded-md border border-border bg-background px-2">
+                  <option value="three-quarter">45 graus</option><option value="front">Frontal</option><option value="top">Superior</option>
+                </select>
+              </label>
+              <label className="text-xs space-y-1">Iluminação
+                <select aria-label="Iluminação fotográfica" value={photoSettings.lighting} onChange={e=>setPhotoSettings(s=>({...s,lighting:e.target.value}))} className="w-full h-9 rounded-md border border-border bg-background px-2">
+                  <option value="soft">Suave</option><option value="natural">Natural</option><option value="dramatic">Dramática</option>
+                </select>
+              </label>
+            </div>
+            <Input value={photoSettings.custom} maxLength={250} onChange={e=>setPhotoSettings(s=>({...s,custom:e.target.value}))} placeholder="Direção fotográfica fixa (opcional)" />
+            <Button type="button" onClick={savePhotoSettings} disabled={savingPhotoSettings}>{savingPhotoSettings?"Salvando...":"Salvar padrão da unidade"}</Button>
+          </div>}
+          <p className="text-[11px] text-muted-foreground">{availableModels.length === 0 ? "Conecte Google, OpenAI ou Stability AI em Integrações → Inteligência Artificial para habilitar a geração nesta unidade." : "Usa nome, descrição e ingredientes do item. Cada geração tem custo na sua conta de IA."}</p>
         </div>
       </div>
 

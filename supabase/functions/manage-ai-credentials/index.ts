@@ -1,9 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, apikey, x-client-info, content-type", "Content-Type": "application/json" };
 const reply = (data: unknown, status=200) => new Response(JSON.stringify(data), { status, headers: CORS });
-const PROVIDERS = new Set(["openai","google","xai","bfl","ideogram","anthropic"]);
+const PROVIDERS = new Set(["openai","google","xai","bfl","ideogram","anthropic","stability"]);
 const ENDPOINTS: Record<string,string> = {
   openai:"https://api.openai.com/v1/models",
+  stability:"https://api.stability.ai/v1/user/balance",
   google:"https://generativelanguage.googleapis.com/v1beta/models",
   xai:"https://api.x.ai/v1/models",
   bfl:"https://api.bfl.ai/v1/get_result/invalid",
