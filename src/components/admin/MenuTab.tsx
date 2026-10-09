@@ -13,9 +13,9 @@ import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 // ── Image Upload Helper ──
 // O nome do arquivo é gerado aqui (não depende do ID do item, que só existe
 // depois que o banco cria o registro).
-const uploadMenuImage = async (file: File): Promise<string | null> => {
+const uploadMenuImage = async (file: File, businessUnitId: string): Promise<string | null> => {
   const ext = file.name.split(".").pop();
-  const path = `${crypto.randomUUID()}.${ext}`;
+  const path = `${businessUnitId}/uploads/${crypto.randomUUID()}.${ext}`;
 
   const { error } = await supabase.storage.from("menu-images").upload(path, file, { upsert: true });
   if (error) {
@@ -169,7 +169,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   const closed = useRef(false);
   const trackImage = (url: string): boolean => {
     if (closed.current) {
-      void removeMenuImages([url]);
+      // O arquivo permanece no acervo, mesmo após o editor ser fechado.
       return false;
     }
     sessionImages.current.push(url);
@@ -180,6 +180,27 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   const [category, setCategory] = useState(item?.category ?? (categories[0]?.key ?? ""));
   const [description, setDescription] = useState(item?.description ?? "");
   const [imageUrl, setImageUrl] = useState(item?.image_url ?? "");
+  const [libraryPhotos, setLibraryPhotos] = useState<string[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
+  const loadPhotoLibrary = async () => {
+    if (!businessUnitId) return;
+    setLibraryLoading(true);
+    try {
+      const bucket = supabase.storage.from("menu-images");
+      const [uploads, generated] = await Promise.all([
+        bucket.list(`${businessUnitId}/uploads`, { limit: 100, sortBy: { column: "created_at", order: "desc" } }),
+        bucket.list(`${businessUnitId}/ai`, { limit: 100, sortBy: { column: "created_at", order: "desc" } }),
+      ]);
+      if (uploads.error || generated.error) throw uploads.error ?? generated.error;
+      setLibraryPhotos([
+        ...(uploads.data ?? []).map(file => `${businessUnitId}/uploads/${file.name}`),
+        ...(generated.data ?? []).map(file => `${businessUnitId}/ai/${file.name}`),
+      ].filter(path => !path.endsWith("/.emptyFolderPlaceholder")).map(path => bucket.getPublicUrl(path).data.publicUrl));
+    } catch (error) {
+      toast.error("Não foi possível listar as fotos: " + (error instanceof Error ? error.message : String(error)));
+    } finally { setLibraryLoading(false); }
+  };
   const [sortOrder, setSortOrder] = useState(item?.sort_order?.toString() ?? "0");
   const [active, setActive] = useState(item?.active ?? true);
   // Status já gravado no banco (não o do item aberto): muda assim que um save
@@ -219,8 +240,9 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     if (!file) return;
     setUploading(true);
     try {
-      const url = await uploadMenuImage(file);
-      if (url && trackImage(url)) setImageUrl(url);
+      if (!businessUnitId) { toast.error("Selecione uma unidade antes de enviar a foto"); return; }
+      const url = await uploadMenuImage(file, businessUnitId);
+      if (url && trackImage(url)) { setImageUrl(url); setImageFailed(false); }
     } catch (err) {
       toast.error("Erro ao enviar imagem: " + (err instanceof Error ? err.message : String(err)));
     } finally {
@@ -266,15 +288,16 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       return;
     }
     if (!trackImage(data.url)) {
-      // Editor já fechado: a geração foi cobrada, mas a foto foi descartada.
-      toast.info("A foto gerada chegou depois de fechar o editor e foi descartada.");
+      toast.info("Foto salva no acervo, mas o editor já foi fechado.");
       return;
     }
     setImageUrl(data.url);
+    setImageFailed(false);
     toast.success("Foto gerada — salve o item para manter");
   };
 
   const removeImage = () => {
+    setImageFailed(false);
     setImageUrl("");
   };
 
@@ -283,7 +306,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     closed.current = true;
     const leftovers = sessionImages.current.filter((u) => u !== persistedImage.current);
     sessionImages.current = [];
-    if (leftovers.length > 0) void removeMenuImages(leftovers);
+    // Preserva todas as fotos no acervo para reutilização posterior.
   };
 
   // Não deixa fechar no meio do save: a foto ainda não foi gravada no item e
@@ -346,7 +369,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     const stale = [item?.image_url, ...sessionImages.current].filter((u) => u && u !== finalImage);
     closed.current = true;
     sessionImages.current = [];
-    void removeMenuImages(stale);
+    // Não apagar fotos anteriores ou tentativas: fazem parte do acervo.
     onCancel();
   };
 
@@ -433,7 +456,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
         <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
         {imageUrl ? (
           <div className="relative w-32 h-32 rounded-lg overflow-hidden border border-border group">
-            <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
+            <img src={imageUrl} alt="Preview" onError={() => setImageFailed(true)} onLoad={() => setImageFailed(false)} className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
               <button onClick={() => fileInputRef.current?.click()} className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-white/30">
                 <Pencil className="h-4 w-4" />
@@ -458,6 +481,17 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
           </button>
         )}
 
+        {imageFailed && <p className="text-xs text-destructive">A foto cadastrada não foi encontrada no armazenamento. Selecione outra no acervo ou envie novamente.</p>}
+        <div className="space-y-2 rounded-lg border border-border p-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium">Acervo de fotos · Storage</span>
+            <Button type="button" variant="outline" size="sm" disabled={libraryLoading || !businessUnitId} onClick={() => void loadPhotoLibrary()}>{libraryLoading ? "Carregando..." : "Ver fotos"}</Button>
+          </div>
+          {libraryPhotos.length > 0 && <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 max-h-64 overflow-y-auto">
+            {libraryPhotos.map(url => <button type="button" key={url} onClick={() => { setImageUrl(url); setImageFailed(false); }} aria-label="Usar foto do acervo" className={`aspect-square rounded-md overflow-hidden border-2 ${imageUrl === url ? "border-primary" : "border-border"}`}><img src={url} alt="Foto armazenada" loading="lazy" className="h-full w-full object-cover" /></button>)}
+          </div>}
+          <p className="text-xs text-muted-foreground">Fotos enviadas e geradas permanecem salvas, mesmo quando substituídas ou removidas do produto.</p>
+        </div>
         <div className="rounded-lg border border-border bg-secondary/20 p-3 space-y-2">
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
             <Sparkles className="h-3.5 w-3.5 text-primary" /> Gerar foto com IA
