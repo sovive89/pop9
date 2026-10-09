@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Printer, Plus, Trash2, Tag as TagIcon, TestTube2 } from "lucide-react";
+import { Printer, Plus, Trash2, Tag as TagIcon, TestTube2, ChevronDown, ChevronUp, Settings2 } from "lucide-react";
 import { testQzPrinter } from "@/utils/qz-printer";
 import { printReceipt } from "@/utils/thermal-print";
 import { toast } from "sonner";
@@ -43,6 +43,8 @@ const PrintersTab = () => {
   const { printers, loading, createPrinter, updatePrinter, deletePrinter } = usePrinterConfigs();
 
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -78,6 +80,7 @@ const PrintersTab = () => {
   };
 
   const resetForm = () => {
+    setAdvancedOpen(false);
     setName("");
     setTipo("termica");
     setGatilho("comanda_cozinha");
@@ -111,71 +114,60 @@ const PrintersTab = () => {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-border bg-card p-4">
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          Cada gatilho (ex: "Comanda da cozinha") pode ter uma impressora associada. Hoje a
-          execução real da impressão continua sendo o diálogo do navegador — o navegador não
-          permite selecionar/lembrar uma impressora específica nem imprimir silenciosamente sem
-          uma camada extra (QZ Tray ou WebUSB). QZ Tray pode enviar comandos ESC/POS quando estiver instalado e autorizado no computador. WebUSB ainda não está integrado.
-        </p>
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold">Central de Impressão</h2>
+        <p className="text-xs text-muted-foreground">Gerencie os destinos de impressão desta unidade. A fila centralizada e o monitoramento online ainda não estão disponíveis.</p>
       </div>
-
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-foreground">Impressoras cadastradas</h3>
-        <Button size="sm" onClick={() => setDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-1" /> Nova impressora
-        </Button>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="text-2xl font-semibold">{printers.length}</p>
+          <p className="text-xs text-muted-foreground">Cadastradas</p>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="text-2xl font-semibold">{printers.filter(p => p.active).length}</p>
+          <p className="text-xs text-muted-foreground">Ativas (não indica conexão)</p>
+        </div>
       </div>
-
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">Impressoras cadastradas</h3>
+        <Button size="sm" onClick={() => setDialogOpen(true)}><Plus className="h-4 w-4 mr-1" /> Adicionar</Button>
+      </div>
       <div className="space-y-2">
-        {printers.map((p) => (
-          <div key={p.id} className="rounded-xl border border-border bg-card p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="font-semibold text-foreground flex items-center gap-2">
-                  {p.tipo === "etiqueta" ? (
-                    <TagIcon className="h-4 w-4 text-primary" />
-                  ) : (
-                    <Printer className="h-4 w-4 text-primary" />
-                  )}
-                  {p.name}
-                  {!p.active && (
-                    <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                      inativa
-                    </Badge>
-                  )}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {GATILHO_LABELS[p.gatilho]} · {CONNECTION_TYPE_LABELS[p.connectionType]}
-                  {p.deviceIdentifier && ` · ${p.deviceIdentifier}`}
-                  {p.host && ` · ${p.host}:${p.port}`} · {p.paperWidth}mm
-                </p>
+        {printers.map(p => {
+          const expanded = expandedIds.includes(p.id);
+          return <div key={p.id} className="rounded-xl border border-border bg-card p-4 space-y-3">
+            <button type="button" className="flex items-center justify-between gap-3 w-full text-left" aria-expanded={expanded} onClick={() => setExpandedIds(ids => expanded ? ids.filter(id => id !== p.id) : [...ids, p.id])}>
+              <span className="flex items-center gap-2 min-w-0">
+                {p.tipo === "etiqueta" ? <TagIcon className="h-5 w-5 shrink-0 text-primary"/> : <Printer className="h-5 w-5 shrink-0 text-primary"/>}
+                <span className="min-w-0"><span className="block font-semibold truncate">{p.name}</span><span className="block text-xs text-muted-foreground">{GATILHO_LABELS[p.gatilho]}</span></span>
+              </span>
+              <span className="flex items-center gap-2 shrink-0"><Badge variant={p.active ? "secondary" : "outline"}>{p.active ? "Ativa" : "Inativa"}</Badge>{expanded ? <ChevronUp className="h-4 w-4"/> : <ChevronDown className="h-4 w-4"/>}</span>
+            </button>
+            {expanded && <>
+              <div className="rounded-lg bg-muted/40 p-3 space-y-1 text-xs text-muted-foreground">
+                <p>Conexão: {CONNECTION_TYPE_LABELS[p.connectionType]} · {p.transport === "tcp" ? "Rede TCP" : "Impressora do sistema"}</p>
+                {p.host && <p>Endereço: {p.host}:{p.port}</p>}
+                {p.deviceIdentifier && <p>Dispositivo: {p.deviceIdentifier}</p>}
+                <p>Papel: {p.paperWidth} mm · {p.copies} cópia(s) · {p.encoding.toUpperCase()}</p>
+                <p>Status de conexão: não monitorado</p>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Button size="sm" variant="outline" onClick={() => handleTestPrint(p)} disabled={testingId === p.id} title="Testar impressora"><TestTube2 className="h-4 w-4 mr-1" /> Testar</Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => updatePrinter(p.id, { active: !p.active })}
-                >
-                  {p.active ? "Desativar" : "Ativar"}
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => deletePrinter(p.id)}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={() => handleTestPrint(p)} disabled={testingId === p.id}><TestTube2 className="h-4 w-4 mr-1"/>{testingId === p.id ? "Testando..." : "Testar"}</Button>
+                <Button size="sm" variant="outline" onClick={() => updatePrinter(p.id, { active: !p.active })}>{p.active ? "Desativar" : "Ativar"}</Button>
+                <Button size="sm" variant="outline" onClick={() => { if (window.confirm(`Excluir a impressora "${p.name}"?`)) deletePrinter(p.id); }}><Trash2 className="h-4 w-4 mr-1"/>Excluir</Button>
               </div>
-            </div>
-          </div>
-        ))}
-        {printers.length === 0 && (
-          <p className="text-center text-muted-foreground py-6 text-sm">
-            Nenhuma impressora cadastrada ainda.
-          </p>
-        )}
+            </>}
+          </div>;
+        })}
+        {printers.length === 0 && <p className="text-center text-muted-foreground py-6 text-sm">Nenhuma impressora cadastrada.</p>}
+      </div>
+      <div className="rounded-xl border border-dashed border-border p-4 space-y-1">
+        <p className="text-sm font-medium">Fila de impressão</p>
+        <p className="text-xs text-muted-foreground">Em desenvolvimento. O histórico e os estados de envio aparecerão aqui após a integração com o agente de impressão.</p>
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Nova impressora</DialogTitle>
             <DialogDescription>
@@ -220,6 +212,8 @@ const PrintersTab = () => {
                 </SelectContent>
               </Select>
             </div>
+            <button type="button" className="w-full flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm font-medium" aria-expanded={advancedOpen} onClick={() => setAdvancedOpen(v => !v)}><span className="flex items-center gap-2"><Settings2 className="h-4 w-4"/>Configurações avançadas</span>{advancedOpen ? <ChevronUp className="h-4 w-4"/> : <ChevronDown className="h-4 w-4"/>}</button>
+            {advancedOpen && <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2"><Label>Transporte</Label><Select value={transport} onValueChange={setTransport}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="tcp">TCP / Rede</SelectItem><SelectItem value="usb">USB</SelectItem></SelectContent></Select></div>
               <div className="space-y-2"><Label>Papel</Label><Select value={paperWidth} onValueChange={setPaperWidth}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="58">58 mm</SelectItem><SelectItem value="80">80 mm</SelectItem></SelectContent></Select></div>
@@ -236,6 +230,7 @@ const PrintersTab = () => {
                 placeholder="Ex: nome/IP da impressora, quando aplicável"
               />
             </div>
+            </div>}
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
