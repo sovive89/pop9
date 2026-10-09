@@ -9,6 +9,7 @@ import ActiveOrdersPanel from "@/components/ActiveOrdersPanel";
 import { useSessionStore } from "@/hooks/useSessionStore";
 import { supabase } from "@/integrations/supabase/client";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { hasPermission } from "@/lib/rolePermissions";
 
 const Index = () => {
   const { user, loading, signOut } = useAuth();
@@ -20,6 +21,8 @@ const Index = () => {
     kitchen: false,
   });
   const [profileName, setProfileName] = useState("");
+  const [roleList, setRoleList] = useState<string[]>([]);
+  const [rolesLoaded, setRolesLoaded] = useState(false);
   const [tab, setTab] = useState<"mesas" | "pedidos">("mesas");
   usePushNotifications(user?.id);
 
@@ -39,13 +42,16 @@ const Index = () => {
   }, [sessions]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) { setRolesLoaded(false); setRoleList([]); return; }
+    setRolesLoaded(false);
     supabase
       .from("user_roles")
       .select("role")
       .eq("user_id", user.id)
       .then(({ data: rolesList }) => {
         const r = (rolesList ?? []).map((x) => x.role);
+        setRoleList(r);
+        setRolesLoaded(true);
         setRoles({
           admin: r.includes("admin"),
           attendant: r.includes("attendant"),
@@ -71,6 +77,9 @@ const Index = () => {
   if (!user) {
     return <Navigate to="/login" replace />;
   }
+
+  if (!rolesLoaded) return <div className="flex min-h-screen items-center justify-center bg-background"><Flame className="h-10 w-10 animate-pulse text-primary" /></div>;
+  if (!hasPermission(roleList, "tables.view")) return <Navigate to={roles.admin ? "/admin" : roles.kitchen ? "/cozinha" : "/login"} replace />;
 
   return (
     <div className="min-h-screen bg-background">
