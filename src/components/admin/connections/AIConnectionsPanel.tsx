@@ -42,7 +42,13 @@ export function AIConnectionsPanel() {
   },[retryUnits]);
   async function invoke(action:string,selectedProvider=provider,apiKey?:string){
     const {data,error}=await supabase.functions.invoke("manage-ai-credentials",{body:{action,businessUnitId:unitId,provider:selectedProvider,apiKey}});
-    if(error)throw error;
+    if(error){
+      const response=(error as {context?:Response}).context;
+      if(response && typeof response.json==="function"){
+        try{const details=await response.json();if(details?.error)throw new Error(details.error);}catch(e){if(e instanceof Error && e.message!== "Unexpected end of JSON input" && !(e instanceof SyntaxError))throw e;}
+      }
+      throw error;
+    }
     if(data?.error)throw new Error(data.error);
     return data;
   }
