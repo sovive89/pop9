@@ -368,6 +368,9 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                 </button>
 
                 <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
+                  {selectedItem.imageUrl && (
+                    <img src={selectedItem.imageUrl} alt={`Foto de ${selectedItem.name}`} loading="lazy" className="w-full aspect-[4/3] rounded-xl object-cover" />
+                  )}
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="text-2xl text-foreground" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>

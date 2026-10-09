@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import Login from "./pages/Login";
 import AuthCallback from "./pages/AuthCallback";
 import RecuperarSenha from "./pages/RecuperarSenha";
@@ -14,11 +15,24 @@ import CustomerCheckin from "./pages/CustomerCheckin";
 import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
+const UnitSelector = () => {
+  const { units, requiresSelection, selectBusinessUnit, loading } = useCurrentBusinessUnit();
+  if (loading || !requiresSelection) return null;
+  return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label="Selecionar unidade">
+    <div className="w-full max-w-md rounded-xl bg-background border border-border p-6 space-y-4">
+      <h2 className="text-lg font-semibold">Selecionar unidade</h2>
+      <p className="text-sm text-muted-foreground">Escolha a unidade em que deseja operar.</p>
+      {units.map(unit => <button key={unit.id} type="button" className="w-full rounded-lg border border-border p-3 text-left hover:bg-accent" onClick={() => selectBusinessUnit(unit.id)}>{unit.name}</button>)}
+    </div>
+  </div>;
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
       <Sonner />
+      <UnitSelector />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
