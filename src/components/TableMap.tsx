@@ -562,7 +562,7 @@ const TableMap = () => {
         )}
 
         <div className="ml-auto flex items-center gap-2">
-          {mode === "normal" && editable && (
+          {mode === "normal" && editable && isAdmin && (
             <>
               <Button variant="outline" size="sm" onClick={() => changeMode("join")} disabled={ungroupedCount < 2}>
                 <Link2 className="mr-1.5 h-4 w-4" /> Unir mesas
@@ -743,7 +743,7 @@ const TableMap = () => {
               </div>
             );
           })}
-          {showAddTile && (
+          {showAddTile && isAdmin && (
             <button
               onClick={() => addTable()}
               className="flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-muted-foreground/30 p-4 text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
@@ -764,6 +764,7 @@ const TableMap = () => {
           orders={getTableOrders(selectedTableId)}
           onStartSession={(input) => handleStartSession(selectedTableId, DEFAULT_ZONE, input)}
           onAddClient={(input) => handleAddClient(selectedTableId, input)}
+          canCloseAccount={isAdmin}
           onCloseSession={() => handleCloseSession(selectedTableId)}
           onClose={() => setSelectedTableId(null)}
           onSelectClient={(client) => setSelectedClient(client)}
