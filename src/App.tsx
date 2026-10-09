@@ -10,6 +10,8 @@ import AuthCallback from "./pages/AuthCallback";
 import RecuperarSenha from "./pages/RecuperarSenha";
 import Kitchen from "./pages/Kitchen";
 import Admin from "./pages/Admin";
+import Cashier from "./pages/Cashier";
+import Delinquency from "./pages/Delinquency";
 import Reports from "./pages/Reports";
 import CustomerCheckin from "./pages/CustomerCheckin";
 import NotFound from "./pages/NotFound";
@@ -43,6 +45,8 @@ const App = () => (
           <Route path="/recuperar-senha" element={<RecuperarSenha />} />
           <Route path="/cozinha" element={<Kitchen />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/caixa" element={<Cashier />} />
+          <Route path="/inadimplencia" element={<Delinquency />} />
           <Route path="/relatorios" element={<Reports />} />
           <Route path="/m" element={<CustomerCheckin />} />
           <Route path="/m/t/:token" element={<CustomerCheckin />} />

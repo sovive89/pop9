@@ -105,6 +105,8 @@ export const useSessionStore = () => {
       map[s.table_number] = {
         session: {
           dbId: s.id,
+          closureRequestedAt: s.closure_requested_at ?? null,
+          serviceChargeEnabled: s.service_charge_enabled ?? false,
           startedAt: new Date(s.started_at),
           clients,
         },
@@ -379,28 +381,17 @@ export const useSessionStore = () => {
     return true;
   };
 
-  const closeSession = async (tableNumber: number) => {
+  const requestCloseSession = async (tableNumber: number, serviceCharge = false) => {
     const sessionData = sessions[tableNumber];
-    if (!sessionData) return;
-
-    const { error } = await supabase
-      .from("sessions")
-      .update({ status: "closed", ended_at: new Date().toISOString() })
-      .eq("id", sessionData.session.dbId)
-      .eq("business_unit_id", businessUnitId!);
-
-    if (error) {
-      toast.error("Erro ao encerrar sessão");
-      return;
-    }
-
-    setSessions((prev) => {
-      const next = { ...prev };
-      delete next[tableNumber];
-      return next;
+    if (!sessionData || !businessUnitId || currentScope.current !== scope) return false;
+    const { error } = await supabase.rpc("request_session_closure", {
+      p_session_id: sessionData.session.dbId, p_service_charge: serviceCharge,
     });
-
-    toast.success(`Sessão encerrada — Mesa ${String(tableNumber).padStart(2, "0")}`);
+    if (error) { toast.error(error.message || "Erro ao solicitar encerramento"); return false; }
+    if (currentScope.current !== scope) return false;
+    await loadSessions();
+    toast.success("Encerramento solicitado ao caixa. A mesa aguarda confirmação.");
+    return true;
   };
 
   const placeOrder = async (tableNumber: number, clientId: string, cartItems: OrderItem[]) => {
@@ -529,7 +520,7 @@ export const useSessionStore = () => {
     loading,
     startSession,
     addClient,
-    closeSession,
+    requestCloseSession,
     placeOrder,
     updateLocalCart,
     markDelivered,

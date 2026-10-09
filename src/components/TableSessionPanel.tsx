@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import CloseAccountPanel from "@/components/CloseAccountPanel";
 import {
   UserPlus,
@@ -12,9 +12,6 @@ import {
   Calculator,
   SplitSquareHorizontal,
   User,
-  Lock,
-  Eye,
-  EyeOff,
   Printer,
   QrCode,
 } from "lucide-react";
@@ -42,6 +39,8 @@ export interface ClientInfo {
 export interface TableSession {
   startedAt: Date;
   endedAt?: Date;
+  closureRequestedAt?: string | null;
+  serviceChargeEnabled?: boolean;
   clients: ClientInfo[];
 }
 
@@ -52,7 +51,7 @@ interface Props {
   orders: ClientOrder[];
   onStartSession: (client: Omit<ClientInfo, "id" | "addedAt">) => void;
   onAddClient: (client: Omit<ClientInfo, "id" | "addedAt">) => void;
-  onCloseSession: () => void;
+  onRequestCloseSession: (serviceCharge: boolean) => Promise<boolean>;
   onClose: () => void;
   onSelectClient: (client: ClientInfo) => void;
 }
@@ -80,7 +79,7 @@ const TableSessionPanel = ({
   orders,
   onStartSession,
   onAddClient,
-  onCloseSession,
+  onRequestCloseSession,
   onClose,
   onSelectClient,
 }: Props) => {
@@ -106,10 +105,7 @@ const TableSessionPanel = ({
   const [showCalc, setShowCalc] = useState(false);
   const [calcPeople, setCalcPeople] = useState(2);
 
-  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
-  const [closePassword, setClosePassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [isVerifying, setIsVerifying] = useState(false);
+  const [isRequesting, setIsRequesting] = useState(false);
   const [showCloseAccount, setShowCloseAccount] = useState(false);
 
   const [accessCode, setAccessCode] = useState<string | null>(null);
@@ -122,34 +118,9 @@ const TableSessionPanel = ({
   const tableTotalWithCharge = includeServiceCharge ? tableTotal * 1.1 : tableTotal;
   const serviceChargeAmount = includeServiceCharge ? tableTotal * 0.1 : 0;
 
-  const handleCloseSession = async () => {
-    if (!closePassword.trim()) {
-      toast.error("Digite sua senha");
-      return;
-    }
-    setIsVerifying(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user?.email) {
-        toast.error("Usuário não autenticado");
-        return;
-      }
-      const { error } = await supabase.auth.signInWithPassword({
-        email: user.email,
-        password: closePassword,
-      });
-      if (error) {
-        toast.error("Senha incorreta");
-        return;
-      }
-      onCloseSession();
-      setShowCloseConfirm(false);
-      setClosePassword("");
-    } catch {
-      toast.error("Erro ao verificar senha");
-    } finally {
-      setIsVerifying(false);
-    }
+  const handleRequestClosure = async () => {
+    setIsRequesting(true);
+    try { await onRequestCloseSession(includeServiceCharge); } finally { setIsRequesting(false); }
   };
 
   const handleGenerateAccessCode = async () => {
@@ -509,8 +480,9 @@ const TableSessionPanel = ({
           )}
         </div>
 
+        {session?.closureRequestedAt && <p role="status" className="px-4 pb-3 text-sm text-amber-500">Encerramento solicitado — aguardando o caixa. A mesa permanece ocupada.</p>}
         {/* Footer actions */}
-        {session && !showCloseConfirm && (
+        {session && (
           <div className="p-4 pt-0 space-y-2">
             {tableTotal > 0 && (
               <ServiceChargeToggle
@@ -535,71 +507,15 @@ const TableSessionPanel = ({
                   Fechar Conta
                 </Button>
               ) : (
-                <Button variant="destructive" className="flex-1" onClick={() => setShowCloseConfirm(true)}>
-                  Encerrar Sessão
+                <Button variant="destructive" className="flex-1" onClick={handleRequestClosure} disabled={isRequesting}>
+                  {isRequesting ? "Solicitando..." : "Solicitar encerramento"}
                 </Button>
               )}
             </div>
           </div>
         )}
 
-        {/* Password confirmation modal (for empty tables) */}
-        <AnimatePresence>
-          {showCloseConfirm && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20 }}
-              className="p-4 pt-0 space-y-3"
-            >
-              <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Lock className="h-4 w-4 text-destructive" />
-                  <p className="text-sm font-semibold text-foreground">Confirmar encerramento</p>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Digite sua senha para encerrar a sessão da Mesa {String(tableId).padStart(2, "0")}.
-                </p>
-                <div className="relative">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={closePassword}
-                    onChange={(e) => setClosePassword(e.target.value)}
-                    placeholder="Sua senha"
-                    autoFocus
-                    className="w-full h-11 rounded-lg border border-border bg-muted px-4 pr-10 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-destructive text-sm"
-                    onKeyDown={(e) => e.key === "Enter" && handleCloseSession()}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => { setShowCloseConfirm(false); setClosePassword(""); }}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    className="flex-1 gap-2"
-                    onClick={handleCloseSession}
-                    disabled={isVerifying}
-                  >
-                    <Lock className="h-4 w-4" />
-                    {isVerifying ? "Verificando..." : "Confirmar"}
-                  </Button>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+
       </motion.div>
 
       {/* Preview da conta impressa (tela) */}
@@ -612,14 +528,14 @@ const TableSessionPanel = ({
       {/* Close Account Panel */}
       {showCloseAccount && session && (
         <CloseAccountPanel
+          key={session.dbId}
           tableId={tableId}
           sessionId={session.dbId}
           clients={session.clients}
           orders={orders}
-          onCloseSession={() => {
-            onCloseSession();
-            setShowCloseAccount(false);
-          }}
+          serviceChargeEnabled={session.serviceChargeEnabled ?? false}
+          closureRequested={Boolean(session.closureRequestedAt)}
+          onRequestCloseSession={onRequestCloseSession}
           onBack={() => setShowCloseAccount(false)}
         />
       )}

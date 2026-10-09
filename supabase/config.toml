@@ -1,1 +1,5 @@
 project_id = "dtpuvegtcgddjkifsocx"
+
+[functions.close-session]
+# Authentication and unit authorization are checked inside the function via getUser.
+verify_jwt = false

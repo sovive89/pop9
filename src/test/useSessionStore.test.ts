@@ -30,7 +30,7 @@ describe("session store unit switching", () => {
     mocks.unit = "b";
     rerender();
     expect(result.current.sessions).toEqual({});
-    await act(async () => { await result.current.closeSession(1); });
+    await act(async () => { await result.current.requestCloseSession(1); });
     expect(mocks.update).not.toHaveBeenCalled();
     await act(async () => { resolveB({ data: [row("session-b")], error: null }); });
     expect(result.current.sessions[1].session.dbId).toBe("session-b");

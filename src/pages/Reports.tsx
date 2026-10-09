@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import DebtsReport from "@/components/DebtsReport";
 import { useAuth } from "@/hooks/useAuth";
 import { Navigate, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -667,6 +668,7 @@ const Reports = () => {
             )}
           </>
         )}
+        <div className="mt-8 rounded-xl border border-border bg-card p-5"><DebtsReport /></div>
       </main>
     </div>
   );

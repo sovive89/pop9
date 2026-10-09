@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
+import { useUnitRoles } from "@/hooks/useUnitRoles";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import { useAuth } from "@/hooks/useAuth";
 import { Navigate, useNavigate } from "react-router-dom";
-import { Flame, LogOut, Settings, Map, ClipboardList, ChefHat, Bell, Package } from "lucide-react";
+import { Flame, LogOut, Settings, Map, ClipboardList, ChefHat, Bell, Package, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import TableMap from "@/components/TableMap";
@@ -14,12 +16,9 @@ const Index = () => {
   const { user, loading, signOut } = useAuth();
   const navigate = useNavigate();
   const { sessions } = useSessionStore();
-  const [roles, setRoles] = useState<{ admin: boolean; attendant: boolean; kitchen: boolean }>({
-    admin: false,
-    attendant: false,
-    kitchen: false,
-  });
-  const [rolesLoaded, setRolesLoaded] = useState(false);
+  const { roles: unitRoles, loading: rolesLoading, error: rolesError } = useUnitRoles();
+  const { businessUnitId } = useCurrentBusinessUnit();
+  const roles = { admin: unitRoles.includes("admin"), attendant: unitRoles.includes("attendant"), kitchen: unitRoles.includes("kitchen"), cashier: unitRoles.includes("cashier") };
   const [profileName, setProfileName] = useState("");
   const [tab, setTab] = useState<"mesas" | "pedidos">("mesas");
   usePushNotifications(user?.id);
@@ -40,21 +39,7 @@ const Index = () => {
   }, [sessions]);
 
   useEffect(() => {
-    if (!user) { setRolesLoaded(false); return; }
-    setRolesLoaded(false);
-    supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .then(({ data: rolesList }) => {
-        const r = (rolesList ?? []).map((x) => x.role);
-        setRoles({
-          admin: r.includes("admin"),
-          attendant: r.includes("attendant"),
-          kitchen: r.includes("kitchen"),
-        });
-        setRolesLoaded(true);
-      });
+    if (!user) return;
     supabase
       .from("profiles")
       .select("full_name")
@@ -63,7 +48,7 @@ const Index = () => {
       .then(({ data }) => setProfileName(data?.full_name ?? ""));
   }, [user]);
 
-  if (loading || (user && !rolesLoaded)) {
+  if (loading || (user && rolesLoading)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <Flame className="h-10 w-10 animate-pulse text-primary" />
@@ -75,8 +60,11 @@ const Index = () => {
     return <Navigate to="/login" replace />;
   }
 
+  if (rolesError) return <p role="alert" className="p-6">Não foi possível verificar suas permissões. Recarregue a página.</p>;
+  if (!businessUnitId) return <p className="p-6">Selecione uma unidade para iniciar.</p>;
+
   if (!roles.admin && !roles.attendant) {
-    return <Navigate to={roles.kitchen ? "/cozinha" : "/login"} replace />;
+    return <Navigate to={roles.cashier ? "/caixa" : roles.kitchen ? "/cozinha" : "/login"} replace />;
   }
 
   return (
@@ -138,7 +126,7 @@ const Index = () => {
                 </span>
               </div>
             )}
-            {(roles.attendant || roles.kitchen || roles.admin) && (
+            {(roles.attendant || roles.kitchen || roles.admin || roles.cashier) && (
               <div className="flex items-center gap-1.5">
                 {roles.attendant && (
                   <Button
@@ -162,6 +150,7 @@ const Index = () => {
                     <span className="hidden sm:inline">Cozinha</span>
                   </Button>
                 )}
+                {(roles.cashier || roles.admin) && <Button variant="outline" size="sm" onClick={() => navigate("/caixa")}><Wallet className="mr-1.5 h-4 w-4" />Caixa</Button>}
                 {roles.admin && (
                   <Button
                     variant="outline"

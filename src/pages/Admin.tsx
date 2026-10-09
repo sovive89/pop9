@@ -18,6 +18,7 @@ import {
   QrCode,
   Building2,
   FolderOpen,
+  Receipt,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -84,7 +85,7 @@ function SectionMenuButton({
   const { isMobile, setOpenMobile } = useSidebar();
   const Icon = section.icon;
   const descriptions: Record<SectionKey, string> = {
-    menu: "Gerencie produtos e categorias do cardápio.", users: "Gerencie os acessos dos funcionários.", password: "Altere as credenciais de acesso.", connections: "Configure integrações externas.", hub: "Integração futura com o Pop9 Hub.", crm: "Consulte e organize os clientes.", stock: "Controle insumos e movimentações.", printers: "Cadastre impressoras e configure os gatilhos disponíveis.", documents: "Consulte fichas técnicas e documentos do estabelecimento.", qrcodes: "Gerencie os códigos QR.", units: "Gerencie as unidades do estabelecimento."
+    menu: "Gerencie produtos e categorias do cardápio.", users: "Gerencie os acessos dos funcionários.", password: "Altere as credenciais de acesso.", connections: "Configure integrações externas.", hub: "Integração futura com o Pop9 Hub.", crm: "Consulte e organize os clientes.", stock: "Controle insumos e movimentações.", printers: "Cadastre impressoras e configure os gatilhos disponíveis.", documents: "Exporte o cardápio, baixe imagens e consulte os documentos do estabelecimento.", qrcodes: "Gerencie os códigos QR.", units: "Gerencie as unidades do estabelecimento."
   };
 
   return (
@@ -184,11 +185,12 @@ const Admin = () => {
             </SidebarGroupContent>
           </SidebarGroup>
 
-          {(navRoles.attendant || navRoles.kitchen) && (
+          {(navRoles.attendant || navRoles.kitchen || navRoles.admin) && (
             <SidebarGroup>
               <SidebarGroupLabel>Trocar de painel</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
+                  {navRoles.admin && <SidebarMenuItem><SidebarMenuButton tooltip="Caixa" onClick={() => navigate("/caixa")}><Receipt /><span>Caixa</span></SidebarMenuButton></SidebarMenuItem>}
                   {navRoles.attendant && (
                     <SidebarMenuItem>
                       <SidebarMenuButton tooltip="Atendimento" onClick={() => navigate("/")}>

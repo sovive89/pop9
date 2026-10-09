@@ -173,7 +173,7 @@ const NewAreaForm = ({ onCreate }: { onCreate: (name: string, color: string) => 
 };
 
 const TableMap = () => {
-  const { sessions, loading: sessionsLoading, startSession, addClient, closeSession, placeOrder, updateLocalCart } =
+  const { sessions, loading: sessionsLoading, startSession, addClient, requestCloseSession, placeOrder, updateLocalCart } =
     useSessionStore();
   const {
     tables,
@@ -312,10 +312,12 @@ const TableMap = () => {
     await addClient(tableId, input);
   };
 
-  const handleCloseSession = async (tableId: number) => {
-    await closeSession(tableId);
+  const handleRequestCloseSession = async (tableId: number, serviceCharge: boolean) => {
+    const requested = await requestCloseSession(tableId, serviceCharge);
+    if (!requested) return false;
     setSelectedTableId(null);
     setSelectedClient(null);
+    return true;
   };
 
   const handleUpdateOrder = (tableId: number, updated: ClientOrder) => {
@@ -495,6 +497,7 @@ const TableMap = () => {
           {pad(table.number)}
         </span>
         <span className={`mt-2 h-2 w-2 rounded-full ${statusDot[status]}`} />
+        {ownsSession && session?.closureRequestedAt && <span className="mt-1 text-[10px] font-semibold text-amber-500">Aguardando caixa</span>}
         {ownsSession ? (
           <div className="mt-1 flex items-center gap-1">
             <Users className="h-3 w-3 text-primary" />
@@ -768,13 +771,14 @@ const TableMap = () => {
       {/* Session Panel */}
       {mode === "normal" && selectedTableId !== null && (
         <TableSessionPanel
+          key={`${selectedTableId}:${getTableSession(selectedTableId)?.dbId ?? "new"}`}
           tableId={selectedTableId}
           zoneName=""
           session={getTableSession(selectedTableId)}
           orders={getTableOrders(selectedTableId)}
           onStartSession={(input) => handleStartSession(selectedTableId, DEFAULT_ZONE, input)}
           onAddClient={(input) => handleAddClient(selectedTableId, input)}
-          onCloseSession={() => handleCloseSession(selectedTableId)}
+          onRequestCloseSession={(serviceCharge) => handleRequestCloseSession(selectedTableId, serviceCharge)}
           onClose={() => setSelectedTableId(null)}
           onSelectClient={(client) => setSelectedClient(client)}
         />

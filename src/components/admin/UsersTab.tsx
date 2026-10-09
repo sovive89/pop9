@@ -11,16 +11,18 @@ import { toast } from "sonner";
 
 import { SENHA_ABSOLUTA_MIN, SENHA_REQUISITOS, senhaValida } from "@/constants/auth";
 
-const ALL_ROLES = ["admin", "attendant", "kitchen"] as const;
+const ALL_ROLES = ["admin", "attendant", "kitchen", "cashier"] as const;
 const ROLE_LABELS: Record<string, string> = {
   admin: "Admin",
   attendant: "Atendente",
   kitchen: "Cozinha",
+  cashier: "Caixa",
 };
 const ROLE_COLORS: Record<string, string> = {
   admin: "bg-destructive/15 text-destructive border-destructive/30",
   attendant: "bg-primary/15 text-primary border-primary/30",
   kitchen: "bg-success/15 text-success-foreground border-success/30",
+  cashier: "bg-emerald-500/15 text-emerald-500 border-emerald-500/30",
 };
 
 const formatCPF = (cpf: string) => {

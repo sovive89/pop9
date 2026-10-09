@@ -10,13 +10,11 @@ import {
   SplitSquareHorizontal,
   X,
   CheckCircle2,
-  Lock,
-  Eye,
-  EyeOff,
   CreditCard,
   Banknote,
   Smartphone,
   Check,
+  type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -47,7 +45,7 @@ interface Payment {
   paidAt: Date;
 }
 
-const METHODS: { key: PaymentMethod; label: string; icon: React.ComponentType<any> }[] = [
+const METHODS: { key: PaymentMethod; label: string; icon: LucideIcon }[] = [
   { key: "dinheiro", label: "Dinheiro", icon: Banknote },
   { key: "cartao", label: "Cartão", icon: CreditCard },
   { key: "pix", label: "Pix", icon: Smartphone },
@@ -58,18 +56,22 @@ interface Props {
   sessionId: string;
   clients: ClientInfo[];
   orders: ClientOrder[];
-  onCloseSession: () => void;
+  onRequestCloseSession: (serviceCharge: boolean) => Promise<boolean>;
+  closureRequested?: boolean;
+  serviceChargeEnabled?: boolean;
   onBack: () => void;
 }
 
-const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onCloseSession, onBack }: Props) => {
+const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestCloseSession, onBack, closureRequested = false, serviceChargeEnabled = false }: Props) => {
   const { businessUnitId } = useCurrentBusinessUnit();
   const [tab, setTab] = useState<Tab>("geral");
-  const [serviceCharge, setServiceCharge] = useState(false);
+  const [serviceCharge, setServiceCharge] = useState(serviceChargeEnabled);
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
   const [calcPeople, setCalcPeople] = useState(clients.length || 2);
 
   // Payments
+  const [paymentsError, setPaymentsError] = useState(false);
+  const [paymentsLoading, setPaymentsLoading] = useState(true);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [payingClientId, setPayingClientId] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("dinheiro");
@@ -78,30 +80,33 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onCloseSession
   const [customAmount, setCustomAmount] = useState("");
   const [cashReceived, setCashReceived] = useState("");
 
-  // Close session confirmation
-  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
-  const [closePassword, setClosePassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [isVerifying, setIsVerifying] = useState(false);
+  const [isRequesting, setIsRequesting] = useState(false);
   const [receiptPreviewHtml, setReceiptPreviewHtml] = useState<string | null>(null);
   const [receiptPreviewTitle, setReceiptPreviewTitle] = useState("Conta");
 
   const tableTotal = getTableTotal(orders);
-  const chargeAmount = serviceCharge ? tableTotal * 0.1 : 0;
+  const roundMoney = (amount: number) => Math.round((amount + Number.EPSILON) * 100) / 100;
+  const chargeAmount = serviceCharge ? orders.reduce((sum, order) => sum + roundMoney(getClientTotal(order) * 0.1), 0) : 0;
   const grandTotal = tableTotal + chargeAmount;
 
   const totalPaid = payments.reduce((s, p) => s + p.amount + p.serviceCharge, 0);
-  const remaining = grandTotal - totalPaid;
+
 
   // Load existing payments
   const loadPayments = useCallback(async () => {
-    const { data } = await supabase
+    if (!businessUnitId) return;
+    setPaymentsLoading(true);
+    const { data, error } = await supabase
       .from("payments")
       .select("id, client_id, amount, service_charge, method, cash_received, change_given, paid_at")
-      .eq("session_id", sessionId);
+      .eq("session_id", sessionId)
+      .eq("business_unit_id", businessUnitId!)
+      .eq("status", "confirmed");
 
+    setPaymentsError(Boolean(error));
+    setPaymentsLoading(false);
     if (data) {
-      setPayments(data.map((p: any) => ({
+      setPayments(data.map((p) => ({
         id: p.id,
         clientId: p.client_id,
         amount: Number(p.amount),
@@ -112,7 +117,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onCloseSession
         paidAt: new Date(p.paid_at),
       })));
     }
-  }, [sessionId]);
+  }, [sessionId, businessUnitId]);
 
   useEffect(() => {
     loadPayments();
@@ -132,51 +137,36 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onCloseSession
   const getClientPaidTotal = (clientId: string) =>
     payments.filter((p) => p.clientId === clientId).reduce((s, p) => s + p.amount + p.serviceCharge, 0);
 
-  const isClientFullyPaid = (clientId: string) => {
-    const order = orders.find((o) => o.clientId === clientId);
-    if (!order) return true;
-    const clientTotal = getClientTotal(order);
-    const clientCharge = serviceCharge ? clientTotal * 0.1 : 0;
-    return getClientPaidTotal(clientId) >= clientTotal + clientCharge - 0.01;
-  };
-
-  const isClientPaid = (clientId: string) => isClientFullyPaid(clientId);
-
-  
-
   const getClientRemaining = (clientId: string) => {
-    const order = orders.find((o) => o.clientId === clientId);
+    const order = orders.find(o => o.clientId === clientId);
     if (!order) return 0;
-    const clientTotal = getClientTotal(order);
-    const clientCharge = serviceCharge ? clientTotal * 0.1 : 0;
-    return Math.max(0, clientTotal + clientCharge - getClientPaidTotal(clientId));
+    const total = roundMoney(getClientTotal(order));
+    const charge = serviceCharge ? roundMoney(total * 0.1) : 0;
+    const paid = payments.filter(payment => payment.clientId === clientId);
+    return roundMoney(Math.max(0, total - paid.reduce((sum, payment) => sum + payment.amount, 0)) +
+      Math.max(0, charge - paid.reduce((sum, payment) => sum + payment.serviceCharge, 0)));
   };
+  const isClientFullyPaid = (clientId: string) => getClientRemaining(clientId) < 0.01;
+  const isClientPaid = isClientFullyPaid;
+  const remaining = roundMoney(clients.reduce((sum, client) => sum + getClientRemaining(client.id), 0));
 
   const handlePayClient = async (clientId: string, customPayAmount?: number) => {
+    if (paymentsLoading || paymentsError || isProcessing) return;
     const order = orders.find((o) => o.clientId === clientId);
     if (!order) return;
 
-    const clientTotal = getClientTotal(order);
-    const clientCharge = serviceCharge ? clientTotal * 0.1 : 0;
-    const fullAmount = clientTotal + clientCharge;
-    const clientRemaining = getClientRemaining(clientId);
-
-    // Determine payment amount
-    let payAmount: number;
-    let payServiceCharge: number;
-
-    if (customPayAmount !== undefined && customPayAmount > 0) {
-      payAmount = Math.min(customPayAmount, clientRemaining);
-      // Proportional service charge
-      const proportion = payAmount / fullAmount;
-      payServiceCharge = serviceCharge ? clientCharge * proportion : 0;
-      // Adjust: amount = payAmount - payServiceCharge (so amount + service_charge = payAmount)
-      payAmount = payAmount - payServiceCharge;
-    } else {
-      payAmount = clientTotal - payments.filter(p => p.clientId === clientId).reduce((s, p) => s + p.amount, 0);
-      payServiceCharge = clientCharge - payments.filter(p => p.clientId === clientId).reduce((s, p) => s + p.serviceCharge, 0);
-      payAmount = Math.max(0, payAmount);
-      payServiceCharge = Math.max(0, payServiceCharge);
+    const clientTotal = roundMoney(getClientTotal(order));
+    const clientCharge = serviceCharge ? roundMoney(clientTotal * 0.1) : 0;
+    const clientPayments = payments.filter(payment => payment.clientId === clientId);
+    const remainingBase = Math.max(0, roundMoney(clientTotal - clientPayments.reduce((sum,payment) => sum + payment.amount,0)));
+    const remainingService = Math.max(0, roundMoney(clientCharge - clientPayments.reduce((sum,payment) => sum + payment.serviceCharge,0)));
+    const clientRemaining = roundMoney(remainingBase + remainingService);
+    let payAmount = remainingBase;
+    let payServiceCharge = remainingService;
+    if (customPayAmount !== undefined && customPayAmount > 0 && clientRemaining > 0) {
+      const amount = roundMoney(Math.min(customPayAmount, clientRemaining));
+      payServiceCharge = Math.min(remainingService, roundMoney(amount * remainingService / clientRemaining));
+      payAmount = roundMoney(amount - payServiceCharge);
     }
 
     if (payAmount + payServiceCharge < 0.01) {
@@ -193,6 +183,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onCloseSession
       const { data: { user } } = await supabase.auth.getUser();
       const cashVal = paymentMethod === "dinheiro" && cashReceived ? parseFloat(cashReceived) : 0;
       const totalPaying = Math.round((payAmount + payServiceCharge) * 100) / 100;
+      if (!Number.isFinite(cashVal) || cashVal < 0 || (paymentMethod === "dinheiro" && cashReceived !== "" && cashVal < totalPaying)) { toast.error("Valor recebido insuficiente ou inválido"); return; }
       const changeVal = paymentMethod === "dinheiro" && cashVal > totalPaying ? Math.round((cashVal - totalPaying) * 100) / 100 : 0;
 
       const { error } = await supabase.from("payments").insert({
@@ -213,6 +204,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onCloseSession
         return;
       }
 
+      await loadPayments();
       const client = clients.find((c) => c.id === clientId);
       toast.success(`Pagamento de ${formatCurrency(payAmount + payServiceCharge)} registrado para ${client?.name.split(" ")[0]}!`);
       setPayingClientId(null);
@@ -225,32 +217,10 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onCloseSession
     }
   };
 
-  const handleCloseSession = async () => {
-    if (!closePassword.trim()) {
-      toast.error("Digite sua senha");
-      return;
-    }
-    setIsVerifying(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user?.email) {
-        toast.error("Usuário não autenticado");
-        return;
-      }
-      const { error } = await supabase.auth.signInWithPassword({
-        email: user.email,
-        password: closePassword,
-      });
-      if (error) {
-        toast.error("Senha incorreta");
-        return;
-      }
-      onCloseSession();
-    } catch {
-      toast.error("Erro ao verificar senha");
-    } finally {
-      setIsVerifying(false);
-    }
+  const handleRequestClosure = async () => {
+    if (isProcessing || isRequesting || paymentsLoading || paymentsError) return;
+    setIsRequesting(true);
+    try { if (await onRequestCloseSession(serviceCharge)) onBack(); } finally { setIsRequesting(false); }
   };
 
   const handlePrintGeneral = () => {
@@ -280,7 +250,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onCloseSession
     if (!client || !order) return null;
 
     const clientTotal = getClientTotal(order);
-    const clientCharge = serviceCharge ? clientTotal * 0.1 : 0;
+    const clientCharge = serviceCharge ? roundMoney(clientTotal * 0.1) : 0;
     const paid = isClientFullyPaid(clientId);
     
     const clientPaid = getClientPaidTotal(clientId);
@@ -410,6 +380,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onCloseSession
           {!isClientFullyPaid(clientId) && clientTotal > 0 && (
             <Button
               className="flex-1 gap-2"
+              disabled={paymentsLoading || paymentsError || isProcessing}
               onClick={() => { setPayingClientId(clientId); setPaymentMethod("dinheiro"); setUseCustomAmount(false); setCustomAmount(""); setCashReceived(""); }}
             >
               <CreditCard className="h-4 w-4" />
@@ -467,6 +438,8 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onCloseSession
           </div>
         </div>
 
+        {paymentsLoading && <p role="status" className="px-5 pt-3 text-sm">Atualizando pagamentos...</p>}
+        {paymentsError && <p role="alert" className="px-5 pt-3 text-sm text-destructive">Não foi possível conferir os pagamentos. <button className="underline" onClick={() => void loadPayments()}>Tentar novamente</button></p>}
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {/* Service charge toggle */}
@@ -522,7 +495,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onCloseSession
               {clients.map((client) => {
                 const order = orders.find((o) => o.clientId === client.id);
                 const clientTotal = order ? getClientTotal(order) : 0;
-                const clientCharge = serviceCharge ? clientTotal * 0.1 : 0;
+                const clientCharge = serviceCharge ? roundMoney(clientTotal * 0.1) : 0;
                 const clientTotalWithCharge = clientTotal + clientCharge;
                 const paid = isClientFullyPaid(client.id);
                 const clientPaidAmt = getClientPaidTotal(client.id);
@@ -633,7 +606,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onCloseSession
               {clients.map((client) => {
                 const order = orders.find((o) => o.clientId === client.id);
                 const clientTotal = order ? getClientTotal(order) : 0;
-                const clientCharge = serviceCharge ? clientTotal * 0.1 : 0;
+                const clientCharge = serviceCharge ? roundMoney(clientTotal * 0.1) : 0;
                 const clientTotalWithCharge = clientTotal + clientCharge;
                 const paid = isClientPaid(client.id);
                 return (
@@ -672,77 +645,14 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onCloseSession
           {tab === "individual" && selectedClient && renderClientDetail(selectedClient)}
         </div>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-border space-y-2">
-          {!showCloseConfirm ? (
-            <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" onClick={onBack}>
-                Voltar
-              </Button>
-              <Button
-                variant="destructive"
-                className="flex-1 gap-2"
-                onClick={() => setShowCloseConfirm(true)}
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Encerrar Sessão
-              </Button>
-            </div>
-          ) : (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 space-y-3"
-            >
-              <div className="flex items-center gap-2">
-                <Lock className="h-4 w-4 text-destructive" />
-                <p className="text-sm font-semibold text-foreground">Confirmar encerramento</p>
-              </div>
-              {remaining > 0 && (
-                <p className="text-xs text-warning font-medium">
-                  ⚠ Ainda há {formatCurrency(remaining)} pendente de pagamento.
-                </p>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Digite sua senha para encerrar a Mesa {String(tableId).padStart(2, "0")}.
-              </p>
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={closePassword}
-                  onChange={(e) => setClosePassword(e.target.value)}
-                  placeholder="Sua senha"
-                  className="w-full h-11 rounded-lg border border-border bg-muted px-4 pr-12 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-destructive text-sm"
-                  onKeyDown={(e) => e.key === "Enter" && handleCloseSession()}
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => { setShowCloseConfirm(false); setClosePassword(""); }}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  variant="destructive"
-                  className="flex-1"
-                  disabled={isVerifying}
-                  onClick={handleCloseSession}
-                >
-                  {isVerifying ? "Verificando..." : "Confirmar"}
-                </Button>
-              </div>
-            </motion.div>
-          )}
+        <div className="p-4 border-t border-border space-y-3">
+          <p className="text-sm text-muted-foreground">{closureRequested ? "Solicitação enviada ao caixa. A mesa aguarda confirmação com senha." : "Após registrar os pagamentos, solicite o encerramento ao caixa."}</p>
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={onBack}>Voltar</Button>
+            <Button className="flex-1" disabled={isProcessing || isRequesting || paymentsLoading || paymentsError} onClick={handleRequestClosure}>
+              {isRequesting ? "Solicitando..." : closureRequested ? "Atualizar solicitação" : "Solicitar encerramento"}
+            </Button>
+          </div>
         </div>
       </motion.div>
 
@@ -765,7 +675,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onCloseSession
                 const client = clients.find((c) => c.id === payingClientId);
                 const order = orders.find((o) => o.clientId === payingClientId);
                 const clientTotal = order ? getClientTotal(order) : 0;
-                const clientCharge = serviceCharge ? clientTotal * 0.1 : 0;
+                const clientCharge = serviceCharge ? roundMoney(clientTotal * 0.1) : 0;
                 const fullAmount = clientTotal + clientCharge;
                 const clientPaid = getClientPaidTotal(payingClientId);
                 const clientRem = getClientRemaining(payingClientId);
