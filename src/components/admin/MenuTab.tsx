@@ -206,6 +206,9 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     return () => { cancelled = true; };
   }, [businessUnitId]);
   const [aiExtra, setAiExtra] = useState("");
+  const [promptEdited,setPromptEdited]=useState(false);
+  const [imagePrompt,setImagePrompt]=useState("");
+
   const [showPhotoSettings,setShowPhotoSettings]=useState(false);
   const [photoSettings,setPhotoSettings]=useState({style:"studio",angle:"three-quarter",lighting:"soft",custom:""});
   const [savingPhotoSettings,setSavingPhotoSettings]=useState(false);
@@ -232,6 +235,15 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   const [ingredients, setIngredients] = useState<Omit<DbIngredient, "id">[]>(
     item?.ingredients?.map(({ id: _, ...rest }) => rest) ?? []
   );
+  const importedImagePrompt = [
+    name.trim() && `Produto: ${name.trim()}`,
+    description.trim() && `Descrição: ${description.trim()}`,
+    ingredients.filter(i=>i.name.trim()).length>0 && `Ficha técnica / ingredientes: ${ingredients.map(i=>i.name.trim()).filter(Boolean).join(", ")}`,
+    "Fotografia gastronômica fotorrealista, composição fiel aos ingredientes informados, sem adicionar ingredientes, guarnições ou acompanhamentos não cadastrados."
+  ].filter(Boolean).join("\\n");
+  useEffect(()=>{
+    if(!promptEdited)setImagePrompt(importedImagePrompt);
+  },[importedImagePrompt,promptEdited]);
   const [variants, setVariants] = useState<Omit<DbVariant, "id">[]>(
     item?.variants?.map(({ id: _, ...rest }) => rest) ?? []
   );
@@ -272,6 +284,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
           ingredients: ingredients.map((i) => i.name.trim()).filter(Boolean),
           model: aiModel,
           extra: aiExtra.trim() || undefined,
+          imagePrompt: imagePrompt.trim() || undefined,
         },
       }));
     } catch (err) {
@@ -501,6 +514,14 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
               placeholder="Ajuste opcional (ex: em tábua de madeira)"
               className="h-9 flex-1 min-w-[180px]"
             />
+            <div className="w-full space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor="menu-ai-prompt" className="text-xs font-medium">Prompt da imagem — importado da descrição e ficha técnica</label>
+                <Button type="button" variant="ghost" size="sm" onClick={()=>{setPromptEdited(false);setImagePrompt(importedImagePrompt);}}>Reimportar dados</Button>
+              </div>
+              <textarea id="menu-ai-prompt" value={imagePrompt} onChange={e=>{setImagePrompt(e.target.value);setPromptEdited(true);}} maxLength={2500} rows={5} className="w-full rounded-md border border-border bg-background p-3 text-sm text-foreground" aria-label="Prompt editável para geração de imagem"/>
+              <p className="text-[11px] text-muted-foreground">O texto pode ser ajustado. A descrição e os ingredientes continuam sendo enviados separadamente para orientar a fidelidade da imagem.</p>
+            </div>
             <Button type="button" variant="outline" aria-label="Configurar padrão fotográfico" title="Configurar padrão fotográfico" onClick={()=>setShowPhotoSettings(v=>!v)} className="h-9 px-3"><Settings2 className="h-4 w-4"/></Button>
             <Button type="button" variant="outline" onClick={handleGenerateImage} disabled={generating || availableModels.length === 0} className="gap-2 h-9">
               {generating ? <Flame className="h-4 w-4 animate-pulse text-primary" /> : <Sparkles className="h-4 w-4" />}
