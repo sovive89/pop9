@@ -6,14 +6,14 @@
  * Permissões financeiras devem ser verificadas no servidor.
  */
 export const PERMISSIONS = [
-  "tables.view", "tables.manage", "tables.join", "tables.split",
+  "tables.view", "tables.manage", "tables.create", "tables.join", "tables.split",
   "sessions.open", "sessions.view", "sessions.close",
   "customers.link",
   "orders.create", "orders.view", "orders.cancel_unstarted", "orders.cancel_approval",
   "production.view", "production.manage",
   "pickup.confirm", "delivery.confirm",
   "prints.request", "prints.configure",
-  "accounts.view", "accounts.request_close", "accounts.close",
+  "accounts.view", "accounts.request_close", "accounts.adjust_individual", "accounts.close",
   "payments.view_status", "payments.receive", "payments.refund",
   "menu.manage", "inventory.manage", "users.manage", "reports.view",
 ] as const;
@@ -24,10 +24,10 @@ export type StandardRole = "admin" | "attendant" | "cashier" | "kitchen" | "bar"
 export const STANDARD_ROLE_PERMISSIONS: Record<StandardRole, readonly Permission[]> = {
   admin: PERMISSIONS,
   attendant: [
-    "tables.view", "tables.join", "tables.split", "sessions.open", "sessions.view", "customers.link",
+    "tables.view", "tables.create", "tables.join", "tables.split", "sessions.open", "sessions.view", "customers.link",
     "orders.create", "orders.view", "orders.cancel_unstarted",
     "production.view", "pickup.confirm", "delivery.confirm",
-    "prints.request", "accounts.view", "accounts.request_close",
+    "prints.request", "accounts.view", "accounts.adjust_individual", "accounts.request_close",
     "payments.view_status",
   ],
   cashier: [
