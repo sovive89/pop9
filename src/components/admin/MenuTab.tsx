@@ -45,6 +45,7 @@ const removeMenuImages = async (urls: (string | null | undefined)[]) => {
 const AI_IMAGE_MODELS = [
   { id: "google/gemini-2.5-flash-image", label: "Nano Banana (Google)", provider: "google" },
   { id: "openai/gpt-image-1", label: "GPT Image (OpenAI)", provider: "openai" },
+  { id: "stability/stable-image-core", label: "Stable Image Core (Stability AI)", provider: "stability" },
 ];
 
 // ── Category Editor ──
