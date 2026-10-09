@@ -17,6 +17,7 @@ const notify = () => listeners.forEach((listener) => listener());
 
 const loadUnits = async () => {
   if (pending) return pending;
+  loadError = null;
   pending = (async () => {
     const { data: auth, error: authError } = await supabase.auth.getUser();
     if (authError) throw authError;
@@ -46,6 +47,7 @@ const loadUnits = async () => {
     currentUnit = currentUnits.length === 1
       ? currentUnits[0].id
       : currentUnits.some((unit) => unit.id === stored) ? stored : null;
+    if (currentUnit) window.localStorage.setItem(`${STORAGE_KEY}:${auth.user.id}`, currentUnit);
   })().catch((error: unknown) => {
     currentUnits = [];
     currentUnit = null;
@@ -74,6 +76,14 @@ export const useCurrentBusinessUnit = () => {
     const listener = () => rerender((n) => n + 1);
     listeners.add(listener);
     void loadUnits();
+    const onStorage = (event: StorageEvent) => {
+      if (activeUserId && event.key === `${STORAGE_KEY}:${activeUserId}`) {
+        const next = currentUnits.find((unit) => unit.id === event.newValue);
+        currentUnit = next?.id ?? (currentUnits.length === 1 ? currentUnits[0].id : null);
+        notify();
+      }
+    };
+    window.addEventListener("storage", onStorage);
     const subscription = supabase.auth.onAuthStateChange((event) => {
       if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
       loaded = false;
@@ -84,6 +94,7 @@ export const useCurrentBusinessUnit = () => {
     });
     return () => {
       listeners.delete(listener);
+      window.removeEventListener("storage", onStorage);
       subscription.data.subscription.unsubscribe();
     };
   }, []);
