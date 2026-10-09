@@ -418,7 +418,7 @@ const TableMap = () => {
   const selectedGrouped = selectedTables.filter((t) => groupOf(t));
   const selectedSeats = selectedTables.reduce((sum, t) => sum + t.seats, 0);
   const ungroupedCount = tables.filter((t) => !groupOf(t)).length;
-  const showAddTile = mode === "edit" || !editable; // sem a migration, mantém o "+ Mesa" antigo
+  const showAddTile = isAdmin && mode !== "join"; // Administrador pode adicionar mesas sem entrar no modo de edição
   const hasUnassigned = (tableCountByArea.get(null) ?? 0) > 0;
   const seatsValid = /^\d{1,2}$/.test(seatsInput) && Number(seatsInput) >= 1;
 
@@ -745,11 +745,21 @@ const TableMap = () => {
           })}
           {showAddTile && (
             <button
-              onClick={() => addTable()}
+              onClick={async () => {
+                if (busy) return;
+                setBusy(true);
+                try {
+                  const created = await addTable();
+                  if (created) toast.success("Mesa criada. Edite para atribuir uma área e configurar lugares.");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              disabled={busy || tablesLoading}
               className="flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-muted-foreground/30 p-4 text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
             >
               <Plus className="h-6 w-6" />
-              <span className="text-[10px] font-medium">Mesa</span>
+              <span className="text-[10px] font-medium">{busy ? "Criando..." : "+ Mesa"}</span>
             </button>
           )}
         </div>
