@@ -1,3 +1,4 @@
+import {pickupLabel} from "@/utils/operationalLinks";
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { Wallet, Lock, ArrowLeft, LogOut } from "lucide-react";
@@ -78,7 +79,7 @@ export default function Cashier() {
     {error && <div role="alert">Não foi possível consultar as comandas. <Button onClick={reload}>Tentar novamente</Button></div>}
     {!loading && !error && queue.length === 0 && <p className="rounded-xl border p-6">Nenhuma solicitação de encerramento nesta unidade.</p>}
     <div className="grid gap-4 sm:grid-cols-2">{queue.map(row => <section key={row.id} className="space-y-3 rounded-xl border border-border bg-card p-5">
-      <div className="flex items-center justify-between"><h2 className="text-xl font-semibold">Mesa {String(row.tableNumber).padStart(2, "0")}</h2><span className={row.snapshot.remaining > 0 ? "text-amber-500" : "text-emerald-500"}>{row.snapshot.remaining > 0 ? "Com pendências" : "Comanda quitada"}</span></div>
+      <div className="flex items-center justify-between"><h2 className="text-xl font-semibold">{pickupLabel(row.tableNumber)}</h2><span className={row.snapshot.remaining > 0 ? "text-amber-500" : "text-emerald-500"}>{row.snapshot.remaining > 0 ? "Com pendências" : "Comanda quitada"}</span></div>
       <p className="text-xs text-muted-foreground">Solicitada em {new Date(row.requestedAt).toLocaleString("pt-BR")}</p>
       <dl className="grid grid-cols-2 gap-2 text-sm"><dt>Consumo e serviço</dt><dd className="text-right">{formatCurrency(row.snapshot.totalConsumed + row.snapshot.totalService)}</dd><dt>Pagamentos confirmados</dt><dd className="text-right">{formatCurrency(row.snapshot.totalPaid)}</dd><dt>Saldo pendente</dt><dd className="text-right font-semibold">{formatCurrency(row.snapshot.remaining)}</dd></dl>
       {row.snapshot.clients.map(client => <p key={client.id} className="text-sm">{client.name}: {client.remaining > 0 ? `pendente ${formatCurrency(client.remaining)}` : "quitado"}</p>)}
@@ -87,7 +88,7 @@ export default function Cashier() {
     </section>)}</div>
     {more && <Button variant="outline" onClick={loadMore}>Carregar mais solicitações</Button>}
     <Dialog open={Boolean(selectedId)} onOpenChange={open => { if (!open && !submitting) { setSelectedId(null); setPassword(""); setReason(""); } }}>
-      <DialogContent><DialogHeader><DialogTitle>Encerrar Mesa {selected?.tableNumber}</DialogTitle><DialogDescription>Confirme com a senha da sua conta de Caixa ou Administrador. A mesa será liberada após a aprovação.</DialogDescription></DialogHeader>
+      <DialogContent><DialogHeader><DialogTitle>Encerrar {selected ? pickupLabel(selected.tableNumber) : "comanda"}</DialogTitle><DialogDescription>Confirme com a senha da sua conta de Caixa ou Administrador. A mesa será liberada após a aprovação.</DialogDescription></DialogHeader>
         {loading && <p role="status">Atualizando saldo...</p>}
         {selected && <><p>{selected.snapshot.remaining > 0 ? `Saldo pendente: ${formatCurrency(selected.snapshot.remaining)}` : "Comanda quitada"}</p>
           {selected.snapshot.remaining > 0 && <label className="space-y-2 text-sm">Justificativa da inadimplência<textarea aria-label="Justificativa da inadimplência" value={reason} onChange={event => setReason(event.target.value)} minLength={10} maxLength={1000} className="w-full rounded-md border bg-background p-3" /><span className="text-xs text-muted-foreground">Será registrada no relatório com o valor e os clientes envolvidos.</span></label>}

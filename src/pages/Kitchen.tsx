@@ -1,3 +1,4 @@
+import {pickupLabel} from "@/utils/operationalLinks";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -408,12 +409,12 @@ const KitchenDisplay = () => {
     if (allReady) {
       await supabase.from("orders").update({ status: "ready", ready_at: new Date().toISOString() }).eq("id", order.id);
       if (soundEnabled) playReadySound();
-      toast.success(`✅ Pedido pronto! Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`);
+      toast.success(`✅ Pedido pronto! ${pickupLabel(order.tableNumber)} — ${order.clientName}`);
       supabase.functions.invoke("push-notify", {
         body: {
           action: "notify",
           title: `🔔 Pedido Pronto!`,
-          message: `Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`,
+          message: `${pickupLabel(order.tableNumber)} — ${order.clientName}`,
           url: "/",
         },
       }).catch(() => toast.error("Notificação não enviada"));
@@ -487,12 +488,12 @@ const KitchenDisplay = () => {
           }
           await supabase.from("orders").update({ status: "ready", ready_at: new Date().toISOString() }).eq("id", actionTargetId);
           if (soundEnabled) playReadySound();
-          toast.success(`✅ Pedido despachado! Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`);
+          toast.success(`✅ Pedido despachado! ${pickupLabel(order.tableNumber)} — ${order.clientName}`);
           supabase.functions.invoke("push-notify", {
             body: {
               action: "notify",
               title: `🔔 Pedido Pronto!`,
-              message: `Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`,
+              message: `${pickupLabel(order.tableNumber)} — ${order.clientName}`,
               url: "/",
             },
           }).catch(() => toast.error("Notificação não enviada"));
@@ -522,13 +523,13 @@ const KitchenDisplay = () => {
     }
     await supabase.from("orders").update({ status: "ready", ready_at: new Date().toISOString() }).eq("id", orderId);
     if (soundEnabled) playReadySound();
-    toast.success(`✅ Pedido pronto! Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`);
+    toast.success(`✅ Pedido pronto! ${pickupLabel(order.tableNumber)} — ${order.clientName}`);
     // Send push notification to attendants
     supabase.functions.invoke("push-notify", {
       body: {
         action: "notify",
         title: `🔔 Pedido Pronto!`,
-        message: `Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`,
+        message: `${pickupLabel(order.tableNumber)} — ${order.clientName}`,
         url: "/",
       },
     }).catch(() => toast.error("Notificação não enviada"));
@@ -727,7 +728,7 @@ const KitchenDisplay = () => {
                         <div className="flex items-center gap-0.5">
                           <span className={`font-black flex items-center gap-0.5 ${isExpanded ? "text-[12px]" : "text-[8px]"}`}>
                             <span className="opacity-80" aria-hidden>▦</span>
-                            M{String(group.tableNumber).padStart(2, "0")}
+                            {group.tableNumber<0 ? `R${Math.abs(group.tableNumber)}` : `M${String(group.tableNumber).padStart(2,"0")}`}
                           </span>
                           {isCritical && (
                             <span className="text-[7px] font-bold bg-white/25 px-0.5 rounded-full animate-pulse">⚠</span>
@@ -937,7 +938,7 @@ const KitchenDisplay = () => {
                       <div className="flex items-center gap-0.5">
                         <span className={`font-black flex items-center gap-0.5 text-emerald-300 ${isFinishedExpanded ? "text-[10px]" : "text-[8px]"}`}>
                           <span className="opacity-80" aria-hidden>▦</span>
-                          M{String(group.tableNumber).padStart(2, "0")}
+                          {group.tableNumber<0 ? `R${Math.abs(group.tableNumber)}` : `M${String(group.tableNumber).padStart(2,"0")}`}
                         </span>
                         <span className="text-[7px] bg-white/10 px-0.5 rounded-full leading-none">
                           {group.totalItems}

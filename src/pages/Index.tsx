@@ -118,6 +118,7 @@ const Index = () => {
           <div className="flex items-center gap-3">
             {profileName && (
               <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={()=>navigate("/pedidos-online")}>Pedidos online</Button>
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold uppercase">
                   {profileName.split(" ").filter(Boolean).map(n => n[0]).slice(0, 2).join("")}
                 </div>

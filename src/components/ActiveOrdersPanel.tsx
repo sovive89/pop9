@@ -1,3 +1,4 @@
+import {pickupLabel} from "@/utils/operationalLinks";
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock, CheckCircle2, ChefHat, AlertTriangle, Bell, Package, HandPlatter, Truck } from "lucide-react";
@@ -118,7 +119,7 @@ const ActiveOrdersPanel = () => {
             className="flex items-center gap-2 rounded-lg border border-primary/50 bg-primary/15 px-4 py-2"
           >
             <Truck className="h-4 w-4 text-primary" />
-            <span className="text-sm font-semibold text-primary">{readyDeliveryCount} delivery pronto{readyDeliveryCount > 1 ? "s" : ""}</span>
+            <span className="text-sm font-semibold text-primary">{readyDeliveryCount} pedido(s) online pronto(s){readyDeliveryCount > 1 ? "s" : ""}</span>
           </motion.div>
         )}
         {view === "active" && pendingCount > 0 && (
@@ -164,11 +165,11 @@ const ActiveOrdersPanel = () => {
                     {fo.isDelivery ? (
                       <span className="flex items-center gap-1.5 text-xl font-bold text-primary leading-none" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>
                         <Truck className="h-5 w-5" />
-                        Delivery
+                        {fo.tableNumber<0 ? pickupLabel(fo.tableNumber) : "Pedido PWA"}
                       </span>
                     ) : (
                       <span className="text-2xl font-bold text-foreground leading-none" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>
-                        Mesa {String(fo.tableNumber).padStart(2, "0")}
+                        {pickupLabel(fo.tableNumber)}
                       </span>
                     )}
                     <span className="text-xs text-muted-foreground">
@@ -180,7 +181,7 @@ const ActiveOrdersPanel = () => {
                       <AlertTriangle className="h-4 w-4 text-destructive animate-pulse" />
                     )}
                     {isReady && fo.isDelivery && (
-                      <Truck className="h-4 w-4 text-primary shrink-0" aria-label="Pedido delivery pronto" />
+                      <Truck className="h-4 w-4 text-primary shrink-0" aria-label="Pedido pedido(s) online pronto(s)" />
                     )}
                     <div className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${statusBadge[fo.order.status]}`}>
                       {statusIcon[fo.order.status]}

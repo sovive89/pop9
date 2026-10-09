@@ -167,6 +167,24 @@ export type Database = {
           },
         ]
       }
+      integrations: {
+        Row: { id: string; business_unit_id: string | null; provider: string; status: string; config: Json; connected_at: string | null; last_sync_at: string | null; error_message: string | null; created_at: string; updated_at: string }
+        Insert: { id?: string; business_unit_id?: string | null; provider: string; status?: string; config?: Json; connected_at?: string | null; last_sync_at?: string | null; error_message?: string | null; created_at?: string; updated_at?: string }
+        Update: { business_unit_id?: string | null; provider?: string; status?: string; config?: Json; connected_at?: string | null; last_sync_at?: string | null; error_message?: string | null; updated_at?: string }
+        Relationships: []
+      }
+      whatsapp_contacts: {
+        Row: { id: string; business_unit_id: string; phone: string; name: string; email: string | null; bairro: string | null; preferences: string | null; profile_consent_at: string | null; marketing_consent_at: string | null; opted_out_at: string | null; message_count: number; first_seen_at: string; last_seen_at: string }
+        Insert: { business_unit_id: string; phone: string; name: string }
+        Update: { name?: string; email?: string | null; bairro?: string | null; preferences?: string | null }
+        Relationships: []
+      }
+      whatsapp_events: {
+        Row: { id: string; business_unit_id: string; contact_id: string; received_at: string; message_type: string; reply: string | null; bot_payload: Json | null; delivery_state: string; lease_until: string | null; error_code: string | null }
+        Insert: { id: string; business_unit_id: string; contact_id: string; message_type: string }
+        Update: { delivery_state?: string; lease_until?: string | null; error_code?: string | null }
+        Relationships: []
+      }
       customers: {
         Row: {
           bairro: string | null

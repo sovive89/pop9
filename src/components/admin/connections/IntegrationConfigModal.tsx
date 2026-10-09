@@ -230,7 +230,7 @@ export function IntegrationConfigModal({
                 </p>
               </div>
             </div>
-            <GenericFields fields={definition.fields} values={values} onChange={handleChange} disabled />
+            <GenericFields fields={definition.fields} values={values} onChange={handleChange} />
           </div>
         ) : (
           <div className="space-y-4">
@@ -257,8 +257,8 @@ export function IntegrationConfigModal({
               {primaryActionLabel(definition.type)}
             </Button>
           ) : (
-            <Button disabled title="Ainda não implementado">
-              Em desenvolvimento
+            <Button variant="outline" disabled={busy!==null} onClick={handleSave}>
+              Salvar pré-configuração
             </Button>
           )}
         </DialogFooter>

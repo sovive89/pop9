@@ -1,3 +1,4 @@
+import {pickupLabel} from "@/utils/operationalLinks";
 import type { ClientOrder, OrderItem } from "./orders";
 import { getItemUnitPrice, formatCurrency, getClientTotal, getTableTotal } from "./orders";
 import type { ClientInfo } from "@/components/TableSessionPanel";
@@ -81,7 +82,7 @@ export const buildKitchenReceipts = (
         <div class="center big">🔥 COMANDA</div>
         <div class="center small">${STORE_NAME}</div>
         <div class="line"></div>
-        <div class="row"><span class="bold">Mesa: ${String(tableId).padStart(2, "0")}</span><span>${now()}</span></div>
+        <div class="row"><span class="bold">${pickupLabel(tableId)}</span><span>${now()}</span></div>
         <div>Cliente: <span class="bold">${clientName}</span></div>
         ${orderId ? `<div class="small">Pedido: ${orderId.slice(0, 8)}</div>` : ""}
         ${item.quantity > 1 ? `<div class="small bold">Unidade ${i + 1} de ${item.quantity}</div>` : ""}
@@ -136,7 +137,7 @@ export const buildWaiterReceipt = (
     <div class="center big">📋 PEDIDO</div>
     <div class="center small">${STORE_NAME}</div>
     <div class="line"></div>
-    <div class="row"><span class="bold">Mesa: ${String(tableId).padStart(2, "0")}</span><span>${now()}</span></div>
+    <div class="row"><span class="bold">${pickupLabel(tableId)}</span><span>${now()}</span></div>
     <div>Cliente: <span class="bold">${clientName}</span></div>
     ${orderId ? `<div class="small">Pedido: ${orderId.slice(0, 8)}</div>` : ""}
     <div class="double-line"></div>
@@ -185,7 +186,7 @@ export const buildClientBillReceipt = (
     <div class="line"></div>
     <div class="center bold">CONTA INDIVIDUAL</div>
     <div class="line"></div>
-    <div class="row"><span>Mesa: <span class="bold">${String(tableId).padStart(2, "0")}</span></span><span>${now()}</span></div>
+    <div class="row"><span><span class="bold">${pickupLabel(tableId)}</span></span><span>${now()}</span></div>
     <div>Cliente: <span class="bold">${client.name}</span></div>
     <div class="double-line"></div>
     ${ordersHtml}
@@ -244,7 +245,7 @@ export const buildTableBillReceipt = (
     <div class="line"></div>
     <div class="center bold">CONTA DA MESA</div>
     <div class="line"></div>
-    <div class="row"><span>Mesa: <span class="bold">${String(tableId).padStart(2, "0")}</span></span><span>${now()}</span></div>
+    <div class="row"><span><span class="bold">${pickupLabel(tableId)}</span></span><span>${now()}</span></div>
     <div>Clientes: <span class="bold">${clients.length}</span></div>
     <div class="double-line"></div>
     ${clientsHtml}
@@ -280,7 +281,7 @@ export const buildReadyReceipt = (
     <div class="center big">✅ PEDIDO PRONTO</div>
     <div class="center small">${STORE_NAME}</div>
     <div class="line"></div>
-    <div class="row"><span class="bold">Mesa: ${String(tableId).padStart(2, "0")}</span><span>${now()}</span></div>
+    <div class="row"><span class="bold">${pickupLabel(tableId)}</span><span>${now()}</span></div>
     <div>Cliente: <span class="bold">${clientName}</span></div>
     ${orderId ? `<div class="small">Pedido: ${orderId.slice(0, 8)}</div>` : ""}
     <div class="double-line"></div>

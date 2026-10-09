@@ -1,3 +1,4 @@
+import {pickupLabel} from "@/utils/operationalLinks";
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { SetStateAction } from "react";
 import { isKitchenItem } from "@/data/menu";
@@ -185,7 +186,7 @@ export const useSessionStore = () => {
             sd.orders.some((o) => o.orders.some((po) => po.id === newRecord.id))
           );
           const tableNum = entry ? Number(entry[0]) : 0;
-          const tableLabel = tableNum ? `Mesa ${String(tableNum).padStart(2, "0")}` : "Mesa";
+          const tableLabel = tableNum ? `${pickupLabel(Number(tableNum))}` : "Mesa";
 
           // Fetch full order items to show kitchen vs bar breakdown
           const { data: orderItems } = await supabase
@@ -310,7 +311,7 @@ export const useSessionStore = () => {
       },
     }));
 
-    toast.success(`Sessão iniciada — Mesa ${String(tableNumber).padStart(2, "0")}`);
+    toast.success(`Sessão iniciada — ${pickupLabel(tableNumber)}`);
     return true;
   };
 
@@ -377,7 +378,7 @@ export const useSessionStore = () => {
       };
     });
 
-    toast.success(`${clientData.name} adicionado à Mesa ${String(tableNumber).padStart(2, "0")}`);
+    toast.success(`${clientData.name} adicionado à ${pickupLabel(tableNumber)}`);
     return true;
   };
 

@@ -1,3 +1,5 @@
+import PublicOrder from "./pages/PublicOrder";
+import OnlineOrders from "./pages/OnlineOrders";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -48,6 +50,8 @@ const App = () => (
           <Route path="/caixa" element={<Cashier />} />
           <Route path="/inadimplencia" element={<Delinquency />} />
           <Route path="/relatorios" element={<Reports />} />
+          <Route path="/pedir/:unit" element={<PublicOrder />} />
+          <Route path="/pedidos-online" element={<OnlineOrders />} />
           <Route path="/m" element={<CustomerCheckin />} />
           <Route path="/m/t/:token" element={<CustomerCheckin />} />
           <Route path="*" element={<NotFound />} />

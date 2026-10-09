@@ -1,3 +1,4 @@
+import OperationalLinks from "@/components/admin/OperationalLinks";
 import { useRef, useState } from "react";
 import { FileText, ClipboardList, Receipt, FolderOpen, Download, ImageIcon, UtensilsCrossed } from "lucide-react";
 import { toast } from "sonner";
@@ -52,6 +53,7 @@ export default function DocumentsTab() {
   const visibleItems=items.filter(item=>`${item.name} ${item.categoryLabel}`.toLocaleLowerCase("pt-BR").includes(search.toLocaleLowerCase("pt-BR")));
   return <section className="space-y-6">
     <div><h2 className="text-lg font-semibold text-foreground">Central de Documentos</h2><p className="text-sm text-muted-foreground">Cardápio, imagens dos itens e documentos do estabelecimento.</p></div>
+    <OperationalLinks />
     <section className="space-y-4 rounded-xl border border-border bg-card p-5">
       <h3 className="flex items-center gap-2 font-semibold"><UtensilsCrossed className="h-5 w-5 text-primary" />Cardápio e exportações</h3>
       <p className="text-sm text-muted-foreground">{unitName || "Selecione uma unidade"} · {items.length} {items.length === 1 ? "item ativo e publicado" : "itens ativos e publicados"}. Os arquivos usam o cadastro atual, incluindo categorias, descrições, preços, variações e adicionais.</p>

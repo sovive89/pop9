@@ -1,3 +1,4 @@
+import {pickupLabel} from "@/utils/operationalLinks";
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -408,7 +409,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
               </button>
               <Receipt className="h-5 w-5 text-primary" />
               <h3 className="text-2xl text-foreground font-bold" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>
-                FECHAR CONTA — MESA {String(tableId).padStart(2, "0")}
+                FECHAR CONTA — {pickupLabel(tableId).toLocaleUpperCase("pt-BR")}
               </h3>
             </div>
             <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors">

@@ -59,13 +59,6 @@ const CAPS_ECOMMERCE_PARTIAL = caps({
   SYNC: "API_DEPENDENT",
   IMPORT: "YES",
 });
-/** PDV/legado: lê e importa, nunca recebe escrita de volta. É isso que
- * impede o Pipeline de virar uma extensão do sistema antigo. */
-const CAPS_IMPORT_API = caps({ READ: "YES", WEBHOOK: "API_DEPENDENT", IMPORT: "YES" });
-/** Legados em que nem a leitura contínua é garantida — o caminho realista é
- * exportação/arquivo, não API aberta. */
-const CAPS_IMPORT_FILE = caps({ READ: "API_DEPENDENT", IMPORT: "YES" });
-
 /**
  * Catálogo de integrações da central de Conexões.
  *
@@ -201,99 +194,6 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
     docsUrl: "https://core.telegram.org/bots",
   },
 
-  // ── PDV / SISTEMAS DE RESTAURANTE (IMPORTAÇÃO) ───────────────────────
-  {
-    id: "saipos",
-    slug: "saipos",
-    domain: "saipos.com",
-    name: "Saipos",
-    category: "POS",
-    type: "IMPORT",
-    capabilities: CAPS_IMPORT_API,
-    description: "Importa clientes, produtos e histórico de vendas do Saipos.",
-    whatItEnables:
-      "Traz cadastro e histórico do Saipos para o modelo de dados do Pipeline. Depois da migração o Pipeline não depende mais do Saipos para operar.",
-    configType: "api_key",
-    fallbackColor: "E8532B",
-    fields: API_KEY_FIELD,
-    implemented: false,
-  },
-  {
-    id: "consumer",
-    slug: "consumer",
-    domain: "consumer.com.br",
-    name: "Consumer",
-    category: "POS",
-    type: "IMPORT",
-    capabilities: CAPS_IMPORT_API,
-    description: "Importa cadastro e histórico de pedidos do PDV Consumer.",
-    whatItEnables: "Traz clientes, produtos e pedidos históricos já centralizados no Consumer.",
-    configType: "api_key",
-    fallbackColor: "1D4ED8",
-    fields: API_KEY_FIELD,
-    implemented: false,
-  },
-  {
-    id: "linx",
-    slug: "linx",
-    domain: "linx.com.br",
-    name: "Linx / Degust",
-    category: "POS",
-    type: "IMPORT",
-    capabilities: CAPS_IMPORT_FILE,
-    description: "Importa dados operacionais disponíveis no Linx (linha Degust).",
-    whatItEnables: "Traz vendas e cadastro do Linx conforme a exportação ou API disponibilizada.",
-    configType: "api_key",
-    fallbackColor: "E4002B",
-    fields: API_KEY_FIELD,
-    implemented: false,
-  },
-  {
-    id: "colibri",
-    slug: "colibri",
-    domain: "ncrcolibri.com.br",
-    name: "Colibri",
-    category: "POS",
-    type: "IMPORT",
-    capabilities: CAPS_IMPORT_API,
-    description: "Importa estoque, ficha técnica e cadastro do Colibri Back Office.",
-    whatItEnables: "Traz ficha técnica, insumos e histórico do Colibri Back Office para o Pipeline.",
-    configType: "api_key",
-    fallbackColor: "16A34A",
-    fields: API_KEY_FIELD,
-    implemented: false,
-  },
-  {
-    id: "everest",
-    slug: "everest",
-    name: "Everest",
-    category: "POS",
-    type: "IMPORT",
-    capabilities: CAPS_IMPORT_API,
-    description: "Importa cadastro e vendas do sistema de gestão Everest.",
-    whatItEnables: "Traz produtos, clientes e vendas históricas do Everest.",
-    configType: "api_key",
-    fallbackColor: "334155",
-    fields: API_KEY_FIELD,
-    implemented: false,
-  },
-  {
-    id: "sischef",
-    slug: "sischef",
-    domain: "sischef.com.br",
-    name: "Sischef",
-    category: "POS",
-    type: "IMPORT",
-    capabilities: CAPS_IMPORT_FILE,
-    description: "Importa os dados disponibilizados pela integração/exportação do Sischef.",
-    whatItEnables: "Traz cadastro e histórico do Sischef conforme o mecanismo oficial disponível.",
-    configType: "api_key",
-    fallbackColor: "0F766E",
-    fields: API_KEY_FIELD,
-    implemented: false,
-  },
-
-  // ── CARDÁPIO DIGITAL ─────────────────────────────────────────────────
   {
     id: "goomer",
     slug: "goomer",
