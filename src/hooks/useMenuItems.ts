@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import {
   menuItems as staticMenuItems,
   type MenuItem,
@@ -23,6 +24,7 @@ interface DbCategory {
  * Falls back to static data if DB fetch fails.
  */
 export const useMenuItems = () => {
+  const { businessUnitId, loading: unitLoading } = useCurrentBusinessUnit();
   const [items, setItems] = useState<MenuItem[]>([]);
   const [dbCategories, setDbCategories] = useState<DbCategory[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,12 +33,14 @@ export const useMenuItems = () => {
   const load = useCallback(async () => {
     try {
       setError(null);
-      const { data: session } = await supabase.auth.getUser();
-      if (!session.user) { setItems([]); setDbCategories([]); setLoading(false); return; }
-      const { data: roles, error: roleError } = await supabase.from('user_roles').select('business_unit_id').eq('user_id', session.user.id).not('business_unit_id','is',null).limit(1);
-      if (roleError) throw roleError;
-      const unitId = roles?.[0]?.business_unit_id;
-      if (!unitId) { setItems([]); setDbCategories([]); setError('Selecione uma unidade para carregar o cardápio.'); setLoading(false); return; }
+      const unitId = businessUnitId;
+      if (!unitId) {
+        setItems([]);
+        setDbCategories([]);
+        setError("Nenhuma unidade ativa disponível para carregar o cardápio.");
+        setLoading(false);
+        return;
+      }
       // Load categories
       const { data: cats } = await supabase
         .from("menu_categories")
@@ -87,11 +91,13 @@ export const useMenuItems = () => {
       setError(e instanceof Error ? e.message : 'Erro ao carregar cardápio');
     }
     setLoading(false);
-  }, []);
+  }, [businessUnitId]);
 
   useEffect(() => {
+    if (unitLoading) return;
+    setLoading(true);
     load();
-  }, [load]);
+  }, [load, unitLoading]);
 
   const kitchenCategories = useMemo(() => {
     if (dbCategories) return dbCategories.filter((c) => c.destination === "kitchen").map((c) => c.key);
