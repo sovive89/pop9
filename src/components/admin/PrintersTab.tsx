@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { Printer, Plus, Trash2, Tag as TagIcon } from "lucide-react";
+import { Printer, Plus, Trash2, Tag as TagIcon, TestTube2 } from "lucide-react";
+import { printReceipt } from "@/utils/thermal-print";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -46,6 +48,14 @@ const PrintersTab = () => {
   const [gatilho, setGatilho] = useState<PrinterGatilho>("comanda_cozinha");
   const [connectionType, setConnectionType] = useState<PrinterConnectionType>("browser");
   const [deviceIdentifier, setDeviceIdentifier] = useState("");
+
+  const handleTestPrint = (printerName: string, connectionType: PrinterConnectionType) => {
+    if (connectionType !== "browser") {
+      toast.info("Envio direto ainda não disponível. Este teste usa o diálogo do navegador; QZ Tray/WebUSB exigem integração local.");
+    }
+    const escaped = printerName.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char] ?? char));
+    printReceipt(`<!doctype html><html><head><meta charset="utf-8"><style>@page{size:80mm auto;margin:0}body{font-family:monospace;width:72mm;padding:4mm;text-align:center;color:#000}hr{border:0;border-top:1px dashed #000}</style></head><body><h2>POP9 ERP</h2><hr><p>TESTE DE IMPRESSAO</p><p>${escaped}</p><p>${new Date().toLocaleString("pt-BR")}</p><hr><p>Teste pelo navegador</p></body></html>`);
+  };
 
   const resetForm = () => {
     setName("");
@@ -118,7 +128,7 @@ const PrintersTab = () => {
                   {p.deviceIdentifier && ` · ${p.deviceIdentifier}`}
                 </p>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-2 shrink-0">\n                <Button size="sm" variant="outline" onClick={() => handleTestPrint(p.name, p.connectionType)} title="Teste via navegador"><TestTube2 className="h-4 w-4 mr-1" /> Testar</Button>
                 <Button
                   size="sm"
                   variant="outline"
