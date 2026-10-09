@@ -393,7 +393,14 @@ export const useSessionStore = () => {
     const { error: iErr } = await supabase.from("order_items").insert(itemsToInsert);
 
     if (iErr) {
-      toast.error("Erro ao salvar itens do pedido");
+      console.error("Falha ao salvar order_items", { code: iErr.code, message: iErr.message, details: iErr.details, hint: iErr.hint, orderId: order.id });
+      const { error: cleanupError } = await supabase.from("orders").delete().eq("id", order.id);
+      if (cleanupError) {
+        console.error("Falha ao desfazer pedido incompleto", { orderId: order.id, message: cleanupError.message });
+        toast.error("Itens não salvos: " + iErr.message + ". Pedido " + order.id.slice(0, 8) + " pode ter ficado pendente; avise o administrador.");
+      } else {
+        toast.error(getSupabaseErrorMessage("Erro ao salvar itens do pedido", iErr));
+      }
       return;
     }
 
