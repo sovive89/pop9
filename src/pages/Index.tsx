@@ -19,6 +19,7 @@ const Index = () => {
     attendant: false,
     kitchen: false,
   });
+  const [rolesLoaded, setRolesLoaded] = useState(false);
   const [profileName, setProfileName] = useState("");
   const [tab, setTab] = useState<"mesas" | "pedidos">("mesas");
   usePushNotifications(user?.id);
@@ -39,7 +40,8 @@ const Index = () => {
   }, [sessions]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) { setRolesLoaded(false); return; }
+    setRolesLoaded(false);
     supabase
       .from("user_roles")
       .select("role")
@@ -51,6 +53,7 @@ const Index = () => {
           attendant: r.includes("attendant"),
           kitchen: r.includes("kitchen"),
         });
+        setRolesLoaded(true);
       });
     supabase
       .from("profiles")
@@ -60,7 +63,7 @@ const Index = () => {
       .then(({ data }) => setProfileName(data?.full_name ?? ""));
   }, [user]);
 
-  if (loading) {
+  if (loading || (user && !rolesLoaded)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <Flame className="h-10 w-10 animate-pulse text-primary" />
@@ -70,6 +73,10 @@ const Index = () => {
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (!roles.admin && !roles.attendant) {
+    return <Navigate to={roles.kitchen ? "/cozinha" : "/login"} replace />;
   }
 
   return (
@@ -137,7 +144,7 @@ const Index = () => {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => navigate("/")}
+                    onClick={() => navigate("/atendimento")}
                     className="gap-1.5 border-primary/50 bg-primary/10 text-primary hover:bg-primary/20"
                   >
                     <Map className="h-4 w-4" />
