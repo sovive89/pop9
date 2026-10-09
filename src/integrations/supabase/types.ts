@@ -167,6 +167,24 @@ export type Database = {
           },
         ]
       }
+      integrations: {
+        Row: { id: string; business_unit_id: string | null; provider: string; status: string; config: Json; connected_at: string | null; last_sync_at: string | null; error_message: string | null; created_at: string; updated_at: string }
+        Insert: { id?: string; business_unit_id?: string | null; provider: string; status?: string; config?: Json; connected_at?: string | null; last_sync_at?: string | null; error_message?: string | null; created_at?: string; updated_at?: string }
+        Update: { business_unit_id?: string | null; provider?: string; status?: string; config?: Json; connected_at?: string | null; last_sync_at?: string | null; error_message?: string | null; updated_at?: string }
+        Relationships: []
+      }
+      whatsapp_contacts: {
+        Row: { id: string; business_unit_id: string; phone: string; name: string; email: string | null; bairro: string | null; preferences: string | null; profile_consent_at: string | null; marketing_consent_at: string | null; opted_out_at: string | null; message_count: number; first_seen_at: string; last_seen_at: string }
+        Insert: { business_unit_id: string; phone: string; name: string }
+        Update: { name?: string; email?: string | null; bairro?: string | null; preferences?: string | null }
+        Relationships: []
+      }
+      whatsapp_events: {
+        Row: { id: string; business_unit_id: string; contact_id: string; received_at: string; message_type: string; reply: string | null; bot_payload: Json | null; delivery_state: string; lease_until: string | null; error_code: string | null }
+        Insert: { id: string; business_unit_id: string; contact_id: string; message_type: string }
+        Update: { delivery_state?: string; lease_until?: string | null; error_code?: string | null }
+        Relationships: []
+      }
       customers: {
         Row: {
           bairro: string | null
@@ -1372,8 +1390,17 @@ export type Database = {
           },
         ]
       }
+      session_closures: {
+        Row: { id: string; session_id: string; business_unit_id: string; table_number: number; requested_by: string | null; closed_by: string; closed_by_name: string; closed_at: string; total_consumed: number; total_service: number; total_paid: number; unpaid_total: number; justification: string | null; snapshot: Json }
+        Insert: { id?: string; session_id: string; business_unit_id: string; table_number: number; requested_by?: string | null; closed_by: string; closed_by_name: string; closed_at?: string; total_consumed: number; total_service: number; total_paid: number; unpaid_total: number; justification?: string | null; snapshot: Json }
+        Update: { id?: string; snapshot?: Json }
+        Relationships: []
+      }
       sessions: {
         Row: {
+          closure_requested_at: string | null
+          closure_requested_by: string | null
+          service_charge_enabled: boolean
           business_unit_id: string
           created_at: string
           created_by: string | null
@@ -1386,6 +1413,9 @@ export type Database = {
           zone: string
         }
         Insert: {
+          closure_requested_at?: string | null
+          closure_requested_by?: string | null
+          service_charge_enabled?: boolean
           business_unit_id: string
           created_at?: string
           created_by?: string | null
@@ -1398,6 +1428,9 @@ export type Database = {
           zone: string
         }
         Update: {
+          closure_requested_at?: string | null
+          closure_requested_by?: string | null
+          service_charge_enabled?: boolean
           business_unit_id?: string
           created_at?: string
           created_by?: string | null
@@ -1783,6 +1816,9 @@ export type Database = {
       }
     }
     Functions: {
+      get_session_checkout: { Args: { p_session_id: string }; Returns: Json }
+      request_session_closure: { Args: { p_session_id: string; p_service_charge?: boolean }; Returns: Json }
+
       create_dining_table: {
         Args: { p_business_unit_id: string }
         Returns: Database["public"]["Tables"]["dining_tables"]["Row"]
@@ -1805,7 +1841,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "attendant" | "kitchen"
+      app_role: "admin" | "attendant" | "kitchen" | "cashier"
       item_tipo: "insumo" | "semiacabado" | "produto_acabado" | "revenda"
     }
     CompositeTypes: {
@@ -1934,7 +1970,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "attendant", "kitchen"],
+      app_role: ["admin", "attendant", "kitchen", "cashier"],
       item_tipo: ["insumo", "semiacabado", "produto_acabado", "revenda"],
     },
   },

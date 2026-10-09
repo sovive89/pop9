@@ -75,6 +75,12 @@ describe("manage-user unit assignments", () => {
     expect(api.deleteUser).toHaveBeenCalledWith("new-user");
   });
 
+  it("creates cashiers scoped to the authorized business unit", async () => {
+    const api = endpoint();
+    expect((await api.invoke({ roles: ["cashier"] })).status).toBe(200);
+    expect(api.roleInsert).toHaveBeenCalledWith([{ user_id: "new-user", role: "cashier", business_unit_id: UNIT }]);
+  });
+
   it("rejects invalid roles before creating the user", async () => {
     const api = endpoint();
     expect((await api.invoke({ roles: ["superadmin"] })).status).toBe(400);

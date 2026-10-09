@@ -1,164 +1,48 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { toast } from "sonner";
-import { MessageCircle, Copy, ExternalLink, Key, Hash } from "lucide-react";
-
-const WEBHOOK_PATH = "/functions/v1/whatsapp-webhook";
-const CONFIG_KEYS = {
-  welcome: "whatsapp_welcome_message",
-  phoneId: "whatsapp_phone_number_id",
-  botWebhook: "whatsapp_bot_webhook_url",
-} as const;
-
-const WhatsAppTab = () => {
-  const [welcomeMessage, setWelcomeMessage] = useState("");
-  const [phoneNumberId, setPhoneNumberId] = useState("");
-  const [botWebhookUrl, setBotWebhookUrl] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  const baseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
-  const webhookUrl = baseUrl ? `${baseUrl.replace(/\/$/, "")}${WEBHOOK_PATH}` : "";
-
-  useEffect(() => {
-    const load = async () => {
-      const { data, error } = await supabase.from("app_config").select("key, value").in("key", Object.values(CONFIG_KEYS));
-      if (error) {
-        console.error(error);
-        setLoading(false);
-        return;
-      }
-      const map = Object.fromEntries((data ?? []).map((r) => [r.key, r.value ?? ""]));
-      setWelcomeMessage(map[CONFIG_KEYS.welcome] ?? "Olá! Obrigado por falar conosco. Em breve nosso atendimento retorna.");
-      setPhoneNumberId(map[CONFIG_KEYS.phoneId] ?? "");
-      setBotWebhookUrl(map[CONFIG_KEYS.botWebhook] ?? "");
-      setLoading(false);
-    };
-    load();
-  }, []);
-
-  const save = async () => {
-    setSaving(true);
-    const rows = [
-      { key: CONFIG_KEYS.welcome, value: welcomeMessage },
-      { key: CONFIG_KEYS.phoneId, value: phoneNumberId },
-      { key: CONFIG_KEYS.botWebhook, value: botWebhookUrl },
-    ];
-    for (const { key, value } of rows) {
-      await supabase.from("app_config").upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
-    }
-    toast.success("Configurações salvas.");
-    setSaving(false);
+import {useEffect,useRef,useState} from "react";
+import {toast} from "sonner";
+import {Button} from "@/components/ui/button";
+import {Input} from "@/components/ui/input";
+import {useOperationalIntegrations,manageOperational,type OperationalConfig} from "@/hooks/useOperationalIntegrations";
+import {orderLink,whatsappLink} from "@/utils/operationalLinks";
+const emptyWhatsApp:OperationalConfig={phoneNumberId:"",businessPhone:"",graphVersion:"",botMode:"crm",botWebhookUrl:"",welcomeMessage:"Olá! Bem-vindo. Envie PEDIR para acessar nosso cardápio."};
+export function CopyLink({label,url,open=true}:{label:string;url:string;open?:boolean}){
+  return <div className="space-y-1"><p className="text-sm font-medium">{label}</p><div className="flex flex-wrap gap-2"><Input aria-label={label} readOnly value={url} className="min-w-0 flex-1 font-mono text-xs"/><Button size="sm" variant="outline" disabled={!url} onClick={async()=>{try{await navigator.clipboard.writeText(url);toast.success("Link copiado");}catch{toast.error("Não foi possível copiar. Selecione o endereço.");}}}>Copiar</Button>{open && url && <a href={url} target="_blank" rel="noopener noreferrer" className="rounded-md border px-3 py-2 text-sm">Abrir</a>}</div></div>;
+}
+export default function WhatsAppTab(){
+  const {data,loading,error,businessUnitId,scope,reload}=useOperationalIntegrations();
+  const [form,setForm]=useState({scope,whatsapp:emptyWhatsApp,pwa:{publicOrigin:"",enabled:false} as OperationalConfig});
+  const [busy,setBusy]=useState(false);const current=useRef(scope);current.current=scope;
+  useEffect(()=>{if(data)setForm({scope,whatsapp:{...emptyWhatsApp,...data.integrations.find(r=>r.provider==="whatsapp")?.config},pwa:{publicOrigin:"",enabled:false,...data.integrations.find(r=>r.provider==="own-pwa")?.config}});},[data,scope]);
+  const whatsapp=form.scope===scope ? form.whatsapp : emptyWhatsApp;const pwa=form.scope===scope ? form.pwa : {publicOrigin:"",enabled:false};
+  const change=(key:string,value:string)=>setForm(prev=>({...prev,whatsapp:{...prev.whatsapp,[key]:value}}));
+  const save=async(provider:string,action="save")=>{
+    if(!businessUnitId || busy)return;setBusy(true);const requestedScope=scope;
+    try{const result=await manageOperational({business_unit_id:businessUnitId,provider,action,config:provider==="whatsapp" ? whatsapp : pwa});if(current.current!==requestedScope)return;if(result.success)toast.success(result.message);else toast.warning(result.message);await reload();}
+    catch(e){if(current.current===requestedScope)toast.error(e instanceof Error ? e.message : "Falha ao salvar");}
+    finally{if(current.current===requestedScope)setBusy(false);}
   };
-
-  const copyWebhook = () => {
-    if (!webhookUrl) return;
-    navigator.clipboard.writeText(webhookUrl);
-    toast.success("URL copiada!");
-  };
-
-  if (loading) {
-    return (
-      <div className="text-sm text-muted-foreground">Carregando...</div>
-    );
-  }
-
-  return (
-    <div className="max-w-2xl space-y-6">
-      {/* Webhook URL */}
-      <div className="rounded-lg border border-border bg-card p-4 space-y-2">
-        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-          <MessageCircle className="h-4 w-4" />
-          URL do Webhook (Meta / WhatsApp)
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Cole esta URL no Meta for Developers → WhatsApp → Configuração → Webhook.
-        </p>
-        <div className="flex gap-2">
-          <Input
-            readOnly
-            value={webhookUrl}
-            className="font-mono text-sm bg-muted"
-          />
-          <Button type="button" variant="outline" size="icon" onClick={copyWebhook} title="Copiar">
-            <Copy className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Secrets (instruções) */}
-      <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-2">
-        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-          <Key className="h-4 w-4" />
-          Secrets no Supabase
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Defina estes secrets em: Supabase Dashboard → Edge Functions → whatsapp-webhook → Secrets.
-        </p>
-        <ul className="text-xs text-muted-foreground list-disc list-inside space-y-1">
-          <li><strong>WHATSAPP_VERIFY_TOKEN</strong> — Token que você define; use o mesmo no Meta ao configurar o webhook.</li>
-          <li><strong>WHATSAPP_ACCESS_TOKEN</strong> — Token permanente do app WhatsApp (Meta for Developers).</li>
-          <li><strong>WHATSAPP_PHONE_NUMBER_ID</strong> — ID do número de telefone WhatsApp Business.</li>
-          <li><strong>WHATSAPP_WELCOME_MESSAGE</strong> (opcional) — Mensagem automática; se vazio, usa o texto salvo abaixo.</li>
-          <li><strong>BOT_ATENDIMENTO_WEBHOOK</strong> (opcional) — URL para encaminhar mensagens recebidas.</li>
-        </ul>
-        <a
-          href="https://developers.facebook.com/docs/whatsapp/cloud-api/get-started"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-        >
-          Documentação WhatsApp Cloud API <ExternalLink className="h-3 w-3" />
-        </a>
-      </div>
-
-      {/* Campos editáveis */}
-      <div className="rounded-lg border border-border bg-card p-4 space-y-4">
-        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-          <Hash className="h-4 w-4" />
-          Referência / Mensagem de boas-vindas
-        </div>
-
-        <div className="space-y-2">
-          <Label className="text-muted-foreground">Mensagem de boas-vindas</Label>
-          <textarea
-            value={welcomeMessage}
-            onChange={(e) => setWelcomeMessage(e.target.value)}
-            placeholder="Texto enviado automaticamente ao receber uma mensagem"
-            rows={3}
-            className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label className="text-muted-foreground">Phone Number ID (referência)</Label>
-          <Input
-            value={phoneNumberId}
-            onChange={(e) => setPhoneNumberId(e.target.value)}
-            placeholder="Ex.: 123456789012345"
-            className="bg-muted"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label className="text-muted-foreground">URL do bot de atendimento (opcional)</Label>
-          <Input
-            value={botWebhookUrl}
-            onChange={(e) => setBotWebhookUrl(e.target.value)}
-            placeholder="https://seu-backend.com/webhook"
-            className="bg-muted font-mono text-sm"
-          />
-        </div>
-
-        <Button onClick={save} disabled={saving}>
-          {saving ? "Salvando..." : "Salvar configurações"}
-        </Button>
-      </div>
+  useEffect(()=>{setBusy(false);},[scope]);
+  if(loading)return <p role="status">Verificando integrações...</p>;
+  if(error)return <div role="alert" className="space-y-2"><p>{error}</p><Button onClick={()=>void reload()}>Verificar novamente</Button></div>;
+  if(!businessUnitId || !data)return <p>Selecione a unidade.</p>;
+  const record=data.integrations.find(r=>r.provider==="whatsapp");
+  const state=record?.status==="CONNECTED" ? "Webhook recebendo mensagens" : record?.status==="CONNECTING" ? "Meta validada; aguardando mensagem no webhook" : "Configuração pendente";
+  return <section className="space-y-5 rounded-xl border bg-card p-5">
+    <div><h2 className="text-lg font-semibold">WhatsApp Business, bot e pedidos próprios</h2><p className="text-sm text-muted-foreground">{state}. {record?.last_sync_at && `Último recebimento: ${new Date(record.last_sync_at).toLocaleString("pt-BR")}.`}</p>{record?.error_message && <p role="alert" className="text-amber-500">{record.error_message}</p>}</div>
+    <CopyLink label="Webhook para cadastrar na Meta" url={data.webhookUrl} open={false}/>
+    <div className="grid gap-3 sm:grid-cols-2">{([["businessPhone","WhatsApp comercial (país + DDD)","5511999999999"],["phoneNumberId","Phone Number ID na Meta",""],["graphVersion","Versão Graph do aplicativo Meta","v24.0"]] as const).map(([key,label,placeholder])=><label key={key} className="space-y-1 text-sm">{label}<Input value={String(whatsapp[key] ?? "")} placeholder={placeholder} onChange={e=>change(key,e.target.value)}/></label>)}
+      <label className="space-y-1 text-sm">Atendimento automático<select aria-label="Atendimento automático" className="w-full rounded-md border bg-background p-2" value={whatsapp.botMode} onChange={e=>change("botMode",e.target.value)}><option value="off">Somente receber e registrar contatos</option><option value="welcome">Boas-vindas + link de pedidos</option><option value="crm">Boas-vindas + coleta opcional para CRM</option><option value="external">Bot externo pelo webhook</option></select></label>
     </div>
-  );
-};
-
-export default WhatsAppTab;
+    <label className="block space-y-1 text-sm">Mensagem de boas-vindas<textarea className="w-full rounded-md border bg-background p-2" rows={3} maxLength={1500} value={whatsapp.welcomeMessage} onChange={e=>change("welcomeMessage",e.target.value)}/></label>
+    {whatsapp.botMode==="external" && <label className="block space-y-1 text-sm">Endereço do bot externo<Input type="url" value={whatsapp.botWebhookUrl} onChange={e=>change("botWebhookUrl",e.target.value)}/><span className="text-xs text-muted-foreground">O mesmo endereço deve ser definido em BOT_ATENDIMENTO_WEBHOOK no backend. Os eventos são assinados com BOT_WEBHOOK_SECRET.</span></label>}
+    <div className="rounded-lg bg-muted p-3 text-sm"><p className="font-medium">Credenciais no backend</p><p className="text-xs text-muted-foreground">Configure em Supabase → Edge Functions → Secrets. Use WHATSAPP_VERIFY_TOKEN também na Meta e assine o evento messages. Tokens não são salvos neste formulário.</p><ul className="mt-2 space-y-1">{Object.entries(data.readiness).map(([name,configured])=><li key={name}><code>{name==="CASHIER_WORKFLOW" ? "Fluxo do Caixa publicado" : name}</code>{name.startsWith("BOT_") ? " (opcional para bot externo)" : ""}: {configured ? "configurado" : "pendente"}</li>)}</ul></div>
+    <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={busy} onClick={()=>void save("whatsapp")}>Salvar pré-configuração</Button><Button data-tooltip="Verifique a conta Meta antes de ativar o recebimento de mensagens." disabled={busy} onClick={()=>void save("whatsapp","connect")}>Validar Meta e ativar webhook</Button>{record && <Button variant="outline" disabled={busy} onClick={()=>void save("whatsapp","disconnect")}>Desativar WhatsApp</Button>}</div>
+    <div className="space-y-3 border-t pt-4"><h3 className="font-semibold">PWA próprio — pedidos para retirada</h3><label className="block space-y-1 text-sm">Endereço público HTTPS do sistema<Input type="url" placeholder="https://seu-sistema.com" value={pwa.publicOrigin} onChange={e=>setForm(prev=>({...prev,pwa:{...prev.pwa,publicOrigin:e.target.value}}))}/></label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(pwa.enabled)} onChange={e=>setForm(prev=>({...prev,pwa:{...prev.pwa,enabled:e.target.checked}}))}/>Receber pedidos para retirada; pagamento no estabelecimento</label><Button disabled={busy} onClick={()=>void save("own-pwa")}>Salvar PWA</Button>
+      <CopyLink label="Link do cardápio para perfil, catálogo e mensagem do WhatsApp Business" url={orderLink(pwa.publicOrigin ?? "",businessUnitId)}/>
+      <CopyLink label="Link do WhatsApp para pedir" url={whatsappLink(whatsapp.businessPhone ?? "")}/>
+      <p className="text-sm text-muted-foreground">O cliente consulta o cardápio sem login. Para finalizar, envia PEDIR no WhatsApp e recebe um link pessoal válido por 60 minutos. O pedido entra na cozinha e em Pedidos online; o atendimento recebe o pagamento e solicita encerramento ao Caixa.</p>
+    </div>
+    <p className="text-xs text-muted-foreground">No modo CRM, o cliente autoriza dados opcionais com PERFIL SIM e informa NOME:, EMAIL:, BAIRRO: e PREFERENCIA:. MARKETING SIM autoriza ofertas; SAIR revoga permissões. O recebimento da mensagem não autoriza campanhas.</p>
+    <a className="text-sm text-primary underline" href="https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks" target="_blank" rel="noreferrer">Documentação oficial Meta</a>
+  </section>;
+}

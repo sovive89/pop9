@@ -162,10 +162,12 @@ export const useStockData = () => {
   };
 
   const loadRawMaterials = useCallback(async () => {
+    if (!businessUnitId) { setRawMaterials([]); return; }
     const { data, error } = await supabase
       .from("raw_materials")
       .select("*")
       .eq("active", true)
+      .eq("business_unit_id", businessUnitId)
       .order("name");
     if (error) {
       toast.error("Erro ao carregar insumos");
@@ -188,7 +190,7 @@ export const useStockData = () => {
         active: r.active,
       }))
     );
-  }, []);
+  }, [businessUnitId]);
 
   const loadLotes = useCallback(async () => {
     const { data: lotesData, error } = await supabase
@@ -361,7 +363,7 @@ export const useStockData = () => {
     refreshAll();
   }, [refreshAll]);
 
-  const createRawMaterial = async (input: {
+  const createRawMaterialRecord = async (input: {
     name: string;
     unit: string;
     itemType: ItemType;
@@ -370,9 +372,9 @@ export const useStockData = () => {
   }) => {
     if (!businessUnitId) {
       toast.error("Nenhuma unidade ativa encontrada");
-      return false;
+      return null;
     }
-    const { error } = await supabase.from("raw_materials").insert({
+    const { data, error } = await supabase.from("raw_materials").insert({
       name: input.name,
       unit: input.unit,
       tipo: input.itemType,
@@ -381,15 +383,19 @@ export const useStockData = () => {
       min_stock: input.minStock,
       categoria: input.categoria || null,
       business_unit_id: businessUnitId,
-    });
-    if (error) {
-      toast.error("Erro ao criar insumo: " + error.message);
-      return false;
+    }).select("id").single();
+    if (error || !data) {
+      toast.error("Erro ao criar insumo: " + (error?.message ?? "ID não retornado"));
+      return null;
     }
     toast.success("Insumo criado");
     await loadRawMaterials();
-    return true;
+    return data.id;
   };
+
+  // Stock forms keep their boolean API; recipe builders need the inserted ID.
+  const createRawMaterial = async (input: Parameters<typeof createRawMaterialRecord>[0]) =>
+    Boolean(await createRawMaterialRecord(input));
 
   const registerPurchase = async (input: {
     rawMaterialId: string;
@@ -647,6 +653,7 @@ export const useStockData = () => {
     loading,
     refreshAll,
     createRawMaterial,
+    createRawMaterialRecord,
     registerPurchase,
     managePurchaseLot,
     createSupplier,

@@ -202,7 +202,7 @@ export function IntegrationConfigModal({
         </DialogHeader>
 
         {definition.docsUrl && (
-          <a
+          <a data-tooltip="Abra a documentação oficial em uma nova aba."
             href={definition.docsUrl}
             target="_blank"
             rel="noopener noreferrer"
@@ -230,7 +230,7 @@ export function IntegrationConfigModal({
                 </p>
               </div>
             </div>
-            <GenericFields fields={definition.fields} values={values} onChange={handleChange} disabled />
+            <GenericFields fields={definition.fields} values={values} onChange={handleChange} />
           </div>
         ) : (
           <div className="space-y-4">
@@ -242,23 +242,23 @@ export function IntegrationConfigModal({
         <DialogFooter className="gap-2 sm:gap-2">
           {status === "CONNECTED" ? (
             <>
-              <Button variant="outline" onClick={handleSave} disabled={busy !== null}>
+              <Button data-tooltip="Salve as configurações preenchidas." variant="outline" onClick={handleSave} disabled={busy !== null}>
                 {busy === "save" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Salvar alterações
               </Button>
-              <Button variant="destructive" onClick={handleDisconnect} disabled={busy !== null}>
+              <Button data-tooltip="Desconecte esta integração da unidade selecionada." variant="destructive" onClick={handleDisconnect} disabled={busy !== null}>
                 {busy === "disconnect" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Desconectar
               </Button>
             </>
           ) : implemented ? (
-            <Button onClick={handleConnect} disabled={busy !== null}>
+            <Button data-tooltip="Valide e salve a conexão desta integração para a unidade selecionada." onClick={handleConnect} disabled={busy !== null}>
               {busy === "connect" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {primaryActionLabel(definition.type)}
             </Button>
           ) : (
-            <Button disabled title="Ainda não implementado">
-              Em desenvolvimento
+            <Button variant="outline" disabled={busy!==null} onClick={handleSave}>
+              Salvar pré-configuração
             </Button>
           )}
         </DialogFooter>

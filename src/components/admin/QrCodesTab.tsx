@@ -1,3 +1,4 @@
+import { PAGE_HELP } from "@/lib/page-help";
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { supabase } from "@/integrations/supabase/client";
@@ -122,12 +123,12 @@ const QrCodesTab = () => {
       <div className="rounded-xl border border-border bg-card p-5">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-foreground">Check-in do cliente via QR Code</h3>
+            <h3 tabIndex={0} data-tooltip={PAGE_HELP["qrcodes"]} className="text-sm font-semibold text-foreground">Check-in do cliente via QR Code</h3>
             <p className="text-xs text-muted-foreground mt-1">
               Quando ativado, clientes podem entrar numa sessão de mesa escaneando o QR Code, sem depender do garçom abrir a mesa.
             </p>
           </div>
-          <button
+          <button data-tooltip="Inclua ou retire a taxa de serviço de 10% no cálculo da conta." aria-label="Inclua ou retire a taxa de serviço de 10% no cálculo da conta."
             onClick={handleToggle}
             disabled={savingToggle}
             className={`h-6 w-11 rounded-full transition-colors relative shrink-0 ${enabled ? "bg-primary" : "bg-muted-foreground/30"}`}

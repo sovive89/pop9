@@ -24,7 +24,7 @@ const ServiceChargeToggle = ({ total, onPrint, label, includeCharge: controlledC
 
   return (
     <div className="space-y-2">
-      <button
+      <button data-tooltip="Inclua ou retire a taxa de serviço de 10% no cálculo da conta."
         onClick={handleToggle}
         className={`w-full flex items-center justify-between rounded-lg border px-4 py-2.5 transition-colors ${
           includeCharge
@@ -53,7 +53,7 @@ const ServiceChargeToggle = ({ total, onPrint, label, includeCharge: controlledC
         </div>
       </button>
 
-      <Button
+      <Button data-tooltip="Abra a impressão da conta com os valores e a taxa de serviço selecionados."
         variant="outline"
         className="w-full gap-2"
         onClick={() => onPrint(includeCharge)}

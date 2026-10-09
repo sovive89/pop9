@@ -51,16 +51,8 @@ export default defineConfig(({ mode }) => ({
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         navigateFallbackDenylist: [/^\/~oauth/],
         importScripts: ["/sw-push.js"],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/.*supabase.*\/rest\/v1\/.*/i,
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "api-cache",
-              expiration: { maxEntries: 50, maxAgeSeconds: 300 },
-            },
-          },
-        ],
+        // Operational/customer data must never be cached across auth or unit changes.
+        runtimeCaching: [],
       },
     }),
   ].filter(Boolean),

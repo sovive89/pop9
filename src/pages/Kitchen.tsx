@@ -1,3 +1,5 @@
+import { PAGE_HELP } from "@/lib/page-help";
+import {pickupLabel} from "@/utils/operationalLinks";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -408,12 +410,12 @@ const KitchenDisplay = () => {
     if (allReady) {
       await supabase.from("orders").update({ status: "ready", ready_at: new Date().toISOString() }).eq("id", order.id);
       if (soundEnabled) playReadySound();
-      toast.success(`✅ Pedido pronto! Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`);
+      toast.success(`✅ Pedido pronto! ${pickupLabel(order.tableNumber)} — ${order.clientName}`);
       supabase.functions.invoke("push-notify", {
         body: {
           action: "notify",
           title: `🔔 Pedido Pronto!`,
-          message: `Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`,
+          message: `${pickupLabel(order.tableNumber)} — ${order.clientName}`,
           url: "/",
         },
       }).catch(() => toast.error("Notificação não enviada"));
@@ -487,12 +489,12 @@ const KitchenDisplay = () => {
           }
           await supabase.from("orders").update({ status: "ready", ready_at: new Date().toISOString() }).eq("id", actionTargetId);
           if (soundEnabled) playReadySound();
-          toast.success(`✅ Pedido despachado! Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`);
+          toast.success(`✅ Pedido despachado! ${pickupLabel(order.tableNumber)} — ${order.clientName}`);
           supabase.functions.invoke("push-notify", {
             body: {
               action: "notify",
               title: `🔔 Pedido Pronto!`,
-              message: `Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`,
+              message: `${pickupLabel(order.tableNumber)} — ${order.clientName}`,
               url: "/",
             },
           }).catch(() => toast.error("Notificação não enviada"));
@@ -522,13 +524,13 @@ const KitchenDisplay = () => {
     }
     await supabase.from("orders").update({ status: "ready", ready_at: new Date().toISOString() }).eq("id", orderId);
     if (soundEnabled) playReadySound();
-    toast.success(`✅ Pedido pronto! Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`);
+    toast.success(`✅ Pedido pronto! ${pickupLabel(order.tableNumber)} — ${order.clientName}`);
     // Send push notification to attendants
     supabase.functions.invoke("push-notify", {
       body: {
         action: "notify",
         title: `🔔 Pedido Pronto!`,
-        message: `Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`,
+        message: `${pickupLabel(order.tableNumber)} — ${order.clientName}`,
         url: "/",
       },
     }).catch(() => toast.error("Notificação não enviada"));
@@ -551,23 +553,23 @@ const KitchenDisplay = () => {
       <header className="sticky top-0 z-10 border-b border-white/10 bg-[hsl(220,20%,10%)]/90 backdrop-blur-md px-2 sm:px-3 py-1.5 sm:py-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-primary shrink-0 text-lg sm:text-xl" aria-hidden>🍳</span>
-          <h1 className="text-sm sm:text-xl font-bold leading-none truncate" style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: "0.05em" }}>
+          <h1 tabIndex={0} data-tooltip={PAGE_HELP["/cozinha"]} className="text-sm sm:text-xl font-bold leading-none truncate" style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: "0.05em" }}>
             Cozinha
           </h1>
           {(navRoles.attendant || navRoles.kitchen || navRoles.admin) && (
             <div className="hidden sm:flex items-center gap-1 ml-2 border-l border-white/20 pl-2">
               {navRoles.attendant && (
-                <Button variant="ghost" size="sm" className="h-8 text-xs text-white/60 hover:text-white gap-1" onClick={() => navigate("/")}>
+                <Button data-tooltip="Abra o atendimento e acompanhe mesas e pedidos." variant="ghost" size="sm" className="h-8 text-xs text-white/60 hover:text-white gap-1" onClick={() => navigate("/")}>
                   <span aria-hidden>📋</span> Atendimento
                 </Button>
               )}
               {navRoles.kitchen && (
-                <Button variant="ghost" size="sm" className="h-8 text-xs text-primary gap-1" onClick={() => navigate("/cozinha")}>
+                <Button data-tooltip="Abra a cozinha e acompanhe o preparo dos pedidos." variant="ghost" size="sm" className="h-8 text-xs text-primary gap-1" onClick={() => navigate("/cozinha")}>
                   <span aria-hidden>🍳</span> Cozinha
                 </Button>
               )}
               {navRoles.admin && (
-                <Button variant="ghost" size="sm" className="h-8 text-xs text-white/60 hover:text-white gap-1" onClick={() => navigate("/admin")}>
+                <Button data-tooltip="Abra a administração do estabelecimento." variant="ghost" size="sm" className="h-8 text-xs text-white/60 hover:text-white gap-1" onClick={() => navigate("/admin")}>
                   <span aria-hidden>⚙</span> Admin
                 </Button>
               )}
@@ -609,7 +611,7 @@ const KitchenDisplay = () => {
           </Button>
           {!isReadOnly && (
             <>
-              <Button
+              <Button data-tooltip="Pause ou retome o acompanhamento dos pedidos na cozinha."
                 variant={paused ? "default" : "destructive"}
                 size="sm"
                 className="gap-1 h-10 text-xs px-3 sm:text-xs sm:px-2.5 sm:h-8"
@@ -618,7 +620,7 @@ const KitchenDisplay = () => {
                 <span className="text-sm" aria-hidden>{paused ? "▶" : "⏸"}</span>
                 <span className="hidden sm:inline">{paused ? "Retomar" : "Pausar"}</span>
               </Button>
-              <Button
+              <Button data-tooltip="Abra a confirmação para cancelar todos os pedidos da cozinha."
                 variant="destructive"
                 size="sm"
                 className="gap-1 h-10 text-xs px-3 sm:text-xs sm:px-2.5 sm:h-8"
@@ -629,7 +631,7 @@ const KitchenDisplay = () => {
               </Button>
             </>
           )}
-          <Button
+          <Button data-tooltip="Encerre sua sessão e volte para a tela de entrada."
             variant="outline"
             size="sm"
             className="gap-1 h-10 text-xs px-3 sm:text-xs sm:px-2.5 sm:h-8 border-white/20 text-white/60 hover:text-white"
@@ -643,7 +645,7 @@ const KitchenDisplay = () => {
 
       {/* Mobile tab switcher */}
       <div className="flex sm:hidden border-b border-white/10">
-        <button
+        <button data-tooltip="Alterne entre os pedidos ativos e os pedidos prontos da cozinha."
           onClick={() => setKdsTab("ativos")}
           className={`flex-1 py-2 text-xs font-bold text-center transition-colors ${
             kdsTab === "ativos" ? "text-primary border-b-2 border-primary" : "text-white/40"
@@ -652,7 +654,7 @@ const KitchenDisplay = () => {
           <span className="inline mr-1 opacity-80" aria-hidden>🍳</span>
           Ativos ({orders.length})
         </button>
-        <button
+        <button data-tooltip="Alterne entre os pedidos ativos e os pedidos prontos da cozinha."
           onClick={() => setKdsTab("prontos")}
           className={`flex-1 py-2 text-xs font-bold text-center transition-colors ${
             kdsTab === "prontos" ? "text-green-400 border-b-2 border-green-400" : "text-white/40"
@@ -723,11 +725,11 @@ const KitchenDisplay = () => {
                       className={`rounded select-none transition-all duration-700 mb-0.5 text-white ${paused ? "grayscale-[40%]" : ""}`}
                     >
                       {/* Header — ultra-compact when collapsed */}
-                      <div className="flex items-center justify-between cursor-pointer" onClick={toggleExpand} style={{ minHeight: isExpanded ? undefined : "18px" }}>
+                      <div data-tooltip="Expanda ou recolha os detalhes dos pedidos desta mesa." className="flex items-center justify-between cursor-pointer" onClick={toggleExpand} style={{ minHeight: isExpanded ? undefined : "18px" }}>
                         <div className="flex items-center gap-0.5">
                           <span className={`font-black flex items-center gap-0.5 ${isExpanded ? "text-[12px]" : "text-[8px]"}`}>
                             <span className="opacity-80" aria-hidden>▦</span>
-                            M{String(group.tableNumber).padStart(2, "0")}
+                            {group.tableNumber<0 ? `R${Math.abs(group.tableNumber)}` : `M${String(group.tableNumber).padStart(2,"0")}`}
                           </span>
                           {isCritical && (
                             <span className="text-[7px] font-bold bg-white/25 px-0.5 rounded-full animate-pulse">⚠</span>
@@ -842,7 +844,7 @@ const KitchenDisplay = () => {
                                             {item.readyQuantity}/{item.quantity}
                                           </span>
                                           {!allDone && !paused && !isReadOnly && !claimedByOther && (
-                                            <button
+                                            <button data-tooltip="Marque uma unidade deste item como pronta." aria-label="Marque uma unidade deste item como pronta."
                                               onClick={(e) => { e.stopPropagation(); handleItemReady(order, item); }}
                                               className="flex h-8 w-8 items-center justify-center rounded-full bg-white/25 hover:bg-white/40 active:scale-90 transition-all"
                                             >
@@ -924,7 +926,7 @@ const KitchenDisplay = () => {
                 };
 
                 return (
-                  <motion.div
+                  <motion.div data-tooltip="Expanda ou recolha os detalhes dos pedidos prontos."
                     key={`finished-table-${group.tableNumber}`}
                     initial={{ opacity: 0, x: 10 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -937,7 +939,7 @@ const KitchenDisplay = () => {
                       <div className="flex items-center gap-0.5">
                         <span className={`font-black flex items-center gap-0.5 text-emerald-300 ${isFinishedExpanded ? "text-[10px]" : "text-[8px]"}`}>
                           <span className="opacity-80" aria-hidden>▦</span>
-                          M{String(group.tableNumber).padStart(2, "0")}
+                          {group.tableNumber<0 ? `R${Math.abs(group.tableNumber)}` : `M${String(group.tableNumber).padStart(2,"0")}`}
                         </span>
                         <span className="text-[7px] bg-white/10 px-0.5 rounded-full leading-none">
                           {group.totalItems}
@@ -1011,7 +1013,7 @@ const KitchenDisplay = () => {
             <Button variant="outline" onClick={() => setActionDialogOpen(false)} className="border-white/20 text-white/60">
               Voltar
             </Button>
-            <Button 
+            <Button data-tooltip="Confirme a ação escolhida para os pedidos da cozinha."
               variant={actionType === "dispatch" ? "default" : "destructive"} 
               onClick={handleActionConfirm}
               className={actionType === "dispatch" ? "bg-emerald-600 hover:bg-emerald-700" : actionType === "pause" ? "bg-yellow-600 hover:bg-yellow-700" : ""}

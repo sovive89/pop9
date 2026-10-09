@@ -1,0 +1,22 @@
+/** Shared page descriptions for contextual help across the PWA. */
+export const PAGE_HELP: Record<string, string> = {
+  "/": "Acompanhe mesas, clientes e pedidos. Abra uma mesa para iniciar o atendimento ou consultar a conta.",
+  "/login": "Entre com sua conta, cadastre-se ou solicite a recuperação de senha.",
+  "/recuperar-senha": "Defina uma nova senha usando o link de recuperação enviado por e-mail.",
+  "/auth/callback": "Confirme o acesso pelo link recebido por e-mail e aguarde o redirecionamento.",
+  "/cozinha": "Acompanhe pedidos ativos e prontos. Inicie o preparo, reserve itens e confirme o que já está pronto.",
+  "/relatorios": "Escolha um período para consultar os indicadores de vendas e os detalhamentos da operação.",
+  "/m": "Informe a mesa e confirme seu acesso ao atendimento como cliente.",
+  "404": "Este endereço não foi encontrado. Use o link abaixo para voltar ao atendimento.",
+  menu: "Monte categorias e itens do cardápio. Na ficha técnica, cadastre os insumos e receitas com saldo zero; compras e produção são lançadas depois.",
+  users: "Cadastre funcionários e configure os perfis de acesso ao sistema.",
+  password: "Solicite a redefinição das credenciais de acesso de um funcionário.",
+  connections: "Configure as integrações disponíveis e as credenciais de IA da unidade.",
+  hub: "Consulte a proposta de integração futura com o Pop9 Hub. A conexão ainda está em preparação.",
+  crm: "Consulte o histórico de consumo e os relatórios por cliente.",
+  stock: "Cadastre insumos e receitas sem movimentar saldo. Registre compras e produção para atualizar o estoque real; acompanhe lotes e validade.",
+  printers: "Cadastre impressoras e configure os gatilhos de impressão disponíveis.",
+  documents: "Exporte o cardápio em PDF e pacotes para iFood/99Food, baixe imagens dos itens e consulte links operacionais.",
+  qrcodes: "Gere e baixe os códigos QR para o acesso dos clientes ao estabelecimento e às mesas.",
+  units: "Cadastre e organize as unidades do estabelecimento.",
+};

@@ -1,3 +1,4 @@
+import { PAGE_HELP } from "@/lib/page-help";
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -168,7 +169,7 @@ const Login = () => {
           >
             <Flame className="h-10 w-10 text-primary-foreground" />
           </motion.div>
-          <h1 className="text-5xl text-foreground">Pøp9</h1>
+          <h1 tabIndex={0} data-tooltip={PAGE_HELP["/login"]} className="text-5xl text-foreground">Pøp9</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Sistema de Gestão de Pedidos
           </p>
@@ -213,7 +214,7 @@ const Login = () => {
                         minLength={1}
                         className="h-12 bg-muted border-border text-foreground placeholder:text-muted-foreground focus:ring-primary pr-12"
                       />
-                      <button
+                      <button data-tooltip="Mostre ou oculte a senha digitada." aria-label="Mostre ou oculte a senha digitada."
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
@@ -227,10 +228,10 @@ const Login = () => {
                   </Button>
                 </form>
                 <div className="mt-6 flex flex-col items-center gap-2">
-                  <button type="button" onClick={() => setView("forgot")} className="text-sm text-muted-foreground hover:text-primary transition-colors">
+                  <button data-tooltip="Solicite um link de recuperação de senha por e-mail." type="button" onClick={() => setView("forgot")} className="text-sm text-muted-foreground hover:text-primary transition-colors">
                     Esqueci a senha
                   </button>
-                  <button type="button" onClick={() => switchView("signup")} className="text-sm text-muted-foreground hover:text-primary transition-colors">
+                  <button data-tooltip="Abra o formulário para criar uma conta." type="button" onClick={() => switchView("signup")} className="text-sm text-muted-foreground hover:text-primary transition-colors">
                     Não tem conta? <span className="text-primary font-medium">Cadastre-se</span>
                   </button>
                 </div>
@@ -246,7 +247,7 @@ const Login = () => {
                 transition={{ duration: 0.2 }}
               >
                 <div className="flex items-center gap-2 mb-6">
-                  <button
+                  <button data-tooltip="Volte para a tela de entrada." aria-label="Volte para a tela de entrada."
                     type="button"
                     onClick={() => (isEsqueciSenhaPage ? navigate("/login") : setView("login"))}
                     className="text-muted-foreground hover:text-foreground transition-colors"
@@ -289,7 +290,7 @@ const Login = () => {
                 transition={{ duration: 0.2 }}
               >
                 <div className="flex items-center gap-2 mb-6">
-                  <button onClick={() => switchView("login")} className="text-muted-foreground hover:text-foreground transition-colors">
+                  <button data-tooltip="Volte para a tela de entrada." aria-label="Volte para a tela de entrada." onClick={() => switchView("login")} className="text-muted-foreground hover:text-foreground transition-colors">
                     <ArrowLeft className="h-5 w-5" />
                   </button>
                   <h2 className="text-3xl text-foreground flex-1 text-center pr-5">CADASTRO</h2>
@@ -331,7 +332,7 @@ const Login = () => {
                         minLength={SENHA_ABSOLUTA_MIN}
                         className="h-12 bg-muted border-border text-foreground placeholder:text-muted-foreground focus:ring-primary pr-12"
                       />
-                      <button
+                      <button data-tooltip="Mostre ou oculte a senha digitada." aria-label="Mostre ou oculte a senha digitada."
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"

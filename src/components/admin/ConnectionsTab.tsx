@@ -1,4 +1,7 @@
-import { useMemo, useState } from "react";
+import { PAGE_HELP } from "@/lib/page-help";
+import WhatsAppTab from "@/components/admin/WhatsAppTab";
+import {useCurrentBusinessUnit} from "@/hooks/useCurrentBusinessUnit";
+import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,7 +24,7 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
  * de procurar algo aqui: "quero ligar um canal de venda" e "quero puxar os
  * dados do meu PDV antigo" são tarefas diferentes. */
 const VISIBLE_CATEGORIES: IntegrationCategory[] = [
-  "DELIVERY", "COMMUNICATION", "MENU", "PAYMENTS", "FISCAL", "AI",
+  "DELIVERY", "COMMUNICATION", "MENU", "PAYMENTS", "FISCAL", "AI", "MANAGEMENT", "ECOMMERCE", "AUTOMATION",
 ];
 const VISIBLE_AI = new Set(["openai", "anthropic", "google-gemini", "xai-grok"]);
 
@@ -29,6 +32,7 @@ const TYPE_OPTIONS: { value: IntegrationType | "all"; label: string }[] = [
   { value: "all", label: "Todos os tipos" },
   { value: "OPERATIONAL", label: TYPE_LABELS.OPERATIONAL },
   { value: "SUPPORT", label: TYPE_LABELS.SUPPORT },
+  { value: "IMPORT", label: TYPE_LABELS.IMPORT },
 ];
 
 const CATEGORY_OPTIONS: { value: IntegrationCategory | "all"; label: string }[] = [
@@ -39,18 +43,8 @@ const CATEGORY_OPTIONS: { value: IntegrationCategory | "all"; label: string }[] 
   })),
 ];
 
-/**
- * Central de Conexões: cabeçalho (busca + filtros) + grade de integrações +
- * modal de configuração. Toda a lógica de filtro fica aqui (view local) —
- * `IntegrationGrid` só renderiza o que já veio pronto, `useIntegrations`
- * só sabe de catálogo+banco. Isso é o que deixa cada peça reaproveitável.
- *
- * `businessUnitId` é sempre `null` por enquanto: o app ainda opera em modo
- * single-tenant na prática (ver comentário em providers/db.ts sobre a
- * chave natural `provider`), então não há seletor de unidade aqui — quando
- * isso for ligado, é só passar o id real nos três handlers abaixo.
- */
 export function ConnectionsTab() {
+  const {businessUnitId}=useCurrentBusinessUnit();
   const { views, loading, tableMissing, saveConfig, connect, disconnect } = useIntegrations();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<IntegrationCategory | "all">("all");
@@ -64,6 +58,7 @@ export function ConnectionsTab() {
     return views.filter((view) => {
       // Catálogo completo permanece intacto para reutilização futura no Pop9 Hub.
       // O ERP exibe apenas conexões utilizadas diretamente na operação.
+      if(view.definition.slug==="whatsapp")return false;
       if (!VISIBLE_CATEGORIES.includes(view.definition.category)) return false;
       if (view.definition.type === "IMPORT") return false;
       if (view.definition.category === "AI" && !VISIBLE_AI.has(view.definition.slug)) return false;
@@ -84,15 +79,18 @@ export function ConnectionsTab() {
     setModalOpen(true);
   };
 
-  const handleDisconnectFromCard = (view: IntegrationView) => disconnect(view.definition.slug, null);
-  const handleSaveConfig = (slug: string, config: Record<string, unknown>) => saveConfig(slug, null, config);
-  const handleConnect = (slug: string, config: Record<string, unknown>) => connect(slug, null, config);
-  const handleDisconnectFromModal = (slug: string) => disconnect(slug, null);
+  useEffect(()=>{setActiveView(null);setModalOpen(false);},[businessUnitId]);
+
+  const handleDisconnectFromCard = (view: IntegrationView) => disconnect(view.definition.slug, businessUnitId);
+  const handleSaveConfig = (slug: string, config: Record<string, unknown>) => saveConfig(slug, businessUnitId, config);
+  const handleConnect = (slug: string, config: Record<string, unknown>) => connect(slug, businessUnitId, config);
+  const handleDisconnectFromModal = (slug: string) => disconnect(slug, businessUnitId);
 
   return (
     <div className="space-y-6">
+      <WhatsAppTab />
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold text-foreground">Conexões</h2>
+        <h2 tabIndex={0} data-tooltip={PAGE_HELP["connections"]} className="text-lg font-semibold text-foreground">Conexões</h2>
         <p className="text-sm text-muted-foreground">
           Conecte o Pipeline aos serviços que sua operação utiliza.
         </p>

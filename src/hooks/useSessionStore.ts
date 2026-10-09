@@ -1,3 +1,4 @@
+import {pickupLabel} from "@/utils/operationalLinks";
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { SetStateAction } from "react";
 import { isKitchenItem } from "@/data/menu";
@@ -10,6 +11,8 @@ import { buildKitchenReceipts, printReceipt } from "@/utils/thermal-print";
 import { fetchActiveSessionsWithOriginFallback } from "@/hooks/sessionQueries";
 import type { SessionsQueryClient } from "@/hooks/sessionQueries";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
+
+import { beginReadyNotification, isCurrentReadyNotification, dismissReadyNotification, readyNotificationId, ORDER_DELIVERED_EVENT } from "@/utils/orderNotifications";
 
 type Zone = string;
 
@@ -103,6 +106,8 @@ export const useSessionStore = () => {
       map[s.table_number] = {
         session: {
           dbId: s.id,
+          closureRequestedAt: s.closure_requested_at ?? null,
+          serviceChargeEnabled: s.service_charge_enabled ?? false,
           startedAt: new Date(s.started_at),
           clients,
         },
@@ -144,6 +149,21 @@ export const useSessionStore = () => {
   const sessionsRef = useRef<Record<number, SessionData>>({});
   sessionsRef.current = sessions;
 
+  useEffect(() => {
+    const onDelivered = (event: Event) => {
+      const detail = (event as CustomEvent<{ orderId: string; businessUnitId: string }>).detail;
+      if (detail.businessUnitId !== businessUnitId) return;
+      requestId.current++;
+      setLoading(false);
+      dismissReadyNotification(detail.orderId);
+      setSessions(prev => Object.fromEntries(Object.entries(prev).map(([table, sd]) => [table, {
+        ...sd, orders: sd.orders.map(co => ({ ...co, orders: co.orders.map(order => order.id === detail.orderId ? { ...order, status: "delivered" as const } : order) })),
+      }])));
+    };
+    window.addEventListener(ORDER_DELIVERED_EVENT, onDelivered);
+    return () => window.removeEventListener(ORDER_DELIVERED_EVENT, onDelivered);
+  }, [businessUnitId, setSessions]);
+
   // Realtime subscription for sessions
   useEffect(() => {
     if (!businessUnitId || !user) return;
@@ -158,20 +178,22 @@ export const useSessionStore = () => {
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders" }, async (payload) => {
         const newRecord = payload.new as any;
         if (currentScope.current !== scope || newRecord?.business_unit_id !== businessUnitId) return;
+        if (newRecord?.status !== "ready") dismissReadyNotification(newRecord.id);
         if (newRecord?.status === "ready") {
+          const notificationToken = beginReadyNotification(newRecord.id);
           // Find table number for this order
           const entry = Object.entries(sessionsRef.current).find(([_, sd]) =>
             sd.orders.some((o) => o.orders.some((po) => po.id === newRecord.id))
           );
           const tableNum = entry ? Number(entry[0]) : 0;
-          const tableLabel = tableNum ? `Mesa ${String(tableNum).padStart(2, "0")}` : "Mesa";
+          const tableLabel = tableNum ? `${pickupLabel(Number(tableNum))}` : "Mesa";
 
           // Fetch full order items to show kitchen vs bar breakdown
           const { data: orderItems } = await supabase
             .from("order_items")
             .select("name, quantity, destination")
             .eq("order_id", newRecord.id);
-          if (currentScope.current !== scope) return;
+          if (currentScope.current !== scope || !isCurrentReadyNotification(newRecord.id, notificationToken)) return;
 
           const kitchenItems = (orderItems ?? []).filter((i: any) => i.destination === "kitchen");
           const barItems = (orderItems ?? []).filter((i: any) => i.destination === "bar");
@@ -202,6 +224,7 @@ export const useSessionStore = () => {
           toast.success(`🔔 Pedido pronto! ${tableLabel} — ${clientName}`, {
             description: descParts.join("\n"),
             duration: 20000,
+            id: readyNotificationId(newRecord.id),
           });
         }
         loadSessions();
@@ -288,7 +311,7 @@ export const useSessionStore = () => {
       },
     }));
 
-    toast.success(`Sessão iniciada — Mesa ${String(tableNumber).padStart(2, "0")}`);
+    toast.success(`Sessão iniciada — ${pickupLabel(tableNumber)}`);
     return true;
   };
 
@@ -355,32 +378,21 @@ export const useSessionStore = () => {
       };
     });
 
-    toast.success(`${clientData.name} adicionado à Mesa ${String(tableNumber).padStart(2, "0")}`);
+    toast.success(`${clientData.name} adicionado à ${pickupLabel(tableNumber)}`);
     return true;
   };
 
-  const closeSession = async (tableNumber: number) => {
+  const requestCloseSession = async (tableNumber: number, serviceCharge = false) => {
     const sessionData = sessions[tableNumber];
-    if (!sessionData) return;
-
-    const { error } = await supabase
-      .from("sessions")
-      .update({ status: "closed", ended_at: new Date().toISOString() })
-      .eq("id", sessionData.session.dbId)
-      .eq("business_unit_id", businessUnitId!);
-
-    if (error) {
-      toast.error("Erro ao encerrar sessão");
-      return;
-    }
-
-    setSessions((prev) => {
-      const next = { ...prev };
-      delete next[tableNumber];
-      return next;
+    if (!sessionData || !businessUnitId || currentScope.current !== scope) return false;
+    const { error } = await supabase.rpc("request_session_closure", {
+      p_session_id: sessionData.session.dbId, p_service_charge: serviceCharge,
     });
-
-    toast.success(`Sessão encerrada — Mesa ${String(tableNumber).padStart(2, "0")}`);
+    if (error) { toast.error(error.message || "Erro ao solicitar encerramento"); return false; }
+    if (currentScope.current !== scope) return false;
+    await loadSessions();
+    toast.success("Encerramento solicitado ao caixa. A mesa aguarda confirmação.");
+    return true;
   };
 
   const placeOrder = async (tableNumber: number, clientId: string, cartItems: OrderItem[]) => {
@@ -499,6 +511,8 @@ export const useSessionStore = () => {
       return next;
     });
 
+    dismissReadyNotification(orderId);
+    window.dispatchEvent(new CustomEvent(ORDER_DELIVERED_EVENT, { detail: { orderId, businessUnitId } }));
     toast.success("Pedido marcado como entregue!");
   };
 
@@ -507,7 +521,7 @@ export const useSessionStore = () => {
     loading,
     startSession,
     addClient,
-    closeSession,
+    requestCloseSession,
     placeOrder,
     updateLocalCart,
     markDelivered,

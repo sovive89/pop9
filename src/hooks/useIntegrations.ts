@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {useCurrentBusinessUnit} from "@/hooks/useCurrentBusinessUnit";
+import {useAuth} from "@/hooks/useAuth";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { INTEGRATIONS_CATALOG } from "@/components/admin/connections/catalog";
 import { getProvider, isImplemented } from "@/components/admin/connections/providers/registry";
@@ -16,13 +18,20 @@ import type { IntegrationRecord, IntegrationView } from "@/components/admin/conn
  * por isso `views` é derivado (useMemo), não guardado em state próprio.
  */
 export function useIntegrations() {
+  const {businessUnitId}=useCurrentBusinessUnit();
+  const {user}=useAuth();
+  const scope=`${user?.id}:${businessUnitId}`;
+  const current=useRef(scope);current.current=scope;
+  const [recordScope,setRecordScope]=useState(scope);
   const [records, setRecords] = useState<IntegrationRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [tableMissing, setTableMissing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { records: loaded, error } = await loadAllIntegrationRecords();
+    const { records: loaded, error } = await loadAllIntegrationRecords(businessUnitId);
+    if(current.current!==scope)return;
+    setRecordScope(scope);
     if (error) {
       // Defensivo: a migration da tabela `integrations` pode ainda não ter
       // sido aplicada neste ambiente (mesmo tratamento não-bloqueante que
@@ -36,7 +45,7 @@ export function useIntegrations() {
     setTableMissing(false);
     setRecords(loaded);
     setLoading(false);
-  }, []);
+  }, [businessUnitId,scope]);
 
   useEffect(() => {
     load();
@@ -45,10 +54,10 @@ export function useIntegrations() {
   const views: IntegrationView[] = useMemo(
     () =>
       INTEGRATIONS_CATALOG.map((definition) => {
-        const record = records.find((r) => r.provider === definition.slug) ?? null;
+        const record = (recordScope===scope ? records : []).find((r) => r.provider === definition.slug) ?? null;
         return { definition, record, status: record?.status ?? "NOT_CONNECTED" };
       }),
-    [records],
+    [records,recordScope,scope],
   );
 
   const saveConfig = useCallback(

@@ -1,4 +1,6 @@
+import { PAGE_HELP } from "@/lib/page-help";
 import { useState, useEffect, useMemo, useCallback } from "react";
+import DebtsReport from "@/components/DebtsReport";
 import { useAuth } from "@/hooks/useAuth";
 import { Navigate, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -265,7 +267,7 @@ const Reports = () => {
         className="sticky top-0 z-10 border-b border-border bg-card/80 backdrop-blur-md px-4 py-3"
       >
         <div className="mx-auto flex max-w-7xl items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/admin")}>
+          <Button data-tooltip="Abra a administração do estabelecimento." aria-label="Abra a administração do estabelecimento." variant="ghost" size="icon" onClick={() => navigate("/admin")}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="flex items-center gap-3">
@@ -273,7 +275,7 @@ const Reports = () => {
               <BarChart3 className="h-5 w-5 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-2xl text-foreground leading-none font-bold">Relatórios</h1>
+              <h1 tabIndex={0} data-tooltip={PAGE_HELP["/relatorios"]} className="text-2xl text-foreground leading-none font-bold">Relatórios</h1>
               <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Vendas & Métricas</p>
             </div>
           </div>
@@ -293,7 +295,7 @@ const Reports = () => {
             { key: "week" as const, label: "Semana" },
             { key: "month" as const, label: "Mês" },
           ]).map(({ key, label }) => (
-            <Button
+            <Button data-tooltip="Aplique este período aos filtros do relatório."
               key={key}
               variant={preset === key ? "default" : "outline"}
               size="sm"
@@ -306,7 +308,7 @@ const Reports = () => {
           <div className="flex items-center gap-2 ml-2">
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2">
+                <Button data-tooltip="Escolha esta data para definir o período do relatório." aria-label="Escolha esta data para definir o período do relatório." variant="outline" size="sm" className="gap-2">
                   <CalendarIcon className="h-4 w-4" />
                   {format(dateFrom, "dd/MM/yyyy")}
                 </Button>
@@ -324,7 +326,7 @@ const Reports = () => {
             <span className="text-muted-foreground text-sm">até</span>
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2">
+                <Button data-tooltip="Escolha esta data para definir o período do relatório." aria-label="Escolha esta data para definir o período do relatório." variant="outline" size="sm" className="gap-2">
                   <CalendarIcon className="h-4 w-4" />
                   {format(dateTo, "dd/MM/yyyy")}
                 </Button>
@@ -667,6 +669,7 @@ const Reports = () => {
             )}
           </>
         )}
+        <div className="mt-8 rounded-xl border border-border bg-card p-5"><DebtsReport /></div>
       </main>
     </div>
   );

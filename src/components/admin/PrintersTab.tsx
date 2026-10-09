@@ -1,3 +1,4 @@
+import { PAGE_HELP } from "@/lib/page-help";
 import { useState } from "react";
 import { Printer, Plus, Trash2, Tag as TagIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -89,7 +90,7 @@ const PrintersTab = () => {
       </div>
 
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-foreground">Impressoras cadastradas</h3>
+        <h3 tabIndex={0} data-tooltip={PAGE_HELP["printers"]} className="text-sm font-semibold text-foreground">Impressoras cadastradas</h3>
         <Button size="sm" onClick={() => setDialogOpen(true)}>
           <Plus className="h-4 w-4 mr-1" /> Nova impressora
         </Button>

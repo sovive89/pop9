@@ -1,3 +1,4 @@
+import { PAGE_HELP } from "@/lib/page-help";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { CheckCircle2, MessageCircle, KeyRound, Loader2 } from "lucide-react";
@@ -116,7 +117,7 @@ const CustomerCheckin = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-sm rounded-2xl border border-border bg-card shadow-xl p-6 space-y-4">
-        <h1 className="text-2xl font-bold text-foreground text-center" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>
+        <h1 tabIndex={0} data-tooltip={PAGE_HELP["/m"]} className="text-2xl font-bold text-foreground text-center" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>
           Entrar na mesa
         </h1>
 
@@ -133,7 +134,7 @@ const CustomerCheckin = () => {
         {step === "error" && (
           <div className="space-y-3">
             <p className="text-center text-sm text-destructive py-2">{errorMsg}</p>
-            <Button className="w-full" onClick={() => (token ? resolveTable() : setStep("table_number"))}>
+            <Button data-tooltip="Confira a mesa informada e continue o acesso do cliente." className="w-full" onClick={() => (token ? resolveTable() : setStep("table_number"))}>
               Tentar novamente
             </Button>
           </div>
@@ -149,7 +150,7 @@ const CustomerCheckin = () => {
               className="w-full h-12 rounded-lg border border-border bg-muted px-4 text-lg font-bold text-foreground text-center"
               placeholder="00"
             />
-            <Button className="w-full" disabled={!tableNumber} onClick={() => resolveTable(tableNumber)}>
+            <Button data-tooltip="Confira a mesa informada e continue o acesso do cliente." className="w-full" disabled={!tableNumber} onClick={() => resolveTable(tableNumber)}>
               Continuar
             </Button>
           </div>
@@ -158,14 +159,14 @@ const CustomerCheckin = () => {
         {step === "method" && (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground text-center">Mesa {tableNumber} — como você quer entrar?</p>
-            <button
+            <button data-tooltip="Escolha este método para confirmar o acesso à mesa."
               onClick={() => handlePickMethod("staff_code")}
               className="w-full flex items-center gap-3 rounded-xl border-2 border-border p-4 hover:border-primary/50 transition-colors"
             >
               <KeyRound className="h-5 w-5 text-primary" />
               <span className="text-sm font-medium text-foreground">Tenho um código do garçom</span>
             </button>
-            <button
+            <button data-tooltip="Escolha este método para confirmar o acesso à mesa."
               onClick={() => handlePickMethod("whatsapp_otp")}
               className="w-full flex items-center gap-3 rounded-xl border-2 border-border p-4 hover:border-primary/50 transition-colors"
             >
@@ -185,7 +186,7 @@ const CustomerCheckin = () => {
               className="w-full h-12 rounded-lg border border-border bg-muted px-4 text-foreground"
               placeholder="(00) 00000-0000"
             />
-            <Button className="w-full" disabled={!phone || isSubmitting} onClick={handleRequestOtp}>
+            <Button data-tooltip="Envie um código de verificação para o WhatsApp informado." className="w-full" disabled={!phone || isSubmitting} onClick={handleRequestOtp}>
               {isSubmitting ? "Enviando..." : "Enviar código"}
             </Button>
           </div>
@@ -219,7 +220,7 @@ const CustomerCheckin = () => {
               />
             </div>
             {errorMsg && <p className="text-xs text-destructive text-center">{errorMsg}</p>}
-            <Button
+            <Button data-tooltip="Confirme o código informado para acessar a mesa."
               className="w-full"
               disabled={!code || (method === "whatsapp_otp" && !name) || isSubmitting}
               onClick={handleVerify}

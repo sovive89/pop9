@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
       const { full_name, cpf, password, business_unit_id } = body;
       const roles = body.roles?.length ? body.roles : ["attendant"];
       if (!Array.isArray(roles) || !roles.every((role: unknown) =>
-        typeof role === "string" && ["admin", "attendant", "kitchen"].includes(role)
+        typeof role === "string" && ["admin", "attendant", "kitchen", "cashier"].includes(role)
       )) {
         return new Response(JSON.stringify({ error: "Permissões inválidas" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },

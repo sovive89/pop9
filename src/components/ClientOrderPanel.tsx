@@ -271,7 +271,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
         className="sticky top-0 z-20 border-b border-border bg-card/95 backdrop-blur-md px-4 py-2.5"
       >
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors p-1">
+          <button data-tooltip="Volte para a tela anterior." aria-label="Volte para a tela anterior." onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors p-1">
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -283,7 +283,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
               <p className="text-[10px] text-muted-foreground">Mesa {String(tableId).padStart(2, "0")}</p>
             </div>
           </div>
-          <Button
+          <Button data-tooltip="Veja o histórico de pedidos deste cliente."
             variant={view === "orders" ? "default" : "ghost"}
             size="sm"
             className="relative gap-1 text-xs"
@@ -295,7 +295,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
               <span className="ml-0.5 text-[10px] font-bold">({order.orders.length})</span>
             )}
           </Button>
-          <Button
+          <Button data-tooltip="Abra o carrinho para revisar os itens antes de enviar o pedido." aria-label="Abra o carrinho para revisar os itens antes de enviar o pedido."
             variant={view === "cart" ? "default" : "outline"}
             size="sm"
             className="relative gap-1"
@@ -325,7 +325,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
               const iconColor = safeCategoryColor(dbCategory?.icon_color);
               const isActive = cat === selectedCategory;
               return (
-                <button
+                <button data-tooltip="Volte para os itens do cardápio." aria-label="Volte para os itens do cardápio."
                   key={cat}
                   onClick={() => {
                     setActiveCategory(cat);
@@ -359,7 +359,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                 exit={{ opacity: 0, x: 20 }}
                 className="p-4 space-y-4"
               >
-                <button
+                <button data-tooltip="Abra o carrinho para revisar os itens antes de enviar o pedido."
                   onClick={() => setView(editingCartIndex !== null ? "cart" : "menu")}
                   className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
@@ -451,7 +451,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                       <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Ponto da Carne</span>
                       <div className="flex flex-wrap gap-1.5">
                         {MEAT_POINTS.map((point) => (
-                          <button
+                          <button data-tooltip="Selecione ou retire esta opção de ponto da carne." aria-label="Selecione ou retire esta opção de ponto da carne."
                             key={point}
                             onClick={() => setMeatPoint(meatPoint === point ? null : point)}
                             className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
@@ -493,7 +493,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                       .reduce((s, m) => s + (m.extraPrice ?? 0), 0);
                     const unitPrice = selectedItem.price + extrasTotal;
                     return (
-                      <Button className="w-full gap-2" onClick={handleConfirmItem}>
+                      <Button data-tooltip="Adicione este item ao carrinho ou salve a edição com as opções selecionadas." className="w-full gap-2" onClick={handleConfirmItem}>
                         {editingCartIndex !== null ? (
                           <>
                             <Pencil className="h-4 w-4" />
@@ -525,7 +525,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                   </h3>
                   <div className="flex gap-2">
                     {order.orders.length > 0 && (
-                      <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={handleDuplicateLastOrder}>
+                      <Button data-tooltip="Adicione novamente ao carrinho os itens do último pedido." variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={handleDuplicateLastOrder}>
                         <Copy className="h-3.5 w-3.5" />
                         Repetir último
                       </Button>
@@ -537,7 +537,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                   <div className="text-center py-12 space-y-2">
                     <ShoppingCart className="h-10 w-10 text-muted-foreground/30 mx-auto" />
                     <p className="text-sm text-muted-foreground">Carrinho vazio</p>
-                    <Button variant="outline" size="sm" onClick={() => setView("menu")}>
+                    <Button data-tooltip="Volte para os itens do cardápio." variant="outline" size="sm" onClick={() => setView("menu")}>
                       Ver cardápio
                     </Button>
                   </div>
@@ -686,7 +686,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                     className="w-full h-10 rounded-xl border border-border bg-muted pl-9 pr-9 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                   {searchQuery && (
-                    <button
+                    <button data-tooltip="Limpe a busca e veja novamente todos os itens do cardápio." aria-label="Limpe a busca e veja novamente todos os itens do cardápio."
                       onClick={() => setSearchQuery("")}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     >
@@ -714,7 +714,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                     {filteredItems.map((item) => {
                       const qty = getItemQty(item.id);
                       return (
-                        <motion.button
+                        <motion.button data-tooltip="Abra este item para escolher variantes, ingredientes e adicionais."
                           key={item.id}
                           initial={{ opacity: 0, scale: 0.95 }}
                           animate={{ opacity: 1, scale: 1 }}
@@ -759,7 +759,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
           animate={{ y: 0, opacity: 1 }}
           className="sticky bottom-0 border-t border-border bg-card/95 backdrop-blur-md px-4 py-2.5"
         >
-          <button
+          <button data-tooltip="Abra o carrinho para revisar os itens antes de enviar o pedido."
             onClick={() => setView("cart")}
             className="w-full flex items-center justify-between rounded-xl bg-primary px-4 py-3 text-primary-foreground hover:bg-primary/90 transition-colors"
           >
@@ -779,7 +779,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
           animate={{ y: 0, opacity: 1 }}
           className="sticky bottom-0 border-t border-border bg-card/95 backdrop-blur-md px-4 py-3"
         >
-          <Button className="w-full gap-2 h-12 text-base" onClick={handlePlaceOrder}>
+          <Button data-tooltip="Envie os itens do carrinho para a cozinha e registre o pedido." className="w-full gap-2 h-12 text-base" onClick={handlePlaceOrder}>
             <ShoppingCart className="h-5 w-5" />
             Enviar Pedido — {formatCurrency(cartTotal)}
           </Button>

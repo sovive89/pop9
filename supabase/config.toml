@@ -1,1 +1,20 @@
 project_id = "dtpuvegtcgddjkifsocx"
+
+[functions.close-session]
+# Authentication and unit authorization are checked inside the function via getUser.
+verify_jwt = false
+
+[functions.whatsapp-webhook]
+# Meta GET token + signed HMAC on every POST.
+verify_jwt = false
+
+[functions.public-order]
+# Public menu; checkout requires an expiring, single-use WhatsApp token.
+verify_jwt = false
+
+[functions.manage-operational-integrations]
+# Explicit getUser + unit-scoped admin authorization inside the function.
+verify_jwt = false
+
+[functions.admin-assistant]
+verify_jwt = false

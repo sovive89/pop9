@@ -36,7 +36,7 @@ const ResetPasswordTab = () => {
     <div className="max-w-md space-y-4">
       <div className="space-y-2">
         <label className="text-sm font-medium text-muted-foreground">Usuário</label>
-        <select
+        <select data-tooltip="Selecione o funcionário para redefinir sua senha." aria-label="Selecione o funcionário para redefinir sua senha."
           value={selectedUserId}
           onChange={(e) => setSelectedUserId(e.target.value)}
           className="w-full h-11 rounded-lg border border-border bg-muted px-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
@@ -60,7 +60,7 @@ const ResetPasswordTab = () => {
             minLength={SENHA_ABSOLUTA_MIN}
             className="h-11 pr-10"
           />
-          <button
+          <button data-tooltip="Mostre ou oculte a senha digitada." aria-label="Mostre ou oculte a senha digitada."
             type="button"
             onClick={() => setShowPassword(!showPassword)}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
@@ -69,7 +69,7 @@ const ResetPasswordTab = () => {
           </button>
         </div>
       </div>
-      <Button onClick={handleReset} disabled={loading || !selectedUserId} className="gap-2">
+      <Button data-tooltip="Envie a solicitação de redefinição de senha para o usuário selecionado." onClick={handleReset} disabled={loading || !selectedUserId} className="gap-2">
         <KeyRound className="h-4 w-4" />
         {loading ? "Aguarde..." : "Redefinir Senha"}
       </Button>
