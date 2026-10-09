@@ -17,20 +17,22 @@ export function AIConnectionsPanel() {
   const [provider,setProvider]=useState<string>("openai");
   const [key,setKey]=useState("");
   const [busy,setBusy]=useState(false);
-  useEffect(()=>{void (async()=>{
-    const {data:{user}}=await supabase.auth.getUser();
-    if(!user)return;
-    const {data,error}=await supabase.from("user_roles").select("business_unit_id").eq("user_id",user.id).eq("role","admin");
-    if(error){toast.error(error.message);return;}
-    const ids=[...new Set((data??[]).map(x=>x.business_unit_id).filter(Boolean))];
-    const {data:businessUnits}=ids.length
-      ? await supabase.from("business_units").select("id,name").in("id",ids)
-      : await supabase.from("business_units").select("id,name").eq("active",true);
-    if(businessUnits?.length){
-      setUnits((businessUnits??[]).map(u=>({id:u.id,name:u.name})));
-      setUnitId(businessUnits[0].id);
-    }
-  })()},[]);
+  useEffect(()=>{
+    let cancelled=false;
+    void supabase.functions.invoke("manage-ai-credentials",{body:{action:"units"}})
+      .then(({data,error})=>{
+        if(cancelled)return;
+        if(error || data?.error){
+          toast.error("Erro ao carregar unidades: "+(data?.error??error?.message??"desconhecido"));
+          return;
+        }
+        const available=(data?.units??[]) as {id:string;name:string}[];
+        setUnits(available);
+        setUnitId(current=>available.some(u=>u.id===current)?current:(available[0]?.id??""));
+        if(!available.length)toast.error("Nenhuma unidade ativa autorizada para este administrador");
+      });
+    return ()=>{cancelled=true;};
+  },[]);
   async function invoke(action:string,selectedProvider=provider,apiKey?:string){
     const {data,error}=await supabase.functions.invoke("manage-ai-credentials",{body:{action,businessUnitId:unitId,provider:selectedProvider,apiKey}});
     if(error)throw error;
