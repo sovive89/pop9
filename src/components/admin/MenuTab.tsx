@@ -204,10 +204,22 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     return () => { cancelled = true; };
   }, [businessUnitId]);
   const [aiExtra, setAiExtra] = useState("");
+  const [assemblyOrder,setAssemblyOrder] = useState("");
+  const [visualHighlights,setVisualHighlights] = useState("");
+  const [assemblyEdited,setAssemblyEdited] = useState(false);
+  const [highlightsEdited,setHighlightsEdited] = useState(false);
+
   const [generating, setGenerating] = useState(false);
   const [ingredients, setIngredients] = useState<Omit<DbIngredient, "id">[]>(
     item?.ingredients?.map(({ id: _, ...rest }) => rest) ?? []
   );
+  const visibleIngredients=ingredients.map(i=>i.name.trim()).filter(Boolean);
+  const suggestedAssembly=visibleIngredients.length ? visibleIngredients.join(" → ") : "";
+  const suggestedHighlights=visibleIngredients.slice(0,3).join(", ");
+  useEffect(()=>{
+    if(!assemblyEdited)setAssemblyOrder(suggestedAssembly);
+    if(!highlightsEdited)setVisualHighlights(suggestedHighlights);
+  },[suggestedAssembly,suggestedHighlights,assemblyEdited,highlightsEdited]);
   const [variants, setVariants] = useState<Omit<DbVariant, "id">[]>(
     item?.variants?.map(({ id: _, ...rest }) => rest) ?? []
   );
@@ -248,6 +260,8 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
           ingredients: ingredients.map((i) => i.name.trim()).filter(Boolean),
           model: aiModel,
           extra: aiExtra.trim() || undefined,
+          assemblyOrder: assemblyOrder.trim() || undefined,
+          visualHighlights: visualHighlights.trim() || undefined,
         },
       }));
     } catch (err) {
@@ -477,6 +491,18 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
               placeholder="Ajuste opcional (ex: em tábua de madeira)"
               className="h-9 flex-1 min-w-[180px]"
             />
+            <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <label className="text-xs space-y-1">Ordem de montagem sugerida
+                <textarea aria-label="Ordem de montagem sugerida" rows={3} maxLength={600} value={assemblyOrder} onChange={e=>{setAssemblyOrder(e.target.value);setAssemblyEdited(true);}} placeholder="Base → recheio → cobertura" className="w-full rounded-md border border-border bg-background p-2 text-sm text-foreground" />
+              </label>
+              <label className="text-xs space-y-1">Elementos em evidência
+                <textarea aria-label="Ingredientes em evidência" rows={3} maxLength={400} value={visualHighlights} onChange={e=>{setVisualHighlights(e.target.value);setHighlightsEdited(true);}} placeholder="Ingredientes que devem aparecer na foto" className="w-full rounded-md border border-border bg-background p-2 text-sm text-foreground" />
+              </label>
+              <div className="sm:col-span-2 flex items-center justify-between gap-2">
+                <p className="text-[11px] text-muted-foreground">Sugestões baseadas nos ingredientes cadastrados; revise a montagem antes de gerar.</p>
+                <Button type="button" size="sm" variant="ghost" onClick={()=>{setAssemblyEdited(false);setHighlightsEdited(false);setAssemblyOrder(suggestedAssembly);setVisualHighlights(suggestedHighlights);}}>Atualizar sugestões</Button>
+              </div>
+            </div>
             <Button type="button" variant="outline" onClick={handleGenerateImage} disabled={generating || availableModels.length === 0} className="gap-2 h-9">
               {generating ? <Flame className="h-4 w-4 animate-pulse text-primary" /> : <Sparkles className="h-4 w-4" />}
               {generating ? "Gerando..." : imageUrl ? "Gerar outra" : "Gerar"}
