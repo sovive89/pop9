@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { motion, AnimatePresence } from "framer-motion";
 import { Flame, Eye, EyeOff, ArrowLeft, Mail } from "lucide-react";
 import { toast } from "sonner";
-import { SENHA_ABSOLUTA_MIN } from "@/constants/auth";
+import { SENHA_ABSOLUTA_MIN, SENHA_REQUISITOS, senhaValida } from "@/constants/auth";
 
 type View = "login" | "signup" | "forgot";
 
@@ -75,8 +75,8 @@ const Login = () => {
       toast.error("Nome deve ter pelo menos 3 caracteres");
       return;
     }
-    if (password.length < SENHA_ABSOLUTA_MIN) {
-      toast.error(`Senha absoluta: mínimo ${SENHA_ABSOLUTA_MIN} caracteres`);
+    if (!senhaValida(password)) {
+      toast.error(SENHA_REQUISITOS);
       return;
     }
     if (password !== confirmPassword) {
@@ -323,7 +323,7 @@ const Login = () => {
                         type={showPassword ? "text" : "password"}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        placeholder={`Mínimo ${SENHA_ABSOLUTA_MIN} caracteres`}
+                        placeholder={SENHA_REQUISITOS}
                         required
                         minLength={SENHA_ABSOLUTA_MIN}
                         className="h-12 bg-muted border-border text-foreground placeholder:text-muted-foreground focus:ring-primary pr-12"
