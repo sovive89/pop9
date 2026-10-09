@@ -74,7 +74,8 @@ const PrintersTab = () => {
 
   const handleCreate = async () => {
     if (!name.trim()) return;
-    if (transport === "tcp" && connectionType !== "browser" && (!host.trim() || !/^\\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535)) { toast.error("Informe IP/host e porta TCP válida."); return; }
+    if (transport === "tcp" && connectionType !== "browser" && (!host.trim() || !/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535)) { toast.error("Informe IP/host e porta TCP válida."); return; }
+    if (!Number.isInteger(Number(copies)) || Number(copies) < 1 || Number(copies) > 10) { toast.error("Cópias devem estar entre 1 e 10."); return; }
     setSaving(true);
     const ok = await createPrinter({
       name: name.trim(),
