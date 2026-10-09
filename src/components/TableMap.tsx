@@ -418,7 +418,7 @@ const TableMap = () => {
   const selectedGrouped = selectedTables.filter((t) => groupOf(t));
   const selectedSeats = selectedTables.reduce((sum, t) => sum + t.seats, 0);
   const ungroupedCount = tables.filter((t) => !groupOf(t)).length;
-  const showAddTile = isAdmin && mode !== "join"; // Administrador pode adicionar mesas sem entrar no modo de edição
+  const showAddTile = editable && mode !== "join"; // Administrador pode adicionar mesas sem entrar no modo de edição
   const hasUnassigned = (tableCountByArea.get(null) ?? 0) > 0;
   const seatsValid = /^\d{1,2}$/.test(seatsInput) && Number(seatsInput) >= 1;
 
