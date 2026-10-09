@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {useLocation,useNavigate} from 'react-router-dom';
-import {MessageCircle,BookOpen,Send,Loader2,RotateCcw,FileUp} from 'lucide-react';
+import {BookOpen,Loader2,Navigation,Sparkles} from 'lucide-react';
 import {useAuth} from '@/hooks/useAuth';
 import {useUnitRoles} from '@/hooks/useUnitRoles';
 import {useCurrentBusinessUnit} from '@/hooks/useCurrentBusinessUnit';
@@ -8,90 +8,109 @@ import {supabase} from '@/integrations/supabase/client';
 import {Button} from '@/components/ui/button';
 import {Textarea} from '@/components/ui/textarea';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
-import {TUTORIALS,type ChatMessage} from '../../supabase/functions/_shared/assistant-help';
+import {toast} from 'sonner';
+import {AGENT_PAGES,TUTORIALS,canAccessAgentPage,findAgentPage,validateAgentPlan,type AgentTaskPlan} from '../../supabase/functions/_shared/assistant-help';
+
 type Model={id:string;label:string;provider:string};
-type Conversation={scope:string;messages:ChatMessage[];error:string;busy:boolean};
+type AsyncState<T>={scope:string;value:T|null;error:string;busy:boolean};
 async function invoke(body:Record<string,unknown>){
  const {data,error}=await supabase.functions.invoke('admin-assistant',{body});
- if(error){
-  let message='Não foi possível acessar o assistente. Verifique sua conexão e tente novamente.';
-  try{const response=await error.context?.json();if(typeof response?.error==='string')message=response.error;}catch{/* Network errors have no JSON response. */}
-  throw Error(message);
- }
+ if(error){let message='Não foi possível acessar o agente. Verifique sua conexão e tente novamente.';try{const response=await error.context?.json();if(typeof response?.error==='string')message=response.error;}catch{/* A falha de rede pode não ter JSON. */}throw Error(message);}
  if(data?.error)throw Error(data.error);return data;
 }
+const emptyGuided={name:'',category:'',description:'',portion:'',ingredients:'',preparation:'',price:'',extras:'',image:''};
+const roleLabels:Record<string,string>={admin:'Administrador',attendant:'Atendente',kitchen:'Cozinha',cashier:'Caixa'};
+const guidedFields=[{key:'name',label:'Nome do produto',hint:'Ex.: Burger PØP9'},{key:'category',label:'Categoria e tipo',hint:'Ex.: hambúrguer, bebida, sobremesa'},{key:'description',label:'Descrição comercial',hint:'Características e apresentação'},{key:'portion',label:'Porção e rendimento',hint:'Ex.: 1 unidade de 350 g'},{key:'ingredients',label:'Ingredientes e quantidades',hint:'Um por linha; inclua unidade de medida'},{key:'preparation',label:'Modo de preparo e pré-preparos',hint:'Etapas, perdas e conservação, se aplicável'},{key:'price',label:'Preço de venda',hint:'Valor informado por você ou “a definir”'},{key:'extras',label:'Variações e adicionais',hint:'Opcionais e restrições'},{key:'image',label:'Orientações para fotografia',hint:'Montagem e elementos em destaque'}] as const;
+
 export default function AdminAssistant(){
- const {user}=useAuth();const {roles,loading:rolesLoading}=useUnitRoles();const {businessUnitId,units}=useCurrentBusinessUnit();
+ const {user}=useAuth();const {roles,loading:rolesLoading}=useUnitRoles();const {businessUnitId,units,loading:unitsLoading}=useCurrentBusinessUnit();
  const location=useLocation(),navigate=useNavigate();
- const scope=`${user?.id}:${businessUnitId}`;const current=useRef(scope);current.current=scope;
+ const pagePath=location.pathname+location.search;const currentPage=findAgentPage(pagePath);
+ const unitScope=`${user?.id??''}:${businessUnitId??''}`;
+ const scope=`${unitScope}:${pagePath}:${roles.slice().sort().join(',')}`;
+ const current=useRef(scope);current.current=scope;
  const generation=useRef({scope,version:0});if(generation.current.scope!==scope)generation.current={scope,version:generation.current.version+1};
- const allowed=Boolean(user&&businessUnitId&&!rolesLoading&&roles.includes('admin')&&!/^\/(m(?:\/|$)|pedir(?:\/|$)|login|auth\/|recuperar-senha)/.test(location.pathname));
- const [open,setOpen]=useState(false);const [tab,setTab]=useState<'chat'|'tutorials'|'guided'>('chat');
- const [guidedStep,setGuidedStep]=useState(0);
- const [guided,setGuided]=useState({name:'',category:'',description:'',portion:'',ingredients:'',preparation:'',price:'',extras:'',image:''});
- const guidedFields=[{key:'name',label:'Nome do produto',hint:'Ex.: Burger PØP9'},{key:'category',label:'Categoria e tipo',hint:'Ex.: hambúrguer, bebida, sobremesa'},{key:'description',label:'Descrição comercial',hint:'Características e apresentação'},{key:'portion',label:'Porção e rendimento',hint:'Ex.: 1 unidade de 350 g'},{key:'ingredients',label:'Ingredientes e quantidades',hint:'Um por linha; inclua unidade de medida'},{key:'preparation',label:'Modo de preparo e pré-preparos',hint:'Etapas, perdas e conservação, se aplicável'},{key:'price',label:'Preço de venda',hint:'Valor sugerido ou a definir'},{key:'extras',label:'Variações e adicionais',hint:'Opcionais e restrições'},{key:'image',label:'Orientações para fotografia',hint:'Montagem e elementos em destaque'}] as const;
- const [conversation,setConversation]=useState<Conversation>({scope:'',messages:[],error:'',busy:false});
+ const allowed=Boolean(user&&businessUnitId&&!unitsLoading&&!rolesLoading&&canAccessAgentPage(roles,currentPage));
+ const accessibleTutorials=TUTORIALS.filter(t=>canAccessAgentPage(roles,findAgentPage(t.page)));
+ const [open,setOpen]=useState(false);const [tab,setTab]=useState<'task'|'tutorials'|'guided'>('task');
+ const [draftState,setDraftState]=useState<{scope:string;fields:typeof emptyGuided;step:number}>({scope:'',fields:emptyGuided,step:0});
+ const guided=draftState.scope===unitScope?draftState.fields:emptyGuided;
+ const guidedStep=draftState.scope===unitScope?draftState.step:0;
+ const setGuided=(update:typeof emptyGuided|((current:typeof emptyGuided)=>typeof emptyGuided))=>setDraftState(previous=>{const active=previous.scope===unitScope?previous:{scope:unitScope,fields:emptyGuided,step:0};return {...active,scope:unitScope,fields:typeof update==='function'?update(active.fields):update};});
+ const setGuidedStep=(update:number|((current:number)=>number))=>setDraftState(previous=>{const active=previous.scope===unitScope?previous:{scope:unitScope,fields:emptyGuided,step:0};return {...active,scope:unitScope,step:typeof update==='function'?update(active.step):update};});
  const [modelState,setModelState]=useState<{scope:string;models:Model[];warning:string;loading:boolean}>({scope:'',models:[],warning:'',loading:false});
- const [model,setModel]=useState('');const [context,setContext]=useState('help');const [draft,setDraft]=useState('');
- const [tutorialId,setTutorialId]=useState('menu');const [step,setStep]=useState(0);const [attempt,setAttempt]=useState(0);
+ const [model,setModel]=useState('');const [promptState,setPromptState]=useState<{scope:string;value:string}>({scope:'',value:''});
+ const taskPrompt=promptState.scope===scope?promptState.value:'';
+ const setTaskPrompt=(value:string)=>setPromptState({scope,value});
+ const [task,setTask]=useState<AsyncState<AgentTaskPlan>>({scope:'',value:null,error:'',busy:false});
+ const [tutorialId,setTutorialId]=useState(accessibleTutorials[0]?.id??'menu');const [tutorialStep,setTutorialStep]=useState(0);const [attempt,setAttempt]=useState(0);
  const end=useRef<HTMLDivElement>(null);const sending=useRef(false);
- const visible=conversation.scope===scope?conversation:{scope,messages:[],error:'',busy:false};
+ const visibleTask=task.scope===scope?task:{scope,value:null,error:'',busy:false};
  const available=modelState.scope===scope?modelState:{scope,models:[],warning:'',loading:true};
  const unitName=units.find(u=>u.id===businessUnitId)?.name??'Unidade selecionada';
- const tutorial=TUTORIALS.find(t=>t.id===tutorialId)??TUTORIALS[0];
- useEffect(()=>{setDraft('');setModel('');setContext('help');setGuidedStep(0);setGuided({name:'',category:'',description:'',portion:'',ingredients:'',preparation:'',price:'',extras:'',image:''});setOpen(false);sending.current=false;setConversation({scope,messages:[],error:'',busy:false});},[scope]);
+ const tutorial=accessibleTutorials.find(t=>t.id===tutorialId)??accessibleTutorials[0];
+ const currentRole=roles.filter(role=>currentPage?.roles.includes(role as never)).map(role=>roleLabels[role]??role).join(' / ');
+ useEffect(()=>{setPromptState({scope,value:''});setModel('');setOpen(false);sending.current=false;setTask({scope,value:null,error:'',busy:false});},[scope]);
+ useEffect(()=>{setDraftState({scope:unitScope,fields:emptyGuided,step:0});},[unitScope]);
  useEffect(()=>{if(!allowed)setOpen(false);},[allowed]);
  useEffect(()=>{
   if(!allowed||!open)return;let disposed=false;
   setModelState({scope,models:[],warning:'',loading:true});
-  void invoke({action:'models',businessUnitId}).then(data=>{
+  void invoke({action:'models',businessUnitId,page:pagePath}).then(data=>{
    if(disposed||current.current!==scope)return;
-   const models=Array.isArray(data.models)?data.models:[];
-   setModelState({scope,models,warning:(data.warnings??[]).join(' '),loading:false});setModel(prev=>models.some((m:Model)=>m.id===prev)?prev:models[0]?.id??'');
-  }).catch(e=>{if(!disposed&&current.current===scope)setModelState({scope,models:[],warning:e.message,loading:false});});
+   const models=Array.isArray(data.models)?data.models as Model[]:[];
+   setModelState({scope,models,warning:(data.warnings??[]).join(' '),loading:false});
+   setModel(prev=>models.some(m=>m.id===prev)?prev:models[0]?.id??'');
+  }).catch(e=>{if(!disposed&&current.current===scope)setModelState({scope,models:[],warning:e instanceof Error?e.message:'Falha ao consultar modelos',loading:false});});
   return ()=>{disposed=true;};
- },[allowed,open,businessUnitId,scope,attempt]);
- useEffect(()=>{if(open&&tab==='chat')end.current?.scrollIntoView({block:'nearest'});},[visible.messages.length,visible.busy,open,tab]);
- async function send(){
-  if(!draft.trim()||visible.busy||sending.current||!allowed||!available.models.some(m=>m.id===model))return;
-  const requestScope=scope;const requestVersion=generation.current.version;const question=draft.trim();const messages=[...visible.messages.slice(-14),{role:'user' as const,content:question}];
-  sending.current=true;setDraft('');setConversation({scope:requestScope,messages,error:'',busy:true});
+ },[allowed,open,businessUnitId,pagePath,scope,attempt]);
+ useEffect(()=>{if(open&&tab==='task')end.current?.scrollIntoView({block:'nearest'});},[visibleTask.value,visibleTask.busy,open,tab]);
+ async function runTask(){
+  const prompt=taskPrompt.trim();if(!prompt||visibleTask.busy||sending.current||!allowed||!currentPage||!available.models.some(m=>m.id===model))return;
+  const requestScope=scope;const requestVersion=generation.current.version;
+  sending.current=true;setTask({scope:requestScope,value:null,error:'',busy:true});
   try{
-   const data=await invoke({action:'chat',businessUnitId,model,context,page:location.pathname+location.search,messages,requestId:crypto.randomUUID()});
+   const data=await invoke({action:'agent-plan',businessUnitId,model,prompt,page:pagePath,requestId:crypto.randomUUID()});
    if(current.current!==requestScope||generation.current.version!==requestVersion)return;
-   if(typeof data.reply!=='string'||!data.reply)throw Error('A IA não retornou resposta.');
-   setConversation({scope:requestScope,messages:[...messages,{role:'assistant',content:data.reply}],error:'',busy:false});
-  }catch(e){if(current.current===requestScope&&generation.current.version===requestVersion){setConversation({scope:requestScope,messages,error:e instanceof Error?e.message:'Falha na conversa',busy:false});setDraft(question);}}
+   const plan=validateAgentPlan(data.plan,roles,currentPage);
+   setTask({scope:requestScope,value:plan,error:'',busy:false});
+   if(plan.action==='navigate'&&plan.routeId!==currentPage.id){
+    const target=AGENT_PAGES.find(page=>page.id===plan.routeId);
+    if(target&&canAccessAgentPage(roles,target)){toast.info(`Abrindo ${target.label}`,{description:plan.explanation});setOpen(false);navigate(target.path);}
+   }
+  }catch(error){if(current.current===requestScope&&generation.current.version===requestVersion)setTask({scope:requestScope,value:null,error:error instanceof Error?error.message:'Falha ao preparar a tarefa',busy:false});}
   finally{if(current.current===requestScope&&generation.current.version===requestVersion)sending.current=false;}
+ }
+ function openPlannedPage(plan:AgentTaskPlan){
+  const target=AGENT_PAGES.find(page=>page.id===plan.routeId);
+  if(!target||!canAccessAgentPage(roles,target))return;
+  setOpen(false);navigate(target.path);
+ }
+ function applyMenuDraft(plan:AgentTaskPlan){
+  if(plan.action!=='draft'||plan.formId!=='menu-guided')return;
+  setGuided(value=>({...value,...plan.fields}));setGuidedStep(0);setTab('guided');
+ }
+ async function copyGuidedDraft(){
+  const summary=guidedFields.map(field=>`${field.label}: ${guided[field.key]||'A definir'}`).join('\n');
+  try{await navigator.clipboard.writeText(summary);}catch{setTask({scope,value:null,error:'Não foi possível copiar o rascunho neste navegador.',busy:false});setTab('task');}
  }
  if(!allowed)return null;
  return <>
-  <Button className="fixed bottom-4 right-4 z-40 gap-2 rounded-full shadow-lg" aria-label="Abrir assistente de IA e tutoriais" data-tooltip="Converse com o assistente e veja tutoriais do ERP." onClick={()=>setOpen(true)}><MessageCircle className="h-5 w-5"/><span className="hidden sm:inline">Assistente</span></Button>
+  <Button className="fixed bottom-4 right-4 z-40 gap-2 rounded-full shadow-lg" aria-label="Abrir agente PØP9" data-tooltip="Peça uma tarefa, abra módulos permitidos ou consulte instruções." onClick={()=>setOpen(true)}><Sparkles className="h-5 w-5"/><span className="hidden sm:inline">Agente PØP9</span></Button>
   <Dialog open={open} onOpenChange={setOpen}>
    <DialogContent className="flex h-[min(760px,92dvh)] w-[calc(100%-1rem)] max-w-2xl flex-col gap-3 p-4 sm:p-6">
-    <DialogHeader><DialogTitle>Assistente PØP9</DialogTitle><DialogDescription>{unitName} · Administrador</DialogDescription></DialogHeader>
-    <div className="flex gap-2" role="tablist" aria-label="Modo do assistente"><Button role="tab" aria-selected={tab==='chat'} variant={tab==='chat'?'default':'outline'} onClick={()=>setTab('chat')}><MessageCircle className="mr-2 h-4 w-4"/>Conversa</Button><Button role="tab" aria-selected={tab==='tutorials'} variant={tab==='tutorials'?'default':'outline'} onClick={()=>setTab('tutorials')}><BookOpen className="mr-2 h-4 w-4"/>Tutoriais</Button><Button role="tab" aria-selected={tab==='guided'} variant={tab==='guided'?'default':'outline'} onClick={()=>setTab('guided')}>Montar cardápio</Button></div>
-    {tab==='guided'?<div className="min-h-0 flex-1 space-y-4 overflow-y-auto rounded-lg border p-4"><p className="text-sm text-muted-foreground">Formulário guiado · etapa {guidedStep+1} de {guidedFields.length}. Rascunho local, sem movimentar estoque.</p><progress className="w-full accent-primary" max={guidedFields.length} value={guidedStep+1}/><label className="block space-y-2 text-sm font-medium">{guidedFields[guidedStep].label}<Textarea aria-label={guidedFields[guidedStep].label} placeholder={guidedFields[guidedStep].hint} value={guided[guidedFields[guidedStep].key]} onChange={e=>setGuided(v=>({...v,[guidedFields[guidedStep].key]:e.target.value}))}/></label><div className="flex flex-wrap gap-2"><Button variant="outline" disabled={guidedStep===0} onClick={()=>setGuidedStep(s=>s-1)}>Anterior</Button><Button disabled={guidedStep===guidedFields.length-1} onClick={()=>setGuidedStep(s=>s+1)}>Próximo</Button><Button variant="outline" onClick={()=>{const summary=guidedFields.map(f=>`${f.label}: ${guided[f.key]||'A definir'}`).join('\n');setDraft(`Ajude a revisar este rascunho de cardápio da unidade ${unitName}. Identifique dados ausentes, ingredientes que precisam ser conferidos no estoque, fichas técnicas, custos não conhecidos e sugestões de descrição. Não afirme que gravou dados nem invente preços ou saldos.\n\n${summary}`);setContext('stock');setTab('chat');}}>Revisar com IA</Button><Button variant="outline" onClick={()=>{const summary=guidedFields.map(f=>`${f.label}: ${guided[f.key]||'A definir'}`).join('\n');void navigator.clipboard.writeText(summary);}}>Copiar rascunho</Button></div><p className="text-xs text-muted-foreground">Para cadastrar, revise e confirme os dados em Cardápio. O assistente não grava produtos automaticamente.</p><Button variant="outline" onClick={()=>{setOpen(false);navigate('/admin?sec=menu');}}>Abrir Cardápio</Button></div>:tab==='chat'?<>
-     <div className="grid gap-2 sm:grid-cols-2">
-      <label className="space-y-1 text-sm">Modelo<select aria-label="Modelo de conversa" className="w-full rounded-md border bg-background p-2" value={model} disabled={available.loading||visible.busy} onChange={e=>setModel(e.target.value)}>{!available.models.length&&<option value="">{available.loading?'Verificando IA...':'IA indisponível'}</option>}{available.models.map(m=><option key={m.id} value={m.id}>{m.label}</option>)}</select></label>
-      <label className="space-y-1 text-sm">Dados para consultar<select aria-label="Dados para consultar" className="w-full rounded-md border bg-background p-2" value={context} disabled={visible.busy} onChange={e=>setContext(e.target.value)}><option value="help">Ajuda e tutoriais</option><option value="menu">Cardápio da unidade</option><option value="stock">Estoque da unidade</option><option value="orders">Pedidos das últimas 24 horas</option></select></label>
-     </div>
-     {!available.loading&&(!available.models.length||available.warning)&&<div role="status" className="space-y-2 rounded-md border p-3 text-sm"><p>{available.warning||'Conecte um provedor de conversa em Conexões. Os tutoriais já estão disponíveis.'}</p><div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={()=>{setOpen(false);navigate('/admin?sec=connections');}}>Configurar IA</Button><Button size="sm" variant="outline" onClick={()=>setAttempt(v=>v+1)}>Verificar novamente</Button><Button size="sm" variant="outline" onClick={()=>setTab('tutorials')}>Ver tutoriais</Button></div></div>}
-     <div className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-md border p-3" role="log" aria-label="Conversa com o assistente" aria-live="polite">
-      {!visible.messages.length&&<div className="space-y-3 text-sm"><p>Posso explicar esta tela, orientar a equipe ou ajudar a analisar os dados da unidade. O que você precisa?</p><div className="flex flex-wrap gap-2">{['Como montar uma ficha técnica?','Como encerrar uma mesa no caixa?','Explique a tela atual.'].map(q=><Button key={q} size="sm" variant="outline" className="h-auto whitespace-normal text-left" onClick={()=>setDraft(q)}>{q}</Button>)}</div></div>}
-      {visible.messages.map((m,i)=><div key={i} className={`rounded-lg p-3 text-sm ${m.role==='user'?'ml-5 bg-primary/15':'mr-5 bg-muted'}`}><p className="mb-1 text-xs font-semibold">{m.role==='user'?'Você':'Assistente'}</p><p className="whitespace-pre-wrap break-words">{m.content}</p></div>)}
-      {visible.busy&&<p role="status" className="flex items-center gap-2 text-sm"><Loader2 className="h-4 w-4 animate-spin"/>Consultando a IA...</p>}
-      {visible.error&&<p role="alert" className="text-sm text-destructive">{visible.error}</p>}<div ref={end}/>
-     </div>
-     <Button type="button" variant="outline" className="gap-2" data-tooltip="Envie PDFs, fotos ou planilhas de cardápio e fichas técnicas. A IA monta o rascunho para você revisar." onClick={()=>{setOpen(false);navigate('/admin?sec=menu&import=1');}}><FileUp className="h-4 w-4"/>Montar cardápio a partir de arquivos</Button>
-     <p className="text-xs text-muted-foreground">Orientações e sugestões. Confirme alterações nas telas do ERP. Sua pergunta e os dados selecionados são enviados ao provedor de IA.</p>
-     <form className="flex items-end gap-2" onSubmit={e=>{e.preventDefault();void send();}}><Textarea aria-label="Mensagem para o assistente" placeholder="Escreva sua dúvida..." value={draft} maxLength={4000} disabled={visible.busy} onChange={e=>setDraft(e.target.value)} className="min-h-[64px] max-h-32" onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();void send();}}}/><Button type="submit" size="icon" aria-label="Enviar mensagem" disabled={!draft.trim()||visible.busy||!model||available.loading}><Send className="h-4 w-4"/></Button><Button type="button" size="icon" variant="outline" aria-label="Limpar conversa" disabled={visible.busy} onClick={()=>{setConversation({scope,messages:[],error:'',busy:false});setDraft('');}}><RotateCcw className="h-4 w-4"/></Button></form>
-    </>:<div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
-     <p className="text-sm text-muted-foreground">Guias passo a passo, disponíveis mesmo sem conexão à IA.</p>
-     <label className="block space-y-1 text-sm">Tutorial<select aria-label="Escolher tutorial" className="w-full rounded-md border bg-background p-2" value={tutorialId} onChange={e=>{setTutorialId(e.target.value);setStep(0);}}>{TUTORIALS.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}</select></label>
-     <div className="space-y-4 rounded-xl border p-4"><h3 className="font-semibold">{tutorial.title}</h3><p className="text-xs text-muted-foreground">Passo {step+1} de {tutorial.steps.length}</p><progress aria-label="Progresso do tutorial" className="h-2 w-full accent-primary" max={tutorial.steps.length} value={step+1}/><p className="text-sm leading-relaxed">{tutorial.steps[step]}</p><div className="flex flex-wrap gap-2"><Button variant="outline" disabled={step===0} onClick={()=>setStep(s=>s-1)}>Anterior</Button>{step<tutorial.steps.length-1?<Button onClick={()=>setStep(s=>s+1)}>Próximo passo</Button>:<Button onClick={()=>setStep(0)}>Recomeçar</Button>}<Button variant="outline" onClick={()=>{setOpen(false);navigate(tutorial.page);}}>Abrir área</Button></div></div>
-     <details className="rounded-lg border p-3 text-sm"><summary className="cursor-pointer font-medium">Ver todos os passos</summary><ol className="ml-5 mt-3 list-decimal space-y-3">{tutorial.steps.map((s,i)=><li key={i}>{s}</li>)}</ol></details>
-     <Button variant="outline" onClick={()=>{setDraft(`Me ajude com o tutorial: ${tutorial.title}. Minha dúvida é: `);setTab('chat');}}>Perguntar sobre este tutorial</Button>
+    <DialogHeader><DialogTitle>Agente PØP9</DialogTitle><DialogDescription>{unitName} · {currentRole||'Acesso autorizado'} · {currentPage?.label}</DialogDescription></DialogHeader>
+    <div className="flex flex-wrap gap-2" role="tablist" aria-label="Modo do agente"><Button role="tab" aria-selected={tab==='task'} variant={tab==='task'?'default':'outline'} onClick={()=>setTab('task')}><Navigation className="mr-2 h-4 w-4"/>Tarefa</Button><Button role="tab" aria-selected={tab==='tutorials'} variant={tab==='tutorials'?'default':'outline'} onClick={()=>setTab('tutorials')}><BookOpen className="mr-2 h-4 w-4"/>Instruções</Button><Button role="tab" aria-selected={tab==='guided'} variant={tab==='guided'?'default':'outline'} onClick={()=>setTab('guided')}>Rascunho de cardápio</Button></div>
+    {tab==='task'?<div className="min-h-0 flex-1 space-y-4 overflow-y-auto rounded-lg border p-4">
+     <p className="text-sm">Descreva uma tarefa em uma solicitação. O agente sugere a página correta e explica o próximo passo; nesta versão, ele não executa gravações.</p>
+     <label className="block space-y-1 text-sm">Modelo<select aria-label="Modelo do agente" className="w-full rounded-md border bg-background p-2" value={model} disabled={available.loading||visibleTask.busy} onChange={event=>setModel(event.target.value)}>{!available.models.length&&<option value="">{available.loading?'Verificando IA...':'IA indisponível'}</option>}{available.models.map(item=><option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+     {!available.loading&&(!available.models.length||available.warning)&&<div role="status" className="space-y-2 rounded-md border p-3 text-sm"><p>{available.warning||'Conecte um provedor de IA em Conexões. As instruções locais continuam disponíveis.'}</p>{roles.includes('admin')&&<div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={()=>{setOpen(false);navigate('/admin?sec=connections');}}>Configurar IA</Button><Button size="sm" variant="outline" onClick={()=>setAttempt(value=>value+1)}>Verificar novamente</Button></div>}</div>}
+     <form className="space-y-2" onSubmit={event=>{event.preventDefault();void runTask();}}><label className="block space-y-1 text-sm">O que você precisa fazer?<Textarea aria-label="Descreva a tarefa" placeholder="Ex.: abrir o Estoque e explicar como registrar uma compra" value={taskPrompt} maxLength={4000} disabled={visibleTask.busy} onChange={event=>{setTaskPrompt(event.target.value);setTask({scope,value:null,error:'',busy:false});}} className="min-h-24 max-h-40"/></label><Button type="submit" className="gap-2" disabled={!taskPrompt.trim()||visibleTask.busy||!model||available.loading}>{visibleTask.busy?<><Loader2 className="h-4 w-4 animate-spin"/>Preparando a tarefa...</>:<><Sparkles className="h-4 w-4"/>Analisar tarefa</>}</Button></form>
+     {visibleTask.error&&<p role="alert" className="text-sm text-destructive">{visibleTask.error}</p>}
+     {visibleTask.value&&<section className="space-y-3 rounded-lg border bg-muted/30 p-3" aria-label="Proposta do agente"><h3 className="font-semibold">Proposta para revisão</h3><p className="whitespace-pre-wrap text-sm">{visibleTask.value.explanation||'Tarefa preparada.'}</p>{visibleTask.value.missing.length>0&&<div className="text-sm"><p className="font-medium">Informações ainda necessárias</p><ul className="ml-5 list-disc">{visibleTask.value.missing.map(item=><li key={item}>{item}</li>)}</ul></div>}{visibleTask.value.action==='draft'&&<div className="space-y-2 rounded-md border bg-background p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Rascunho local · não salvo</p>{guidedFields.filter(field=>visibleTask.value?.fields[field.key]).map(field=><div key={field.key} className="grid gap-1 border-b pb-2 last:border-0 sm:grid-cols-[11rem_1fr]"><span className="text-xs font-medium">{field.label}</span><span className="whitespace-pre-wrap break-words text-sm">{visibleTask.value?.fields[field.key]}</span></div>)}<Button type="button" variant="outline" onClick={()=>applyMenuDraft(visibleTask.value!)}>Aplicar ao rascunho local</Button></div>}{visibleTask.value.action!=='draft'&&<Button type="button" onClick={()=>openPlannedPage(visibleTask.value!)}><Navigation className="mr-2 h-4 w-4"/>Abrir {AGENT_PAGES.find(page=>page.id===visibleTask.value?.routeId)?.label??'área'}</Button>}</section>}
+     <p ref={end} className="text-xs text-muted-foreground">A proposta é revisável e não grava nada. Trocar de unidade ou página descarta a tarefa. O modelo recebe o pedido, a página atual e uma lista de rotas; não recebe dados de clientes, caixa ou estoque nesta etapa.</p>
+    </div>:tab==='guided'?<div className="min-h-0 flex-1 space-y-4 overflow-y-auto rounded-lg border p-4"><p className="text-sm text-muted-foreground">Formulário guiado · etapa {guidedStep+1} de {guidedFields.length}. Rascunho local, sem gravação nem movimentação de estoque.</p><progress className="w-full accent-primary" max={guidedFields.length} value={guidedStep+1}/><label className="block space-y-2 text-sm font-medium">{guidedFields[guidedStep].label}<Textarea aria-label={guidedFields[guidedStep].label} placeholder={guidedFields[guidedStep].hint} value={guided[guidedFields[guidedStep].key]} onChange={event=>setGuided(value=>({...value,[guidedFields[guidedStep].key]:event.target.value}))}/></label><div className="flex flex-wrap gap-2"><Button variant="outline" disabled={guidedStep===0} onClick={()=>setGuidedStep(step=>step-1)}>Anterior</Button><Button disabled={guidedStep===guidedFields.length-1} onClick={()=>setGuidedStep(step=>step+1)}>Próximo</Button><Button variant="outline" disabled={!available.models.length||available.loading} onClick={()=>{const summary=guidedFields.map(field=>`${field.label}: ${guided[field.key]||'A definir'}`).join('\n');setTaskPrompt(`Revise este rascunho de cardápio da unidade ${unitName}. Identifique lacunas e pontos que preciso conferir; não invente preços ou saldos.\n\n${summary}`);setTab('task');}}>Revisar tarefa com IA</Button><Button variant="outline" onClick={()=>void copyGuidedDraft()}>Copiar rascunho</Button></div><p className="text-xs text-muted-foreground">Este rascunho ainda não preenche o cadastro nem salva no ERP. Revise e cadastre no Cardápio.</p><Button variant="outline" onClick={()=>openPlannedPage({action:'navigate',routeId:'menu',formId:null,fields:{},explanation:'',missing:[]})}>Abrir Cardápio</Button></div>:<div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
+     <p className="text-sm text-muted-foreground">Instruções locais passo a passo. Disponíveis sem conexão à IA e filtradas pelo seu perfil.</p>{tutorial?<><label className="block space-y-1 text-sm">Módulo<select aria-label="Escolher instrução" className="w-full rounded-md border bg-background p-2" value={tutorial.id} onChange={event=>{setTutorialId(event.target.value);setTutorialStep(0);}}>{accessibleTutorials.map(item=><option key={item.id} value={item.id}>{item.title}</option>)}</select></label><div className="space-y-4 rounded-xl border p-4"><h3 className="font-semibold">{tutorial.title}</h3><p className="text-xs text-muted-foreground">Passo {tutorialStep+1} de {tutorial.steps.length}</p><progress aria-label="Progresso das instruções" className="h-2 w-full accent-primary" max={tutorial.steps.length} value={tutorialStep+1}/><p className="text-sm leading-relaxed">{tutorial.steps[tutorialStep]}</p><div className="flex flex-wrap gap-2"><Button variant="outline" disabled={tutorialStep===0} onClick={()=>setTutorialStep(step=>step-1)}>Anterior</Button>{tutorialStep<tutorial.steps.length-1?<Button onClick={()=>setTutorialStep(step=>step+1)}>Próximo passo</Button>:<Button onClick={()=>setTutorialStep(0)}>Recomeçar</Button>}<Button variant="outline" onClick={()=>{setOpen(false);navigate(tutorial.page);}}>Abrir área</Button></div></div><details className="rounded-lg border p-3 text-sm"><summary className="cursor-pointer font-medium">Ver todos os passos</summary><ol className="ml-5 mt-3 list-decimal space-y-3">{tutorial.steps.map((step,index)=><li key={index}>{step}</li>)}</ol></details></>:<p role="status" className="text-sm">Não há instruções para este perfil.</p>}
     </div>}
    </DialogContent>
   </Dialog>
