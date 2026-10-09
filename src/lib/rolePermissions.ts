@@ -7,14 +7,14 @@
  */
 export const PERMISSIONS = [
   "tables.view", "tables.manage", "tables.create", "tables.edit_operational", "tables.join", "tables.split",
-  "sessions.open", "sessions.view", "sessions.close",
+  "sessions.open", "sessions.view", "sessions.request_close", "sessions.unlink_client", "sessions.close",
   "customers.link",
   "orders.create", "orders.view", "orders.cancel_unstarted", "orders.cancel_approval",
   "production.view", "production.manage",
   "pickup.confirm", "delivery.confirm",
   "prints.request", "prints.configure",
   "accounts.view", "accounts.request_close", "accounts.adjust_individual", "accounts.allocate_payable", "accounts.close",
-  "payments.view_status", "payments.receive", "payments.refund",
+  "payments.view_status", "payments.receive", "payments.receive_partial", "payments.refund",
   "menu.manage", "inventory.manage", "users.manage", "reports.view",
 ] as const;
 
@@ -24,11 +24,11 @@ export type StandardRole = "admin" | "attendant" | "cashier" | "kitchen" | "bar"
 export const STANDARD_ROLE_PERMISSIONS: Record<StandardRole, readonly Permission[]> = {
   admin: PERMISSIONS,
   attendant: [
-    "tables.view", "tables.create", "tables.edit_operational", "tables.join", "tables.split", "sessions.open", "sessions.view", "customers.link",
+    "tables.view", "tables.create", "tables.edit_operational", "tables.join", "tables.split", "sessions.open", "sessions.view", "sessions.request_close", "sessions.unlink_client", "customers.link",
     "orders.create", "orders.view", "orders.cancel_unstarted",
     "production.view", "pickup.confirm", "delivery.confirm",
     "prints.request", "accounts.view", "accounts.adjust_individual", "accounts.allocate_payable", "accounts.request_close",
-    "payments.view_status",
+    "payments.view_status", "payments.receive", "payments.receive_partial",
   ],
   cashier: [
     "tables.view", "sessions.view", "sessions.close", "orders.view",
