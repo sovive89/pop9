@@ -1,5 +1,10 @@
 import { useState } from "react";
-import { Printer, Plus, Trash2, Tag as TagIcon } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
+import { Printer, Plus, Trash2, Tag as TagIcon, TestTube2, ChevronDown, ChevronUp, Settings2 } from "lucide-react";
+import { testQzPrinter } from "@/utils/qz-printer";
+import { printReceipt } from "@/utils/thermal-print";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -38,25 +43,76 @@ const CONNECTION_OPTIONS = Object.entries(CONNECTION_TYPE_LABELS) as [PrinterCon
 
 const PrintersTab = () => {
   const { printers, loading, createPrinter, updatePrinter, deletePrinter } = usePrinterConfigs();
+  const { businessUnitId } = useCurrentBusinessUnit();
 
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [testingId, setTestingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [tipo, setTipo] = useState<PrinterTipo>("termica");
   const [gatilho, setGatilho] = useState<PrinterGatilho>("comanda_cozinha");
   const [connectionType, setConnectionType] = useState<PrinterConnectionType>("browser");
   const [deviceIdentifier, setDeviceIdentifier] = useState("");
+  const [host,setHost] = useState("");
+  const [port,setPort] = useState("9100");
+  const [paperWidth,setPaperWidth] = useState("80");
+  const [transport,setTransport] = useState("tcp");
+  const [copies,setCopies] = useState("1");
+  const [autoCut,setAutoCut] = useState(false);
+  const [encoding,setEncoding] = useState("cp850");
+
+  const handleQueuedTest = async (p: (typeof printers)[number]) => {
+    if (!businessUnitId || !p.active || p.transport !== "tcp") {
+      toast.error("Selecione uma impressora TCP ativa desta unidade.");
+      return;
+    }
+    setTestingId(p.id);
+    try {
+      const payload = ["POP9 ERP", "TESTE DE IMPRESSAO", p.name, new Date().toLocaleString("pt-BR"), "", ""].join("\n");
+      const { error } = await supabase.from("print_jobs" as any).insert({
+        business_unit_id: businessUnitId, printer_id: p.id, payload,
+      } as any);
+      if (error) throw error;
+      toast.success("Teste colocado na fila. Confirme a saída na impressora.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao enfileirar teste");
+    } finally { setTestingId(null); }
+  };
+
+  const handleTestPrint = async (p: (typeof printers)[number]) => {
+    if (p.connectionType === "qz_tray") {
+      setTestingId(p.id);
+      try {
+        await testQzPrinter(p);
+        toast.success("Comando de teste enviado ao QZ Tray");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Falha ao conectar ao QZ Tray");
+      } finally { setTestingId(null); }
+      return;
+    }
+    if (p.connectionType === "webusb") {
+      toast.error("WebUSB ainda não está disponível. Selecione QZ Tray ou navegador.");
+      return;
+    }
+    const escaped = p.name.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char] ?? char));
+    printReceipt(`<!doctype html><html><head><meta charset="utf-8"><style>@page{size:${p.paperWidth}mm auto;margin:0}body{font-family:monospace;padding:4mm;text-align:center;color:#000}hr{border:0;border-top:1px dashed #000}</style></head><body><h2>POP9 ERP</h2><hr><p>TESTE DE IMPRESSAO</p><p>${escaped}</p><p>${new Date().toLocaleString("pt-BR")}</p><hr><p>Teste pelo navegador</p></body></html>`);
+  };
 
   const resetForm = () => {
+    setAdvancedOpen(false);
     setName("");
     setTipo("termica");
     setGatilho("comanda_cozinha");
     setConnectionType("browser");
-    setDeviceIdentifier("");
+    setDeviceIdentifier(""); setHost(""); setPort("9100"); setPaperWidth("80"); setTransport("tcp"); setCopies("1"); setAutoCut(false); setEncoding("cp850");
   };
 
   const handleCreate = async () => {
     if (!name.trim()) return;
+    if (transport === "tcp" && connectionType !== "browser" && (!host.trim() || !/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535)) { toast.error("Informe IP/host e porta TCP válida."); return; }
+    if (!Number.isInteger(Number(copies)) || Number(copies) < 1 || Number(copies) > 10) { toast.error("Cópias devem estar entre 1 e 10."); return; }
     setSaving(true);
     const ok = await createPrinter({
       name: name.trim(),
@@ -64,6 +120,7 @@ const PrintersTab = () => {
       gatilho,
       connectionType,
       deviceIdentifier: deviceIdentifier.trim() || null,
+      host: host.trim() || null, port: Number(port), paperWidth: Number(paperWidth), transport, copies: Number(copies), autoCut, encoding,
     });
     setSaving(false);
     if (ok) {
@@ -78,70 +135,61 @@ const PrintersTab = () => {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-border bg-card p-4">
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          Cada gatilho (ex: "Comanda da cozinha") pode ter uma impressora associada. Hoje a
-          execução real da impressão continua sendo o diálogo do navegador — o navegador não
-          permite selecionar/lembrar uma impressora específica nem imprimir silenciosamente sem
-          uma camada extra (QZ Tray ou WebUSB). O campo "Conexão" já existe pra quando isso for
-          implementado; por enquanto ele é só informativo.
-        </p>
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold">Central de Impressão</h2>
+        <p className="text-xs text-muted-foreground">Gerencie os destinos de impressão desta unidade. O teste via servidor requer agente instalado e fila ativada. O monitoramento online ainda não está disponível.</p>
       </div>
-
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-foreground">Impressoras cadastradas</h3>
-        <Button size="sm" onClick={() => setDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-1" /> Nova impressora
-        </Button>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="text-2xl font-semibold">{printers.length}</p>
+          <p className="text-xs text-muted-foreground">Cadastradas</p>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="text-2xl font-semibold">{printers.filter(p => p.active).length}</p>
+          <p className="text-xs text-muted-foreground">Ativas (não indica conexão)</p>
+        </div>
       </div>
-
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">Impressoras cadastradas</h3>
+        <Button size="sm" onClick={() => setDialogOpen(true)}><Plus className="h-4 w-4 mr-1" /> Adicionar</Button>
+      </div>
       <div className="space-y-2">
-        {printers.map((p) => (
-          <div key={p.id} className="rounded-xl border border-border bg-card p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="font-semibold text-foreground flex items-center gap-2">
-                  {p.tipo === "etiqueta" ? (
-                    <TagIcon className="h-4 w-4 text-primary" />
-                  ) : (
-                    <Printer className="h-4 w-4 text-primary" />
-                  )}
-                  {p.name}
-                  {!p.active && (
-                    <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                      inativa
-                    </Badge>
-                  )}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {GATILHO_LABELS[p.gatilho]} · {CONNECTION_TYPE_LABELS[p.connectionType]}
-                  {p.deviceIdentifier && ` · ${p.deviceIdentifier}`}
-                </p>
+        {printers.map(p => {
+          const expanded = expandedIds.includes(p.id);
+          return <div key={p.id} className="rounded-xl border border-border bg-card p-4 space-y-3">
+            <button type="button" className="flex items-center justify-between gap-3 w-full text-left" aria-expanded={expanded} onClick={() => setExpandedIds(ids => expanded ? ids.filter(id => id !== p.id) : [...ids, p.id])}>
+              <span className="flex items-center gap-2 min-w-0">
+                {p.tipo === "etiqueta" ? <TagIcon className="h-5 w-5 shrink-0 text-primary"/> : <Printer className="h-5 w-5 shrink-0 text-primary"/>}
+                <span className="min-w-0"><span className="block font-semibold truncate">{p.name}</span><span className="block text-xs text-muted-foreground">{GATILHO_LABELS[p.gatilho]}</span></span>
+              </span>
+              <span className="flex items-center gap-2 shrink-0"><Badge variant={p.active ? "secondary" : "outline"}>{p.active ? "Ativa" : "Inativa"}</Badge>{expanded ? <ChevronUp className="h-4 w-4"/> : <ChevronDown className="h-4 w-4"/>}</span>
+            </button>
+            {expanded && <>
+              <div className="rounded-lg bg-muted/40 p-3 space-y-1 text-xs text-muted-foreground">
+                <p>Conexão: {CONNECTION_TYPE_LABELS[p.connectionType]} · {p.transport === "tcp" ? "Rede TCP" : "Impressora do sistema"}</p>
+                {p.host && <p>Endereço: {p.host}:{p.port}</p>}
+                {p.deviceIdentifier && <p>Dispositivo: {p.deviceIdentifier}</p>}
+                <p>Papel: {p.paperWidth} mm · {p.copies} cópia(s) · {p.encoding.toUpperCase()}</p>
+                <p>Status de conexão: não monitorado</p>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => updatePrinter(p.id, { active: !p.active })}
-                >
-                  {p.active ? "Desativar" : "Ativar"}
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => deletePrinter(p.id)}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={() => handleTestPrint(p)} disabled={testingId === p.id}><TestTube2 className="h-4 w-4 mr-1"/>{testingId === p.id ? "Testando..." : "Testar local"}</Button>
+                {p.transport === "tcp" && <Button size="sm" variant="outline" onClick={() => handleQueuedTest(p)} disabled={testingId === p.id || !p.active}>Testar via servidor</Button>}
+                <Button size="sm" variant="outline" onClick={() => updatePrinter(p.id, { active: !p.active })}>{p.active ? "Desativar" : "Ativar"}</Button>
+                <Button size="sm" variant="outline" onClick={() => { if (window.confirm(`Excluir a impressora "${p.name}"?`)) deletePrinter(p.id); }}><Trash2 className="h-4 w-4 mr-1"/>Excluir</Button>
               </div>
-            </div>
-          </div>
-        ))}
-        {printers.length === 0 && (
-          <p className="text-center text-muted-foreground py-6 text-sm">
-            Nenhuma impressora cadastrada ainda.
-          </p>
-        )}
+            </>}
+          </div>;
+        })}
+        {printers.length === 0 && <p className="text-center text-muted-foreground py-6 text-sm">Nenhuma impressora cadastrada.</p>}
+      </div>
+      <div className="rounded-xl border border-dashed border-border p-4 space-y-1">
+        <p className="text-sm font-medium">Fila de impressão</p>
+        <p className="text-xs text-muted-foreground">Em desenvolvimento. O histórico e os estados de envio aparecerão aqui após a integração com o agente de impressão.</p>
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Nova impressora</DialogTitle>
             <DialogDescription>
@@ -186,6 +234,16 @@ const PrintersTab = () => {
                 </SelectContent>
               </Select>
             </div>
+            <button type="button" className="w-full flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm font-medium" aria-expanded={advancedOpen} onClick={() => setAdvancedOpen(v => !v)}><span className="flex items-center gap-2"><Settings2 className="h-4 w-4"/>Configurações avançadas</span>{advancedOpen ? <ChevronUp className="h-4 w-4"/> : <ChevronDown className="h-4 w-4"/>}</button>
+            {advancedOpen && <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2"><Label>Transporte</Label><Select value={transport} onValueChange={setTransport}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="tcp">TCP / Rede</SelectItem><SelectItem value="usb">USB</SelectItem></SelectContent></Select></div>
+              <div className="space-y-2"><Label>Papel</Label><Select value={paperWidth} onValueChange={setPaperWidth}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="58">58 mm</SelectItem><SelectItem value="80">80 mm</SelectItem></SelectContent></Select></div>
+              {transport === "tcp" && <><div className="space-y-2"><Label>IP / Host</Label><Input value={host} onChange={e=>setHost(e.target.value)} placeholder="192.168.1.12"/></div><div className="space-y-2"><Label>Porta TCP</Label><Input type="number" min="1" max="65535" value={port} onChange={e=>setPort(e.target.value)}/></div></>}
+              <div className="space-y-2"><Label>Cópias</Label><Input type="number" min="1" max="10" value={copies} onChange={e=>setCopies(e.target.value)}/></div>
+              <div className="space-y-2"><Label>Codificação</Label><Select value={encoding} onValueChange={setEncoding}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="cp850">CP850</SelectItem><SelectItem value="cp860">CP860</SelectItem><SelectItem value="utf8">UTF-8</SelectItem></SelectContent></Select></div>
+            </div>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={autoCut} onChange={e=>setAutoCut(e.target.checked)}/> Corte automático</label>
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Identificador do dispositivo (opcional)</Label>
               <Input
@@ -194,6 +252,7 @@ const PrintersTab = () => {
                 placeholder="Ex: nome/IP da impressora, quando aplicável"
               />
             </div>
+            </div>}
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
