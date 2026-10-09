@@ -53,6 +53,7 @@ interface Props {
   onStartSession: (client: Omit<ClientInfo, "id" | "addedAt">) => void;
   onAddClient: (client: Omit<ClientInfo, "id" | "addedAt">) => void;
   onCloseSession: () => void;
+  canCloseAccount?: boolean;
   onClose: () => void;
   onSelectClient: (client: ClientInfo) => void;
 }
@@ -81,6 +82,7 @@ const TableSessionPanel = ({
   onStartSession,
   onAddClient,
   onCloseSession,
+  canCloseAccount = false,
   onClose,
   onSelectClient,
 }: Props) => {
@@ -123,6 +125,7 @@ const TableSessionPanel = ({
   const serviceChargeAmount = includeServiceCharge ? tableTotal * 0.1 : 0;
 
   const handleCloseSession = async () => {
+    if (!canCloseAccount) { toast.error("Somente o caixa ou um administrador pode encerrar sessões."); return; }
     if (!closePassword.trim()) {
       toast.error("Digite sua senha");
       return;
@@ -530,12 +533,12 @@ const TableSessionPanel = ({
                 Voltar ao Mapa
               </Button>
               {tableTotal > 0 ? (
-                <Button className="flex-1 gap-2" onClick={() => setShowCloseAccount(true)}>
+                <Button className="flex-1 gap-2" onClick={() => { if (canCloseAccount) setShowCloseAccount(true); else toast.info("Solicite o fechamento ao caixa. A solicitação automática ainda não está disponível."); }}>
                   <Receipt className="h-4 w-4" />
                   Fechar Conta
                 </Button>
               ) : (
-                <Button variant="destructive" className="flex-1" onClick={() => setShowCloseConfirm(true)}>
+                <Button variant="destructive" className="flex-1" onClick={() => { if (canCloseAccount) setShowCloseConfirm(true); else toast.info("Solicite ao caixa o encerramento desta sessão."); }}>
                   Encerrar Sessão
                 </Button>
               )}
@@ -610,7 +613,7 @@ const TableSessionPanel = ({
       />
 
       {/* Close Account Panel */}
-      {showCloseAccount && session && (
+      {canCloseAccount && showCloseAccount && session && (
         <CloseAccountPanel
           tableId={tableId}
           sessionId={session.dbId}
