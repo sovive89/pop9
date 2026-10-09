@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import { Printer, Plus, Trash2, Tag as TagIcon, TestTube2, ChevronDown, ChevronUp, Settings2 } from "lucide-react";
 import { testQzPrinter } from "@/utils/qz-printer";
 import { printReceipt } from "@/utils/thermal-print";
@@ -41,6 +43,7 @@ const CONNECTION_OPTIONS = Object.entries(CONNECTION_TYPE_LABELS) as [PrinterCon
 
 const PrintersTab = () => {
   const { printers, loading, createPrinter, updatePrinter, deletePrinter } = usePrinterConfigs();
+  const { businessUnitId } = useCurrentBusinessUnit();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -59,6 +62,24 @@ const PrintersTab = () => {
   const [copies,setCopies] = useState("1");
   const [autoCut,setAutoCut] = useState(false);
   const [encoding,setEncoding] = useState("cp850");
+
+  const handleQueuedTest = async (p: (typeof printers)[number]) => {
+    if (!businessUnitId || !p.active || p.transport !== "tcp") {
+      toast.error("Selecione uma impressora TCP ativa desta unidade.");
+      return;
+    }
+    setTestingId(p.id);
+    try {
+      const payload = ["POP9 ERP", "TESTE DE IMPRESSAO", p.name, new Date().toLocaleString("pt-BR"), "", ""].join("\n");
+      const { error } = await supabase.from("print_jobs" as any).insert({
+        business_unit_id: businessUnitId, printer_id: p.id, payload,
+      } as any);
+      if (error) throw error;
+      toast.success("Teste colocado na fila. Confirme a saída na impressora.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao enfileirar teste");
+    } finally { setTestingId(null); }
+  };
 
   const handleTestPrint = async (p: (typeof printers)[number]) => {
     if (p.connectionType === "qz_tray") {
@@ -116,7 +137,7 @@ const PrintersTab = () => {
     <div className="space-y-4">
       <div className="space-y-1">
         <h2 className="text-lg font-semibold">Central de Impressão</h2>
-        <p className="text-xs text-muted-foreground">Gerencie os destinos de impressão desta unidade. A fila centralizada e o monitoramento online ainda não estão disponíveis.</p>
+        <p className="text-xs text-muted-foreground">Gerencie os destinos de impressão desta unidade. O teste via servidor requer agente instalado e fila ativada. O monitoramento online ainda não está disponível.</p>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-xl border border-border bg-card p-4">
@@ -152,7 +173,8 @@ const PrintersTab = () => {
                 <p>Status de conexão: não monitorado</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={() => handleTestPrint(p)} disabled={testingId === p.id}><TestTube2 className="h-4 w-4 mr-1"/>{testingId === p.id ? "Testando..." : "Testar"}</Button>
+                <Button size="sm" variant="outline" onClick={() => handleTestPrint(p)} disabled={testingId === p.id}><TestTube2 className="h-4 w-4 mr-1"/>{testingId === p.id ? "Testando..." : "Testar local"}</Button>
+                {p.transport === "tcp" && <Button size="sm" variant="outline" onClick={() => handleQueuedTest(p)} disabled={testingId === p.id || !p.active}>Testar via servidor</Button>}
                 <Button size="sm" variant="outline" onClick={() => updatePrinter(p.id, { active: !p.active })}>{p.active ? "Desativar" : "Ativar"}</Button>
                 <Button size="sm" variant="outline" onClick={() => { if (window.confirm(`Excluir a impressora "${p.name}"?`)) deletePrinter(p.id); }}><Trash2 className="h-4 w-4 mr-1"/>Excluir</Button>
               </div>
