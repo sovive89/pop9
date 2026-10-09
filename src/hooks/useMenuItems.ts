@@ -51,7 +51,7 @@ export const useMenuItems = () => {
       setDbCategories(cats ?? []);
 
       const [itemsRes, ingredientsRes, variantsRes] = await Promise.all([
-        supabase.from("menu_items").select("id, name, price, category, description, sort_order").eq("active", true).eq("status", "published").eq("business_unit_id",unitId).order("sort_order"),
+        supabase.from("menu_items").select("id, name, price, category, description, image_url, sort_order").eq("active", true).eq("status", "published").eq("business_unit_id",unitId).order("sort_order"),
         supabase.from("menu_item_ingredients").select("menu_item_id, name, removable, extra_price, sort_order").order("sort_order"),
         supabase.from("menu_item_variants").select("menu_item_id, name, sort_order").order("sort_order"),
       ]);
@@ -73,6 +73,7 @@ export const useMenuItems = () => {
         price: Number(item.price),
         category: item.category as MenuCategory,
         description: item.description ?? undefined,
+        imageUrl: item.image_url ?? undefined,
         ingredients: (dbIngredients ?? [])
           .filter((ing) => ing.menu_item_id === item.id)
           .map((ing) => ({
