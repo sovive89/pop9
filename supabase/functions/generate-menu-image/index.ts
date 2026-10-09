@@ -81,7 +81,7 @@ Deno.serve(async(req)=>{
   const body=await req.json();
   const businessUnitId=body.businessUnitId;
   if(typeof businessUnitId!=="string"||! /^[0-9a-f-]{36}$/i.test(businessUnitId))return reply({error:"Unidade inválida"},400);
-  const {data:role,error:roleError}=await admin.from("user_roles").select("id").eq("user_id",user.id).eq("business_unit_id",businessUnitId).eq("role","admin").maybeSingle();
+  const {data:role,error:roleError}=await admin.from("user_roles").select("id").eq("user_id",user.id).eq("role","admin").or(`business_unit_id.eq.${businessUnitId},business_unit_id.is.null`).limit(1).maybeSingle();
   if(roleError)throw roleError;
   if(!role)return reply({error:"Sem permissão de administrador nesta unidade"},403);
   const {data:connections,error:connectionError}=await admin.from("ai_provider_credentials").select("provider,status,encrypted_key,iv").eq("business_unit_id",businessUnitId).eq("status","connected");
