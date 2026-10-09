@@ -745,11 +745,21 @@ const TableMap = () => {
           })}
           {showAddTile && (
             <button
-              onClick={() => addTable()}
+              onClick={async () => {
+                if (busy) return;
+                setBusy(true);
+                try {
+                  const created = await addTable();
+                  if (created) toast.success("Mesa criada. Edite para atribuir uma área e configurar lugares.");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              disabled={busy || tablesLoading}
               className="flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-muted-foreground/30 p-4 text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
             >
               <Plus className="h-6 w-6" />
-              <span className="text-[10px] font-medium">Mesa</span>
+              <span className="text-[10px] font-medium">{busy ? "Criando..." : "+ Mesa"}</span>
             </button>
           )}
         </div>
