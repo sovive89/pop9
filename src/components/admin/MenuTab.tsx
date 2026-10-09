@@ -456,7 +456,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
         <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
         {imageUrl ? (
           <div className="relative w-32 h-32 rounded-lg overflow-hidden border border-border group">
-            <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
+            <img src={imageUrl} alt="Preview" onError={() => setImageFailed(true)} onLoad={() => setImageFailed(false)} className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
               <button onClick={() => fileInputRef.current?.click()} className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-white/30">
                 <Pencil className="h-4 w-4" />
@@ -481,6 +481,17 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
           </button>
         )}
 
+        {imageFailed && <p className="text-xs text-destructive">A foto cadastrada não foi encontrada no armazenamento. Selecione outra no acervo ou envie novamente.</p>}
+        <div className="space-y-2 rounded-lg border border-border p-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium">Acervo de fotos · Storage</span>
+            <Button type="button" variant="outline" size="sm" disabled={libraryLoading || !businessUnitId} onClick={() => void loadPhotoLibrary()}>{libraryLoading ? "Carregando..." : "Ver fotos"}</Button>
+          </div>
+          {libraryPhotos.length > 0 && <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 max-h-64 overflow-y-auto">
+            {libraryPhotos.map(url => <button type="button" key={url} onClick={() => { setImageUrl(url); setImageFailed(false); }} aria-label="Usar foto do acervo" className={`aspect-square rounded-md overflow-hidden border-2 ${imageUrl === url ? "border-primary" : "border-border"}`}><img src={url} alt="Foto armazenada" loading="lazy" className="h-full w-full object-cover" /></button>)}
+          </div>}
+          <p className="text-xs text-muted-foreground">Fotos enviadas e geradas permanecem salvas, mesmo quando substituídas ou removidas do produto.</p>
+        </div>
         <div className="rounded-lg border border-border bg-secondary/20 p-3 space-y-2">
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
             <Sparkles className="h-3.5 w-3.5 text-primary" /> Gerar foto com IA
