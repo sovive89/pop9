@@ -47,7 +47,14 @@ const PrintersTab = () => {
   const [tipo, setTipo] = useState<PrinterTipo>("termica");
   const [gatilho, setGatilho] = useState<PrinterGatilho>("comanda_cozinha");
   const [connectionType, setConnectionType] = useState<PrinterConnectionType>("browser");
-  const [deviceIdentifier, setDeviceIdentifier] = useState("");\n  const [host,setHost] = useState("");\n  const [port,setPort] = useState("9100");\n  const [paperWidth,setPaperWidth] = useState("80");\n  const [transport,setTransport] = useState("tcp");\n  const [copies,setCopies] = useState("1");\n  const [autoCut,setAutoCut] = useState(false);\n  const [encoding,setEncoding] = useState("cp850");
+  const [deviceIdentifier, setDeviceIdentifier] = useState("");
+  const [host,setHost] = useState("");
+  const [port,setPort] = useState("9100");
+  const [paperWidth,setPaperWidth] = useState("80");
+  const [transport,setTransport] = useState("tcp");
+  const [copies,setCopies] = useState("1");
+  const [autoCut,setAutoCut] = useState(false);
+  const [encoding,setEncoding] = useState("cp850");
 
   const handleTestPrint = (printerName: string, connectionType: PrinterConnectionType) => {
     if (connectionType !== "browser") {
@@ -66,14 +73,16 @@ const PrintersTab = () => {
   };
 
   const handleCreate = async () => {
-    if (!name.trim()) return;\n    if (transport === "tcp" && connectionType !== "browser" && (!host.trim() || !/^\\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535)) { toast.error("Informe IP/host e porta TCP válida."); return; }
+    if (!name.trim()) return;
+    if (transport === "tcp" && connectionType !== "browser" && (!host.trim() || !/^\\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535)) { toast.error("Informe IP/host e porta TCP válida."); return; }
     setSaving(true);
     const ok = await createPrinter({
       name: name.trim(),
       tipo,
       gatilho,
       connectionType,
-      deviceIdentifier: deviceIdentifier.trim() || null,\n      host: host.trim() || null, port: Number(port), paperWidth: Number(paperWidth), transport, copies: Number(copies), autoCut, encoding,
+      deviceIdentifier: deviceIdentifier.trim() || null,
+      host: host.trim() || null, port: Number(port), paperWidth: Number(paperWidth), transport, copies: Number(copies), autoCut, encoding,
     });
     setSaving(false);
     if (ok) {
@@ -125,10 +134,12 @@ const PrintersTab = () => {
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
                   {GATILHO_LABELS[p.gatilho]} · {CONNECTION_TYPE_LABELS[p.connectionType]}
-                  {p.deviceIdentifier && ` · ${p.deviceIdentifier}`}\n                  {p.host && ` · ${p.host}:${p.port}`} · {p.paperWidth}mm
+                  {p.deviceIdentifier && ` · ${p.deviceIdentifier}`}
+                  {p.host && ` · ${p.host}:${p.port}`} · {p.paperWidth}mm
                 </p>
               </div>
-              <div className="flex items-center gap-2 shrink-0">\n                <Button size="sm" variant="outline" onClick={() => handleTestPrint(p.name, p.connectionType)} title="Teste via navegador"><TestTube2 className="h-4 w-4 mr-1" /> Testar</Button>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button size="sm" variant="outline" onClick={() => handleTestPrint(p.name, p.connectionType)} title="Teste via navegador"><TestTube2 className="h-4 w-4 mr-1" /> Testar</Button>
                 <Button
                   size="sm"
                   variant="outline"
@@ -196,6 +207,14 @@ const PrintersTab = () => {
                 </SelectContent>
               </Select>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2"><Label>Transporte</Label><Select value={transport} onValueChange={setTransport}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="tcp">TCP / Rede</SelectItem><SelectItem value="usb">USB</SelectItem></SelectContent></Select></div>
+              <div className="space-y-2"><Label>Papel</Label><Select value={paperWidth} onValueChange={setPaperWidth}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="58">58 mm</SelectItem><SelectItem value="80">80 mm</SelectItem></SelectContent></Select></div>
+              {transport === "tcp" && <><div className="space-y-2"><Label>IP / Host</Label><Input value={host} onChange={e=>setHost(e.target.value)} placeholder="192.168.1.12"/></div><div className="space-y-2"><Label>Porta TCP</Label><Input type="number" min="1" max="65535" value={port} onChange={e=>setPort(e.target.value)}/></div></>}
+              <div className="space-y-2"><Label>Cópias</Label><Input type="number" min="1" max="10" value={copies} onChange={e=>setCopies(e.target.value)}/></div>
+              <div className="space-y-2"><Label>Codificação</Label><Select value={encoding} onValueChange={setEncoding}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="cp850">CP850</SelectItem><SelectItem value="cp860">CP860</SelectItem><SelectItem value="utf8">UTF-8</SelectItem></SelectContent></Select></div>
+            </div>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={autoCut} onChange={e=>setAutoCut(e.target.checked)}/> Corte automático</label>
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Identificador do dispositivo (opcional)</Label>
               <Input
