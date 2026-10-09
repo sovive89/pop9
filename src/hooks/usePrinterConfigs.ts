@@ -47,14 +47,16 @@ export const CONNECTION_TYPE_LABELS: Record<PrinterConnectionType, string> = {
 };
 
 export const usePrinterConfigs = () => {
-  const { businessUnitId } = useCurrentBusinessUnit();
+  const { businessUnitId, loading: unitLoading } = useCurrentBusinessUnit();
   const [printers, setPrinters] = useState<PrinterConfig[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadPrinters = useCallback(async () => {
+    if (!businessUnitId) { setPrinters([]); return; }
     const { data, error } = await supabase
       .from("printer_configs")
       .select("*")
+      .eq("business_unit_id", businessUnitId)
       .order("name");
     if (error) {
       toast.error("Erro ao carregar impressoras");
@@ -69,29 +71,35 @@ export const usePrinterConfigs = () => {
         gatilho: p.gatilho as PrinterGatilho,
         connectionType: p.connection_type as PrinterConnectionType,
         deviceIdentifier: p.device_identifier,
-        active: p.active,\n        host: p.host, port: p.port, paperWidth: p.paper_width, copies: p.copies, autoCut: p.auto_cut, encoding: p.encoding, transport: p.transport,
+        active: p.active,
+        host: p.host, port: p.port, paperWidth: p.paper_width, copies: p.copies, autoCut: p.auto_cut, encoding: p.encoding, transport: p.transport,
       }))
     );
-  }, []);
+  }, [businessUnitId]);
 
   useEffect(() => {
+    if (unitLoading) return;
     setLoading(true);
     loadPrinters().finally(() => setLoading(false));
-  }, [loadPrinters]);
+  }, [loadPrinters, unitLoading]);
 
   const createPrinter = async (input: {
     name: string;
     tipo: PrinterTipo;
     gatilho: PrinterGatilho;
     connectionType: PrinterConnectionType;
-    deviceIdentifier?: string | null;\n    host?: string | null; port?: number; paperWidth?: number; copies?: number; autoCut?: boolean; encoding?: string; transport?: string;\n  }) => {
+    deviceIdentifier?: string | null;
+    host?: string | null; port?: number; paperWidth?: number; copies?: number; autoCut?: boolean; encoding?: string; transport?: string;
+  }) => {
+    if (!businessUnitId) { toast.error("Unidade de negócio não identificada"); return false; }
     const { error } = await supabase.from("printer_configs").insert({
       name: input.name,
       tipo: input.tipo,
       gatilho: input.gatilho,
       connection_type: input.connectionType,
       device_identifier: input.deviceIdentifier || null,
-      business_unit_id: businessUnitId,\n      host: input.host ?? null, port: input.port ?? 9100, paper_width: input.paperWidth ?? 80, copies: input.copies ?? 1, auto_cut: input.autoCut ?? false, encoding: input.encoding ?? "cp850", transport: input.transport ?? "tcp",
+      business_unit_id: businessUnitId,
+      host: input.host ?? null, port: input.port ?? 9100, paper_width: input.paperWidth ?? 80, copies: input.copies ?? 1, auto_cut: input.autoCut ?? false, encoding: input.encoding ?? "cp850", transport: input.transport ?? "tcp",
     });
     if (error) {
       toast.error("Erro ao criar impressora: " + error.message);
@@ -110,7 +118,9 @@ export const usePrinterConfigs = () => {
       gatilho: PrinterGatilho;
       connectionType: PrinterConnectionType;
       deviceIdentifier: string | null;
-      active: boolean;\n      host: string | null; port: number; paperWidth: number; copies: number; autoCut: boolean; encoding: string; transport: string;\n    }>
+      active: boolean;
+      host: string | null; port: number; paperWidth: number; copies: number; autoCut: boolean; encoding: string; transport: string;
+    }>
   ) => {
     const { error } = await supabase
       .from("printer_configs")
@@ -120,9 +130,17 @@ export const usePrinterConfigs = () => {
         ...(input.gatilho !== undefined && { gatilho: input.gatilho }),
         ...(input.connectionType !== undefined && { connection_type: input.connectionType }),
         ...(input.deviceIdentifier !== undefined && { device_identifier: input.deviceIdentifier }),
-        ...(input.active !== undefined && { active: input.active }),\n        ...(input.host !== undefined && { host: input.host }),\n        ...(input.port !== undefined && { port: input.port }),\n        ...(input.paperWidth !== undefined && { paper_width: input.paperWidth }),\n        ...(input.copies !== undefined && { copies: input.copies }),\n        ...(input.autoCut !== undefined && { auto_cut: input.autoCut }),\n        ...(input.encoding !== undefined && { encoding: input.encoding }),\n        ...(input.transport !== undefined && { transport: input.transport }),
+        ...(input.active !== undefined && { active: input.active }),
+        ...(input.host !== undefined && { host: input.host }),
+        ...(input.port !== undefined && { port: input.port }),
+        ...(input.paperWidth !== undefined && { paper_width: input.paperWidth }),
+        ...(input.copies !== undefined && { copies: input.copies }),
+        ...(input.autoCut !== undefined && { auto_cut: input.autoCut }),
+        ...(input.encoding !== undefined && { encoding: input.encoding }),
+        ...(input.transport !== undefined && { transport: input.transport }),
       })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("business_unit_id", businessUnitId);
     if (error) {
       toast.error("Erro ao atualizar impressora: " + error.message);
       return false;
@@ -132,7 +150,7 @@ export const usePrinterConfigs = () => {
   };
 
   const deletePrinter = async (id: string) => {
-    const { error } = await supabase.from("printer_configs").delete().eq("id", id);
+    const { error } = await supabase.from("printer_configs").delete().eq("id", id).eq("business_unit_id", businessUnitId);
     if (error) {
       toast.error("Erro ao remover impressora: " + error.message);
       return false;
