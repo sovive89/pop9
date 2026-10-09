@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
 
       // Update password if provided (exige senha absoluta)
       if (new_password) {
-        if (new_(password.length < SENHA_ABSOLUTA_MIN || !/[A-Z]/.test(password) || !/[^A-Za-z0-9\s]/.test(password))) {
+        if (new_password.length < SENHA_ABSOLUTA_MIN || !/[A-Z]/.test(new_password) || !/[^A-Za-z0-9\s]/.test(new_password)) {
           return new Response(JSON.stringify({ error: "Senha: mínimo de 8 caracteres, uma letra maiúscula e um caractere especial" }), {
             status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
