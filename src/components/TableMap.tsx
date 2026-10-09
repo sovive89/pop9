@@ -427,7 +427,8 @@ const TableMap = () => {
     const status = getTableStatus(sessionNumber);
     const session = getTableSession(sessionNumber);
     const ownsSession = sessionNumber === table.number && !!session;
-    const isReady = ownsSession && hasReadyOrders(table.number);
+    const readyCount = ownsSession ? (sessions[table.number]?.orders ?? []).reduce((count, clientOrder) => count + clientOrder.orders.filter((order) => order.status === "ready").length, 0) : 0;
+    const isReady = readyCount > 0;
     const area = table.area_id ? areaById.get(table.area_id) : undefined;
     const isSelected = (mode === "edit" || mode === "join") && selectedIds.includes(table.id);
     const dimmed = mode === "join" && grouped;
@@ -472,7 +473,8 @@ const TableMap = () => {
         }}
         onClick={() => handleTableClick(table)}
         disabled={dimmed}
-        title={area?.name}
+        title={isReady ? `Mesa ${table.number}: ${readyCount} pedido(s) pronto(s) para retirada` : area?.name}
+        aria-label={`Mesa ${table.number}${isReady ? `, ${readyCount} pedido(s) pronto(s) para retirada` : ""}`}
         style={{
           ...(area && !isReady ? { borderColor: area.color } : {}),
           ...(canDrag ? { cursor: "grab", touchAction: "none" } : {}),
@@ -482,8 +484,8 @@ const TableMap = () => {
         } ${isReady ? "border-primary ring-2 ring-primary/30" : ""} ${isSelected || isDropTarget ? "ring-4 ring-primary" : ""}`}
       >
         {isReady && (
-          <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[8px] font-bold text-primary-foreground animate-bounce">
-            ✓
+          <span className="absolute -top-1.5 -right-1.5 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground animate-bounce">
+            {readyCount}
           </span>
         )}
         {isSelected && (
