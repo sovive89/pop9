@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 const PROVIDERS = [
   ["openai","OpenAI — GPT Image"],["google","Google — Gemini / Nano Banana / Imagen"],
+  ["stability","Stability AI — Stable Image Core"],
   ["xai","xAI — Grok Imagine"],["anthropic","Anthropic — Claude (texto)"],
   ["bfl","Black Forest Labs — FLUX"],["ideogram","Ideogram — imagens"],
 ] as const;
