@@ -12,6 +12,7 @@ const PROVIDERS = [
 type Connection = { provider:string;status:string;validated_at:string|null };
 export function AIConnectionsPanel() {
   const [unitId,setUnitId]=useState("");
+  const [units,setUnits]=useState<{id:string;name:string}[]>([]);
   const [connections,setConnections]=useState<Connection[]>([]);
   const [provider,setProvider]=useState<string>("openai");
   const [key,setKey]=useState("");
@@ -22,8 +23,11 @@ export function AIConnectionsPanel() {
     const {data,error}=await supabase.from("user_roles").select("business_unit_id").eq("user_id",user.id).eq("role","admin");
     if(error){toast.error(error.message);return;}
     const ids=[...new Set((data??[]).map(x=>x.business_unit_id).filter(Boolean))];
-    if(ids.length===1)setUnitId(ids[0]!);
-    else if(ids.length>1)toast.info("Selecione a unidade para configurar IA");
+    if(ids.length){
+      const {data:businessUnits}=await supabase.from("business_units").select("id,name").in("id",ids);
+      setUnits((businessUnits??[]).map(u=>({id:u.id,name:u.name})));
+      setUnitId(ids[0]!);
+    }
   })()},[]);
   async function invoke(action:string,selectedProvider=provider,apiKey?:string){
     const {data,error}=await supabase.functions.invoke("manage-ai-credentials",{body:{action,businessUnitId:unitId,provider:selectedProvider,apiKey}});
@@ -52,8 +56,10 @@ export function AIConnectionsPanel() {
   return <section className="rounded-xl border border-border p-4 space-y-3">
     <h3 className="font-semibold">Inteligência Artificial — credenciais por unidade</h3>
     <p className="text-sm text-muted-foreground">As chaves são enviadas somente ao backend, validadas e armazenadas cifradas. Não são exibidas novamente.</p>
-    <label className="block text-sm">Unidade (ID)</label>
-    <Input value={unitId} onChange={e=>setUnitId(e.target.value)} placeholder="UUID da unidade administrada" />
+    <label className="block text-sm">Unidade</label>
+    <select className="w-full rounded-md border border-border bg-background p-2 text-sm" value={unitId} onChange={e=>setUnitId(e.target.value)}>
+      {units.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+    </select>
     <label className="block text-sm">Provedor</label>
     <select className="w-full rounded-md border border-border bg-background p-2 text-sm" value={provider} onChange={e=>setProvider(e.target.value)}>
       {PROVIDERS.map(([id,label])=><option key={id} value={id}>{label}</option>)}
@@ -65,6 +71,6 @@ export function AIConnectionsPanel() {
       {connections.some(c=>c.provider===provider)&&<Button variant="destructive" disabled={busy} onClick={()=>void disconnect()}>Desconectar</Button>}
     </div>
     <p className="text-sm">Status: {connections.find(c=>c.provider===provider)?.status==="connected"?"Conectado":"Não conectado"}</p>
-    <p className="text-xs text-muted-foreground">FLUX e Ideogram permanecem sem ativação até existir teste seguro de credenciais. A geração de imagem por unidade será habilitada após integração do editor de cardápio.</p>
+    <p className="text-xs text-muted-foreground">FLUX e Ideogram permanecem sem ativação até existir teste seguro de credenciais. A geração de imagem usa as credenciais Google ou OpenAI desta unidade.</p>
   </section>;
 }
