@@ -4,6 +4,7 @@ const reply=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status
 const models:Record<string,{provider:string,apiModel:string}>={
  "google/gemini-2.5-flash-image":{provider:"google",apiModel:"gemini-2.5-flash-image"},
  "openai/gpt-image-1":{provider:"openai",apiModel:"gpt-image-1"},
+ "stability/stable-image-core":{provider:"stability",apiModel:"core"},
 };
 const maxBytes=15*1024*1024;
 function decode(s:string,mime="image/png"){
@@ -46,6 +47,24 @@ async function generate(provider:string,model:string,key:string,prompt:string){
   const data=part?.inlineData??part?.inline_data;
   if(!data?.data)throw Error("Google não retornou imagem");
   return decode(data.data,data.mimeType??data.mime_type??"image/png");
+ }
+ if(provider==="stability"){
+  const form=new FormData();
+  form.append("prompt",prompt);
+  form.append("output_format","png");
+  form.append("aspect_ratio","1:1");
+  const res=await fetch("https://api.stability.ai/v2beta/stable-image/generate/"+model,{
+   method:"POST",
+   headers:{"Authorization":"Bearer "+key,"Accept":"image/*"},
+   body:form,
+   signal:AbortSignal.timeout(90000)
+  });
+  if(!res.ok)throw Error(await apiError(res));
+  const mime=(res.headers.get("content-type")??"").split(";")[0];
+  if(!["image/png","image/jpeg","image/webp"].includes(mime))throw Error("Stability AI retornou formato de imagem inválido");
+  const bytes=new Uint8Array(await res.arrayBuffer());
+  if(!bytes.length||bytes.length>maxBytes)throw Error("Imagem da Stability AI vazia ou muito grande");
+  return {bytes,mime};
  }
  const res=await fetch("https://api.openai.com/v1/images/generations",{
   method:"POST",headers:{"Authorization":"Bearer "+key,"Content-Type":"application/json"},
