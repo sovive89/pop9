@@ -10,7 +10,7 @@ export const PERMISSIONS = [
   "sessions.open", "sessions.view", "sessions.request_close", "sessions.unlink_client", "sessions.close",
   "customers.link",
   "orders.create", "orders.view", "orders.cancel_unstarted", "orders.cancel_approval",
-  "production.view", "production.manage",
+  "production.view", "production.manage", "orders.track", "orders.acknowledge_ready", "orders.assemble",
   "pickup.confirm", "delivery.confirm",
   "prints.request", "prints.configure",
   "accounts.view", "accounts.request_close", "accounts.adjust_individual", "accounts.allocate_payable", "accounts.close",
@@ -26,7 +26,7 @@ export const STANDARD_ROLE_PERMISSIONS: Record<StandardRole, readonly Permission
   attendant: [
     "tables.view", "tables.create", "tables.edit_operational", "tables.join", "tables.split", "sessions.open", "sessions.view", "sessions.request_close", "sessions.unlink_client", "customers.link",
     "orders.create", "orders.view", "orders.cancel_unstarted",
-    "production.view", "pickup.confirm", "delivery.confirm",
+    "production.view", "orders.track", "orders.acknowledge_ready", "orders.assemble", "pickup.confirm", "delivery.confirm",
     "prints.request", "accounts.view", "accounts.adjust_individual", "accounts.allocate_payable", "accounts.request_close",
     "payments.view_status", "payments.receive", "payments.receive_partial",
   ],
