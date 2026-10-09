@@ -8,6 +8,7 @@ import { formatCurrency } from "@/utils/orders";
 import { CATEGORY_ICON_OPTIONS, CATEGORY_COLORS, getCategoryIcon, safeCategoryColor, suggestCategoryIcon } from "@/utils/categoryIcons";
 import { toast } from "sonner";
 import RecipeBuilder, { type RecipeBuilderHandle } from "@/components/admin/RecipeBuilder";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 
 // ── Image Upload Helper ──
 // O nome do arquivo é gerado aqui (não depende do ID do item, que só existe
@@ -42,12 +43,8 @@ const removeMenuImages = async (urls: (string | null | undefined)[]) => {
 
 // ── Geração de foto com IA (Edge Function generate-menu-image) ──
 const AI_IMAGE_MODELS = [
-  { id: "google/gemini-3.1-flash-image", label: "Nano Banana 2 (Google)" },
-  { id: "openai/gpt-image-2", label: "GPT Image 2 (OpenAI)" },
-  { id: "bfl/flux-2-pro", label: "Flux 2 Pro (fotorrealista)" },
-  { id: "bytedance/seedream-5.0-lite", label: "Seedream 5 Lite (econômico)" },
-  { id: "spacexai/grok-imagine-image-2.0", label: "Grok Imagine 2 (xAI)" },
-  { id: "spacexai/grok-imagine-image", label: "Grok Imagine (xAI, econômico)" },
+  { id: "google/gemini-2.5-flash-image", label: "Nano Banana (Google)", provider: "google" },
+  { id: "openai/gpt-image-1", label: "GPT Image (OpenAI)", provider: "openai" },
 ];
 
 // ── Category Editor ──
@@ -190,7 +187,22 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   const [savedStatus, setSavedStatus] = useState(item?.status);
   const isPublished = savedStatus === "published";
   const [uploading, setUploading] = useState(false);
+  const { businessUnitId } = useCurrentBusinessUnit();
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [aiModel, setAiModel] = useState(AI_IMAGE_MODELS[0].id);
+  useEffect(() => {
+    if (!businessUnitId) { setAvailableModels([]); return; }
+    let cancelled = false;
+    void supabase.functions.invoke("generate-menu-image", { body: { action: "models", businessUnitId } })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error || data?.error) { setAvailableModels([]); return; }
+        const ids = (data?.models ?? []).map((m: { id: string }) => m.id);
+        setAvailableModels(ids);
+        setAiModel(current => ids.includes(current) ? current : (ids[0] ?? AI_IMAGE_MODELS[0].id));
+      });
+    return () => { cancelled = true; };
+  }, [businessUnitId]);
   const [aiExtra, setAiExtra] = useState("");
   const [generating, setGenerating] = useState(false);
   const [ingredients, setIngredients] = useState<Omit<DbIngredient, "id">[]>(
@@ -222,6 +234,8 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       toast.error("Preencha o nome do item antes de gerar a foto");
       return;
     }
+    if (!businessUnitId) { toast.error("Unidade não identificada"); return; }
+    if (!availableModels.includes(aiModel)) { toast.error("Conecte a chave de IA em Integrações para esta unidade"); return; }
     setGenerating(true);
     let data: { url?: string; error?: string } | null = null;
     let error: Error | null = null;
@@ -229,6 +243,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       ({ data, error } = await supabase.functions.invoke("generate-menu-image", {
         body: {
           name: name.trim(),
+          businessUnitId,
           description: description.trim() || undefined,
           ingredients: ingredients.map((i) => i.name.trim()).filter(Boolean),
           model: aiModel,
@@ -454,7 +469,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
               aria-label="Modelo de IA para gerar a foto"
               className="h-9 rounded-md border border-border bg-muted px-3 text-sm text-foreground"
             >
-              {AI_IMAGE_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+              {AI_IMAGE_MODELS.filter((m) => availableModels.includes(m.id)).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
             <Input
               value={aiExtra}
@@ -462,12 +477,12 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
               placeholder="Ajuste opcional (ex: em tábua de madeira)"
               className="h-9 flex-1 min-w-[180px]"
             />
-            <Button type="button" variant="outline" onClick={handleGenerateImage} disabled={generating} className="gap-2 h-9">
+            <Button type="button" variant="outline" onClick={handleGenerateImage} disabled={generating || availableModels.length === 0} className="gap-2 h-9">
               {generating ? <Flame className="h-4 w-4 animate-pulse text-primary" /> : <Sparkles className="h-4 w-4" />}
               {generating ? "Gerando..." : imageUrl ? "Gerar outra" : "Gerar"}
             </Button>
           </div>
-          <p className="text-[11px] text-muted-foreground">Usa nome, descrição e ingredientes do item. Cada geração tem custo na sua conta de IA.</p>
+          <p className="text-[11px] text-muted-foreground">{availableModels.length === 0 ? "Conecte Google ou OpenAI em Integrações → Inteligência Artificial para habilitar a geração nesta unidade." : "Usa nome, descrição e ingredientes do item. Cada geração tem custo na sua conta de IA."}</p>
         </div>
       </div>
 
