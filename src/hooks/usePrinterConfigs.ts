@@ -22,6 +22,13 @@ export interface PrinterConfig {
   connectionType: PrinterConnectionType;
   deviceIdentifier: string | null;
   active: boolean;
+  host: string | null;
+  port: number;
+  paperWidth: number;
+  copies: number;
+  autoCut: boolean;
+  encoding: string;
+  transport: string;
 }
 
 export const GATILHO_LABELS: Record<PrinterGatilho, string> = {
@@ -62,7 +69,7 @@ export const usePrinterConfigs = () => {
         gatilho: p.gatilho as PrinterGatilho,
         connectionType: p.connection_type as PrinterConnectionType,
         deviceIdentifier: p.device_identifier,
-        active: p.active,
+        active: p.active,\n        host: p.host, port: p.port, paperWidth: p.paper_width, copies: p.copies, autoCut: p.auto_cut, encoding: p.encoding, transport: p.transport,
       }))
     );
   }, []);
@@ -77,15 +84,14 @@ export const usePrinterConfigs = () => {
     tipo: PrinterTipo;
     gatilho: PrinterGatilho;
     connectionType: PrinterConnectionType;
-    deviceIdentifier?: string | null;
-  }) => {
+    deviceIdentifier?: string | null;\n    host?: string | null; port?: number; paperWidth?: number; copies?: number; autoCut?: boolean; encoding?: string; transport?: string;\n  }) => {
     const { error } = await supabase.from("printer_configs").insert({
       name: input.name,
       tipo: input.tipo,
       gatilho: input.gatilho,
       connection_type: input.connectionType,
       device_identifier: input.deviceIdentifier || null,
-      business_unit_id: businessUnitId,
+      business_unit_id: businessUnitId,\n      host: input.host ?? null, port: input.port ?? 9100, paper_width: input.paperWidth ?? 80, copies: input.copies ?? 1, auto_cut: input.autoCut ?? false, encoding: input.encoding ?? "cp850", transport: input.transport ?? "tcp",
     });
     if (error) {
       toast.error("Erro ao criar impressora: " + error.message);
@@ -104,8 +110,7 @@ export const usePrinterConfigs = () => {
       gatilho: PrinterGatilho;
       connectionType: PrinterConnectionType;
       deviceIdentifier: string | null;
-      active: boolean;
-    }>
+      active: boolean;\n      host: string | null; port: number; paperWidth: number; copies: number; autoCut: boolean; encoding: string; transport: string;\n    }>
   ) => {
     const { error } = await supabase
       .from("printer_configs")
@@ -115,7 +120,7 @@ export const usePrinterConfigs = () => {
         ...(input.gatilho !== undefined && { gatilho: input.gatilho }),
         ...(input.connectionType !== undefined && { connection_type: input.connectionType }),
         ...(input.deviceIdentifier !== undefined && { device_identifier: input.deviceIdentifier }),
-        ...(input.active !== undefined && { active: input.active }),
+        ...(input.active !== undefined && { active: input.active }),\n        ...(input.host !== undefined && { host: input.host }),\n        ...(input.port !== undefined && { port: input.port }),\n        ...(input.paperWidth !== undefined && { paper_width: input.paperWidth }),\n        ...(input.copies !== undefined && { copies: input.copies }),\n        ...(input.autoCut !== undefined && { auto_cut: input.autoCut }),\n        ...(input.encoding !== undefined && { encoding: input.encoding }),\n        ...(input.transport !== undefined && { transport: input.transport }),
       })
       .eq("id", id);
     if (error) {
