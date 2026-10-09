@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Printer, Plus, Trash2, Tag as TagIcon, TestTube2 } from "lucide-react";
+import { testQzPrinter } from "@/utils/qz-printer";
 import { printReceipt } from "@/utils/thermal-print";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -43,6 +44,7 @@ const PrintersTab = () => {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [testingId, setTestingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [tipo, setTipo] = useState<PrinterTipo>("termica");
   const [gatilho, setGatilho] = useState<PrinterGatilho>("comanda_cozinha");
@@ -56,12 +58,23 @@ const PrintersTab = () => {
   const [autoCut,setAutoCut] = useState(false);
   const [encoding,setEncoding] = useState("cp850");
 
-  const handleTestPrint = (printerName: string, connectionType: PrinterConnectionType) => {
-    if (connectionType !== "browser") {
-      toast.info("Envio direto ainda não disponível. Este teste usa o diálogo do navegador; QZ Tray/WebUSB exigem integração local.");
+  const handleTestPrint = async (p: (typeof printers)[number]) => {
+    if (p.connectionType === "qz_tray") {
+      setTestingId(p.id);
+      try {
+        await testQzPrinter(p);
+        toast.success("Comando de teste enviado ao QZ Tray");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Falha ao conectar ao QZ Tray");
+      } finally { setTestingId(null); }
+      return;
     }
-    const escaped = printerName.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char] ?? char));
-    printReceipt(`<!doctype html><html><head><meta charset="utf-8"><style>@page{size:80mm auto;margin:0}body{font-family:monospace;width:72mm;padding:4mm;text-align:center;color:#000}hr{border:0;border-top:1px dashed #000}</style></head><body><h2>POP9 ERP</h2><hr><p>TESTE DE IMPRESSAO</p><p>${escaped}</p><p>${new Date().toLocaleString("pt-BR")}</p><hr><p>Teste pelo navegador</p></body></html>`);
+    if (p.connectionType === "webusb") {
+      toast.error("WebUSB ainda não está disponível. Selecione QZ Tray ou navegador.");
+      return;
+    }
+    const escaped = p.name.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char] ?? char));
+    printReceipt(`<!doctype html><html><head><meta charset="utf-8"><style>@page{size:${p.paperWidth}mm auto;margin:0}body{font-family:monospace;padding:4mm;text-align:center;color:#000}hr{border:0;border-top:1px dashed #000}</style></head><body><h2>POP9 ERP</h2><hr><p>TESTE DE IMPRESSAO</p><p>${escaped}</p><p>${new Date().toLocaleString("pt-BR")}</p><hr><p>Teste pelo navegador</p></body></html>`);
   };
 
   const resetForm = () => {
@@ -103,8 +116,7 @@ const PrintersTab = () => {
           Cada gatilho (ex: "Comanda da cozinha") pode ter uma impressora associada. Hoje a
           execução real da impressão continua sendo o diálogo do navegador — o navegador não
           permite selecionar/lembrar uma impressora específica nem imprimir silenciosamente sem
-          uma camada extra (QZ Tray ou WebUSB). O campo "Conexão" já existe pra quando isso for
-          implementado; por enquanto ele é só informativo.
+          uma camada extra (QZ Tray ou WebUSB). QZ Tray pode enviar comandos ESC/POS quando estiver instalado e autorizado no computador. WebUSB ainda não está integrado.
         </p>
       </div>
 
@@ -140,7 +152,7 @@ const PrintersTab = () => {
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <Button size="sm" variant="outline" onClick={() => handleTestPrint(p.name, p.connectionType)} title="Teste via navegador"><TestTube2 className="h-4 w-4 mr-1" /> Testar</Button>
+                <Button size="sm" variant="outline" onClick={() => handleTestPrint(p)} disabled={testingId === p.id} title="Testar impressora"><TestTube2 className="h-4 w-4 mr-1" /> Testar</Button>
                 <Button
                   size="sm"
                   variant="outline"
