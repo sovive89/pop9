@@ -23,10 +23,12 @@ export function AIConnectionsPanel() {
     const {data,error}=await supabase.from("user_roles").select("business_unit_id").eq("user_id",user.id).eq("role","admin");
     if(error){toast.error(error.message);return;}
     const ids=[...new Set((data??[]).map(x=>x.business_unit_id).filter(Boolean))];
-    if(ids.length){
-      const {data:businessUnits}=await supabase.from("business_units").select("id,name").in("id",ids);
+    const {data:businessUnits}=ids.length
+      ? await supabase.from("business_units").select("id,name").in("id",ids)
+      : await supabase.from("business_units").select("id,name").eq("active",true);
+    if(businessUnits?.length){
       setUnits((businessUnits??[]).map(u=>({id:u.id,name:u.name})));
-      setUnitId(ids[0]!);
+      setUnitId(businessUnits[0].id);
     }
   })()},[]);
   async function invoke(action:string,selectedProvider=provider,apiKey?:string){
