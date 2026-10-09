@@ -11,6 +11,7 @@ let pending: Promise<void> | null = null;
 const listeners = new Set<() => void>();
 let loaded = false;
 let loadError: string | null = null;
+let activeUserId: string | null = null;
 
 const notify = () => listeners.forEach((listener) => listener());
 
@@ -19,6 +20,7 @@ const loadUnits = async () => {
   pending = (async () => {
     const { data: auth, error: authError } = await supabase.auth.getUser();
     if (authError) throw authError;
+    activeUserId = auth.user?.id ?? null;
     if (!auth.user) {
       currentUnits = [];
       currentUnit = null;
@@ -40,7 +42,7 @@ const loadUnits = async () => {
       .select("id, name").eq("active", true).in("id", ids).order("name");
     if (error) throw error;
     currentUnits = units ?? [];
-    const stored = window.localStorage.getItem(STORAGE_KEY);
+    const stored = window.localStorage.getItem(`${STORAGE_KEY}:${auth.user.id}`);
     currentUnit = currentUnits.length === 1
       ? currentUnits[0].id
       : currentUnits.some((unit) => unit.id === stored) ? stored : null;
@@ -58,7 +60,8 @@ const loadUnits = async () => {
 
 export const selectBusinessUnit = (id: string) => {
   if (!currentUnits.some((unit) => unit.id === id)) return false;
-  window.localStorage.setItem(STORAGE_KEY, id);
+  if (!activeUserId) return false;
+  window.localStorage.setItem(`${STORAGE_KEY}:${activeUserId}`, id);
   currentUnit = id;
   notify();
   window.dispatchEvent(new Event(CHANGE_EVENT));
@@ -71,7 +74,8 @@ export const useCurrentBusinessUnit = () => {
     const listener = () => rerender((n) => n + 1);
     listeners.add(listener);
     void loadUnits();
-    const subscription = supabase.auth.onAuthStateChange(() => {
+    const subscription = supabase.auth.onAuthStateChange((event) => {
+      if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
       loaded = false;
       currentUnit = null;
       currentUnits = [];
