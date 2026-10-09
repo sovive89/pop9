@@ -562,7 +562,7 @@ const TableMap = () => {
         )}
 
         <div className="ml-auto flex items-center gap-2">
-          {mode === "normal" && editable && isAdmin && (
+          {mode === "normal" && editable && (
             <>
               <Button variant="outline" size="sm" onClick={() => changeMode("join")} disabled={ungroupedCount < 2}>
                 <Link2 className="mr-1.5 h-4 w-4" /> Unir mesas
