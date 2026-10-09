@@ -469,7 +469,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
               aria-label="Modelo de IA para gerar a foto"
               className="h-9 rounded-md border border-border bg-muted px-3 text-sm text-foreground"
             >
-              {AI_IMAGE_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+              {AI_IMAGE_MODELS.filter((m) => availableModels.includes(m.id)).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
             <Input
               value={aiExtra}
@@ -477,12 +477,12 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
               placeholder="Ajuste opcional (ex: em tábua de madeira)"
               className="h-9 flex-1 min-w-[180px]"
             />
-            <Button type="button" variant="outline" onClick={handleGenerateImage} disabled={generating} className="gap-2 h-9">
+            <Button type="button" variant="outline" onClick={handleGenerateImage} disabled={generating || availableModels.length === 0} className="gap-2 h-9">
               {generating ? <Flame className="h-4 w-4 animate-pulse text-primary" /> : <Sparkles className="h-4 w-4" />}
               {generating ? "Gerando..." : imageUrl ? "Gerar outra" : "Gerar"}
             </Button>
           </div>
-          <p className="text-[11px] text-muted-foreground">Usa nome, descrição e ingredientes do item. Cada geração tem custo na sua conta de IA.</p>
+          <p className="text-[11px] text-muted-foreground">{availableModels.length === 0 ? "Conecte Google ou OpenAI em Integrações → Inteligência Artificial para habilitar a geração nesta unidade." : "Usa nome, descrição e ingredientes do item. Cada geração tem custo na sua conta de IA."}</p>
         </div>
       </div>
 
