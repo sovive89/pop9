@@ -59,12 +59,41 @@ export const TUTORIALS:Tutorial[] = [
  'Confira os indicadores e detalhamentos de pedidos e pagamentos.',
  'Consulte Inadimplência para encerramentos com valores pendentes e suas justificativas.',
  'Exporte os dados disponíveis e confira os critérios do relatório antes de enviá-lo à contabilidade.']},
- {id:'ai',title:'Conectar a IA da unidade',page:'/admin?sec=connections',steps:[
- 'Abra Conexões e a seção de inteligência artificial.',
- 'Selecione a unidade e o provedor e cadastre a chave no formulário seguro. A chave é armazenada cifrada no servidor.',
- 'No assistente, escolha um modelo de conversa disponível. Provedores apenas de imagem não aparecem como modelos de conversa.',
- 'Faça uma pergunta sobre a tela ou peça uma consulta de cardápio, estoque ou pedidos. Os tutoriais também funcionam sem conexão à IA.',
- 'Respostas são orientações e sugestões. Para alterar cadastros, pagamentos, estoque ou permissões, use e confirme os fluxos do ERP.']},
+ {id:'hub',title:'Consultar o PØP9 Hub',page:'/admin?sec=hub',steps:[
+ 'Acesse a seção PØP9 Hub pelo menu administrativo.',
+ 'Leia a descrição e o cartão para entender a proposta da integração.',
+ 'No estado atual, a conexão aparece indisponível e o botão Conectar fica desabilitado; não há integração funcional para iniciar nesta tela.',
+ 'Retorne às Conexões para consultar os provedores que já têm fluxo próprio.']},
+ {id:'printers',title:'Cadastrar e imprimir',page:'/admin?sec=printers',steps:[
+ 'Em Impressoras, confira a lista existente ou abra Nova impressora e informe um nome, o tipo e o gatilho; o identificador do dispositivo é opcional.',
+ 'Escolha a conexão que descreve o uso pretendido e revise o cadastro antes de clicar em Salvar: esse clique grava imediatamente, sem etapa adicional de confirmação.',
+ 'Ativar, Desativar e remover também são ações imediatas. Confirme a intenção e a impressora selecionada antes de usar esses controles.',
+ 'A impressão real abre o diálogo do navegador. QZ Tray, WebUSB, seleção automática de equipamento e impressão silenciosa ainda não estão implementados; a conexão cadastrada não seleciona uma impressora física.',
+ 'Se a impressão não abrir, permita pop-ups no navegador e tente novamente; a pré-visualização do comprovante pode oferecer nova tentativa de impressão.']},
+ {id:'units',title:'Cadastrar uma unidade',page:'/admin?sec=units',steps:[
+ 'Abra Unidades no painel administrativo e clique em Nova unidade.',
+ 'Informe o nome obrigatório e confira os dados opcionais disponíveis: tipo de estabelecimento, quantidade de mesas, endereço, cidade e estado.',
+ 'Antes de clicar em Criar unidade, revise tudo: o botão grava diretamente, sem uma tela extra de confirmação. O cadastro depende de existir um business associado à conta.',
+ 'Após o cadastro, confira a lista e o status exibido. O sistema provisiona categorias padrão, mas não cria produtos nem saldos de estoque de exemplo.',
+ 'Se o provisionamento das categorias falhar, a unidade pode continuar criada; leia o erro e verifique a unidade antes de repetir a operação.']},
+ {id:'delinquency',title:'Consultar inadimplência',page:'/inadimplencia',steps:[
+ 'Abra Inadimplência autenticado como Administrador ou Caixa e selecione a unidade que deseja consultar.',
+ 'Confira e ajuste as datas De e Até, depois clique em Atualizar; o filtro considera encerramentos com saldo pendente no período.',
+ 'Revise o total e os registros, incluindo mesa, valor, data, responsável pela autorização e justificativa informada no fechamento.',
+ 'Se houver muitos registros, use Carregar mais registros para acrescentar resultados à lista.',
+ 'Exporte o CSV da lista exibida. Esta página é um relatório: não quita, cobra, edita nem aprova as pendências.']},
+ {id:'online-orders',title:'Acompanhar pedidos online',page:'/pedidos-online',steps:[
+ 'Abra Pedidos online com uma unidade selecionada e confira as retiradas ativas, os pedidos, o cliente e o status; use Atualizar para recarregar a fila.',
+ 'Só confirme uma retirada depois de verificar que o pedido está Pronto e foi entregue ao cliente: Confirmar retirada marca o pedido como Entregue imediatamente, sem confirmação adicional.',
+ 'Para registrar um pagamento, confira cliente, itens, forma e valor no painel Pagamento e solicitação de encerramento antes de clicar em Pagar; o clique grava o pagamento.',
+ 'Depois de conferir os pagamentos, Solicitar encerramento encaminha o pedido ao Caixa. A sessão só é encerrada após a confirmação posterior do Caixa com senha.',
+ 'A impressão abre uma prévia e o diálogo do navegador; pop-ups precisam estar permitidos. O agente não realiza pagamentos, confirma retiradas nem encerra sessões.']},
+ {id:'ai',title:'Configurar IA e solicitar uma tarefa',page:'/admin?sec=connections',steps:[
+ 'Abra Conexões e a seção de Inteligência Artificial.',
+ 'Selecione a unidade e o provedor e cadastre a chave no formulário seguro; ela é validada e armazenada cifrada no servidor. Não cole chaves no pedido ao agente.',
+ 'Abra o Agente PØP9 e escolha um modelo textual disponível. Nesta versão, o planejador de tarefas oferece Google, OpenAI e Anthropic; credenciais para geração de imagem são outro fluxo.',
+ 'Envie uma única solicitação para abrir um módulo autorizado ou preparar um rascunho local de cardápio. As instruções passo a passo também funcionam sem conexão à IA.',
+ 'O agente não consulta dados operacionais nem salva, preenche formulários reais, paga ou altera estoque/permissões. Revise e use manualmente o fluxo do ERP para qualquer alteração.']},
 ];
 
 export type AgentRole='admin'|'attendant'|'kitchen'|'cashier';
