@@ -13,9 +13,9 @@ import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 // ── Image Upload Helper ──
 // O nome do arquivo é gerado aqui (não depende do ID do item, que só existe
 // depois que o banco cria o registro).
-const uploadMenuImage = async (file: File): Promise<string | null> => {
+const uploadMenuImage = async (file: File, businessUnitId: string): Promise<string | null> => {
   const ext = file.name.split(".").pop();
-  const path = `${crypto.randomUUID()}.${ext}`;
+  const path = `${businessUnitId}/uploads/${crypto.randomUUID()}.${ext}`;
 
   const { error } = await supabase.storage.from("menu-images").upload(path, file, { upsert: true });
   if (error) {
@@ -169,7 +169,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   const closed = useRef(false);
   const trackImage = (url: string): boolean => {
     if (closed.current) {
-      void removeMenuImages([url]);
+      // O arquivo permanece no acervo, mesmo após o editor ser fechado.
       return false;
     }
     sessionImages.current.push(url);
@@ -219,7 +219,8 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     if (!file) return;
     setUploading(true);
     try {
-      const url = await uploadMenuImage(file);
+      if (!businessUnitId) { toast.error("Selecione uma unidade antes de enviar a foto"); return; }
+      const url = await uploadMenuImage(file, businessUnitId);
       if (url && trackImage(url)) setImageUrl(url);
     } catch (err) {
       toast.error("Erro ao enviar imagem: " + (err instanceof Error ? err.message : String(err)));
@@ -266,8 +267,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       return;
     }
     if (!trackImage(data.url)) {
-      // Editor já fechado: a geração foi cobrada, mas a foto foi descartada.
-      toast.info("A foto gerada chegou depois de fechar o editor e foi descartada.");
+      toast.info("Foto salva no acervo, mas o editor já foi fechado.");
       return;
     }
     setImageUrl(data.url);
@@ -283,7 +283,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     closed.current = true;
     const leftovers = sessionImages.current.filter((u) => u !== persistedImage.current);
     sessionImages.current = [];
-    if (leftovers.length > 0) void removeMenuImages(leftovers);
+    // Preserva todas as fotos no acervo para reutilização posterior.
   };
 
   // Não deixa fechar no meio do save: a foto ainda não foi gravada no item e
@@ -346,7 +346,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     const stale = [item?.image_url, ...sessionImages.current].filter((u) => u && u !== finalImage);
     closed.current = true;
     sessionImages.current = [];
-    void removeMenuImages(stale);
+    // Não apagar fotos anteriores ou tentativas: fazem parte do acervo.
     onCancel();
   };
 
