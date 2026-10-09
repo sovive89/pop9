@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {useLocation,useNavigate} from 'react-router-dom';
-import {MessageCircle,BookOpen,Send,Loader2,RotateCcw} from 'lucide-react';
+import {MessageCircle,BookOpen,Send,Loader2,RotateCcw,FileUp} from 'lucide-react';
 import {useAuth} from '@/hooks/useAuth';
 import {useUnitRoles} from '@/hooks/useUnitRoles';
 import {useCurrentBusinessUnit} from '@/hooks/useCurrentBusinessUnit';
@@ -80,6 +80,7 @@ export default function AdminAssistant(){
       {visible.busy&&<p role="status" className="flex items-center gap-2 text-sm"><Loader2 className="h-4 w-4 animate-spin"/>Consultando a IA...</p>}
       {visible.error&&<p role="alert" className="text-sm text-destructive">{visible.error}</p>}<div ref={end}/>
      </div>
+     <Button type="button" variant="outline" className="gap-2" data-tooltip="Envie PDFs, fotos ou planilhas de cardápio e fichas técnicas. A IA monta o rascunho para você revisar." onClick={()=>{setOpen(false);navigate('/admin?sec=menu&import=1');}}><FileUp className="h-4 w-4"/>Montar cardápio a partir de arquivos</Button>
      <p className="text-xs text-muted-foreground">Orientações e sugestões. Confirme alterações nas telas do ERP. Sua pergunta e os dados selecionados são enviados ao provedor de IA.</p>
      <form className="flex items-end gap-2" onSubmit={e=>{e.preventDefault();void send();}}><Textarea aria-label="Mensagem para o assistente" placeholder="Escreva sua dúvida..." value={draft} maxLength={4000} disabled={visible.busy} onChange={e=>setDraft(e.target.value)} className="min-h-[64px] max-h-32" onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();void send();}}}/><Button type="submit" size="icon" aria-label="Enviar mensagem" disabled={!draft.trim()||visible.busy||!model||available.loading}><Send className="h-4 w-4"/></Button><Button type="button" size="icon" variant="outline" aria-label="Limpar conversa" disabled={visible.busy} onClick={()=>{setConversation({scope,messages:[],error:'',busy:false});setDraft('');}}><RotateCcw className="h-4 w-4"/></Button></form>
     </>:<div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
