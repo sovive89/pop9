@@ -5,8 +5,10 @@ import { Input } from "@/components/ui/input";
 import { useAdminData, type DbMenuItem, type DbIngredient, type DbVariant, type DbMenuCategory } from "@/hooks/useAdminData";
 import { supabase } from "@/integrations/supabase/client";
 import { formatCurrency } from "@/utils/orders";
+import { CATEGORY_ICON_OPTIONS, CATEGORY_COLORS, getCategoryIcon, safeCategoryColor, suggestCategoryIcon } from "@/utils/categoryIcons";
 import { toast } from "sonner";
 import RecipeBuilder, { type RecipeBuilderHandle } from "@/components/admin/RecipeBuilder";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 
 // ── Image Upload Helper ──
 // O nome do arquivo é gerado aqui (não depende do ID do item, que só existe
@@ -41,12 +43,8 @@ const removeMenuImages = async (urls: (string | null | undefined)[]) => {
 
 // ── Geração de foto com IA (Edge Function generate-menu-image) ──
 const AI_IMAGE_MODELS = [
-  { id: "google/gemini-3.1-flash-image", label: "Nano Banana 2 (Google)" },
-  { id: "openai/gpt-image-2", label: "GPT Image 2 (OpenAI)" },
-  { id: "bfl/flux-2-pro", label: "Flux 2 Pro (fotorrealista)" },
-  { id: "bytedance/seedream-5.0-lite", label: "Seedream 5 Lite (econômico)" },
-  { id: "spacexai/grok-imagine-image-2.0", label: "Grok Imagine 2 (xAI)" },
-  { id: "spacexai/grok-imagine-image", label: "Grok Imagine (xAI, econômico)" },
+  { id: "google/gemini-2.5-flash-image", label: "Nano Banana (Google)", provider: "google" },
+  { id: "openai/gpt-image-1", label: "GPT Image (OpenAI)", provider: "openai" },
 ];
 
 // ── Category Editor ──
@@ -63,6 +61,11 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
   const [destination, setDestination] = useState(category?.destination ?? "kitchen");
   const [sortOrder, setSortOrder] = useState(category?.sort_order?.toString() ?? "0");
   const [saving, setSaving] = useState(false);
+  const [iconName, setIconName] = useState(category?.icon_name ?? suggestCategoryIcon(category?.label ?? ""));
+  const [iconColor, setIconColor] = useState(safeCategoryColor(category?.icon_color));
+  const [iconTouched, setIconTouched] = useState(!!category?.icon_name);
+  const [iconSearch, setIconSearch] = useState("");
+  const PreviewIcon = getCategoryIcon(iconName, label);
 
   const handleSave = async () => {
     if (!key.trim() || !label.trim()) {
@@ -71,7 +74,7 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
     }
     setSaving(true);
     const ok = await onSave(
-      { id: category?.id, key: key.trim().toLowerCase(), label: label.trim(), destination, sort_order: parseInt(sortOrder) || 0 },
+      { id: category?.id, key: key.trim().toLowerCase(), label: label.trim(), icon_name: iconName, icon_color: iconColor, destination, sort_order: parseInt(sortOrder) || 0 },
       isNew
     );
     setSaving(false);
@@ -91,7 +94,7 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
         </div>
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Nome</label>
-          <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="ex: Saladas" className="h-8 text-sm" />
+          <Input value={label} onChange={(e) => { setLabel(e.target.value); if (!iconTouched) setIconName(suggestCategoryIcon(e.target.value)); }} placeholder="ex: Saladas" className="h-8 text-sm" />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -105,6 +108,32 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Ordem</label>
           <Input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-8 text-sm" />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <label className="text-xs font-medium text-muted-foreground">Ícone da categoria</label>
+        <div className="flex items-center gap-3 rounded-lg border border-border p-3">
+          <PreviewIcon className="h-7 w-7 shrink-0" style={{ color: iconColor }} />
+          <span className="text-sm font-medium text-foreground truncate">{label || "Nova categoria"}</span>
+        </div>
+        <Input value={iconSearch} onChange={(e) => setIconSearch(e.target.value)} placeholder="Buscar ícone..." className="h-8 text-sm" />
+        <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-48 overflow-y-auto">
+          {CATEGORY_ICON_OPTIONS.filter((option) => (option.label + " " + option.name).toLowerCase().includes(iconSearch.toLowerCase())).map(({ name, label: iconLabel, Icon }) => (
+            <button key={name} type="button" title={iconLabel} aria-label={iconLabel} aria-pressed={iconName === name}
+              onClick={() => { setIconName(name); setIconTouched(true); }}
+              className={`flex flex-col items-center gap-1 rounded-lg border p-2 min-w-0 ${iconName === name ? "border-primary bg-primary/10" : "border-border hover:bg-muted"}`}>
+              <Icon className="h-5 w-5" />
+              <span className="text-[10px] truncate max-w-full">{iconLabel}</span>
+            </button>
+          ))}
+        </div>
+        <label className="text-xs font-medium text-muted-foreground">Cor do ícone</label>
+        <div className="flex gap-3 flex-wrap">
+          {CATEGORY_COLORS.map((color) => (
+            <button key={color} type="button" aria-label={`Cor ${color}`} aria-pressed={iconColor === color}
+              onClick={() => setIconColor(color)} style={{ backgroundColor: color }}
+              className={`h-8 w-8 rounded-full border-2 ${iconColor === color ? "ring-2 ring-offset-2 ring-primary border-foreground" : "border-transparent"}`} />
+          ))}
         </div>
       </div>
       <div className="flex gap-2">
@@ -158,7 +187,22 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   const [savedStatus, setSavedStatus] = useState(item?.status);
   const isPublished = savedStatus === "published";
   const [uploading, setUploading] = useState(false);
+  const { businessUnitId } = useCurrentBusinessUnit();
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [aiModel, setAiModel] = useState(AI_IMAGE_MODELS[0].id);
+  useEffect(() => {
+    if (!businessUnitId) { setAvailableModels([]); return; }
+    let cancelled = false;
+    void supabase.functions.invoke("generate-menu-image", { body: { action: "models", businessUnitId } })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error || data?.error) { setAvailableModels([]); return; }
+        const ids = (data?.models ?? []).map((m: { id: string }) => m.id);
+        setAvailableModels(ids);
+        setAiModel(current => ids.includes(current) ? current : (ids[0] ?? AI_IMAGE_MODELS[0].id));
+      });
+    return () => { cancelled = true; };
+  }, [businessUnitId]);
   const [aiExtra, setAiExtra] = useState("");
   const [generating, setGenerating] = useState(false);
   const [ingredients, setIngredients] = useState<Omit<DbIngredient, "id">[]>(
@@ -190,6 +234,8 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       toast.error("Preencha o nome do item antes de gerar a foto");
       return;
     }
+    if (!businessUnitId) { toast.error("Unidade não identificada"); return; }
+    if (!availableModels.includes(aiModel)) { toast.error("Conecte a chave de IA em Integrações para esta unidade"); return; }
     setGenerating(true);
     let data: { url?: string; error?: string } | null = null;
     let error: Error | null = null;
@@ -197,6 +243,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       ({ data, error } = await supabase.functions.invoke("generate-menu-image", {
         body: {
           name: name.trim(),
+          businessUnitId,
           description: description.trim() || undefined,
           ingredients: ingredients.map((i) => i.name.trim()).filter(Boolean),
           model: aiModel,
@@ -422,7 +469,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
               aria-label="Modelo de IA para gerar a foto"
               className="h-9 rounded-md border border-border bg-muted px-3 text-sm text-foreground"
             >
-              {AI_IMAGE_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+              {AI_IMAGE_MODELS.filter((m) => availableModels.includes(m.id)).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
             <Input
               value={aiExtra}
@@ -430,12 +477,12 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
               placeholder="Ajuste opcional (ex: em tábua de madeira)"
               className="h-9 flex-1 min-w-[180px]"
             />
-            <Button type="button" variant="outline" onClick={handleGenerateImage} disabled={generating} className="gap-2 h-9">
+            <Button type="button" variant="outline" onClick={handleGenerateImage} disabled={generating || availableModels.length === 0} className="gap-2 h-9">
               {generating ? <Flame className="h-4 w-4 animate-pulse text-primary" /> : <Sparkles className="h-4 w-4" />}
               {generating ? "Gerando..." : imageUrl ? "Gerar outra" : "Gerar"}
             </Button>
           </div>
-          <p className="text-[11px] text-muted-foreground">Usa nome, descrição e ingredientes do item. Cada geração tem custo na sua conta de IA.</p>
+          <p className="text-[11px] text-muted-foreground">{availableModels.length === 0 ? "Conecte Google ou OpenAI em Integrações → Inteligência Artificial para habilitar a geração nesta unidade." : "Usa nome, descrição e ingredientes do item. Cada geração tem custo na sua conta de IA."}</p>
         </div>
       </div>
 
@@ -507,6 +554,7 @@ const MenuTab = () => {
   const [editingItem, setEditingItem] = useState<DbMenuItem | null>(null);
   const [creating, setCreating] = useState(false);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [showCategories, setShowCategories] = useState(false);
   const [editingCategory, setEditingCategory] = useState<DbMenuCategory | null>(null);
   const [creatingCategory, setCreatingCategory] = useState(false);
@@ -558,8 +606,9 @@ const MenuTab = () => {
           <div className="divide-y divide-border rounded-lg border border-border overflow-hidden">
             {categories.map((cat) => (
               <div key={cat.id} className="flex items-center gap-3 px-3 py-2 bg-card">
-                <span className="flex-1 text-sm font-medium text-foreground">{cat.label}</span>
-                <span className="text-xs text-muted-foreground">{cat.key}</span>
+                {(() => { const Icon = getCategoryIcon(cat.icon_name, cat.label); return <Icon className="h-5 w-5 shrink-0" style={{ color: safeCategoryColor(cat.icon_color) }} />; })()}
+                <span className="flex-1 min-w-0 text-sm font-medium text-foreground truncate">{cat.label}</span>
+                <span className="hidden sm:inline text-xs text-muted-foreground truncate">{cat.key}</span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
                   {cat.destination === "kitchen" ? "Cozinha" : "Bar"}
                 </span>
@@ -593,40 +642,70 @@ const MenuTab = () => {
             </button>
             {isExpanded && (
               <div className="divide-y divide-border">
-                {items.map((item) => (
-                  <div key={item.id} className={`px-4 py-3 flex items-center gap-3 ${!item.active ? "opacity-50" : ""}`}>
-                    {item.image_url ? (
-                      <img src={item.image_url} alt={item.name} className="w-10 h-10 rounded-lg object-cover border border-border flex-shrink-0" />
-                    ) : (
-                      <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
-                        <Image className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-foreground">{item.name}</span>
-                        <span className="text-xs text-muted-foreground">({item.id})</span>
-                        {!item.active && <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Inativo</span>}
-                        {item.status === "draft" && <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-warning">Rascunho</span>}
-                      </div>
-                      <p className="text-xs text-muted-foreground truncate">{item.description}</p>
-                      {item.ingredients.length > 0 && <p className="text-[10px] text-muted-foreground">{item.ingredients.length} ingredientes</p>}
-                      {item.variants.length > 0 && <p className="text-[10px] text-muted-foreground">{item.variants.length} variantes</p>}
-                    </div>
-                    <span className="font-semibold text-primary whitespace-nowrap">{formatCurrency(item.price)}</span>
-                    <div className="flex gap-1">
-                      <button onClick={() => setEditingItem(item)} className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground">
-                        <Pencil className="h-4 w-4" />
-                      </button>
+                {items.map((item) => {
+                  const isItemExpanded = expandedItem === item.id;
+                  return (
+                    <div key={item.id} className={`min-w-0 ${!item.active ? "opacity-60" : ""}`}>
                       <button
-                        onClick={() => { if (confirm(`Excluir "${item.name}"?`)) deleteMenuItem(item.id); }}
-                        className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                        type="button"
+                        aria-expanded={isItemExpanded}
+                        onClick={() => setExpandedItem(isItemExpanded ? null : item.id)}
+                        className="w-full min-w-0 px-3 py-3 flex items-center gap-3 text-left hover:bg-secondary/30 transition-colors"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        {item.image_url ? (
+                          <img src={item.image_url} alt={item.name} className="w-12 h-12 rounded-lg object-cover border border-border shrink-0" />
+                        ) : (
+                          <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                            <Image className="h-5 w-5 text-muted-foreground" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <p className="font-semibold text-foreground truncate">{item.name}</p>
+                          <p className="text-sm font-semibold text-primary">{formatCurrency(item.price)}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {item.ingredients.length} ingredientes{item.variants.length > 0 ? ` · ${item.variants.length} variantes` : ""}
+                          </p>
+                        </div>
+                        {isItemExpanded ? <ChevronUp className="h-4 w-4 shrink-0 text-primary" /> : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
                       </button>
+                      {isItemExpanded && (
+                        <div className="border-t border-border bg-muted/20 px-4 py-4 space-y-3 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs text-muted-foreground">Status</span>
+                            <span className="text-xs font-medium text-foreground">{!item.active ? "Inativo" : item.status === "draft" ? "Rascunho" : "Publicado"}</span>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Descrição</p>
+                            <p className="text-sm text-foreground break-words">{item.description || "Sem descrição"}</p>
+                          </div>
+                          <div className="flex justify-between gap-2 text-sm">
+                            <span className="text-muted-foreground">Categoria</span>
+                            <span className="text-foreground">{cat.label}</span>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Ingredientes ({item.ingredients.length})</p>
+                            <p className="text-sm text-foreground break-words">{item.ingredients.length ? item.ingredients.map((ing) => ing.name).join(", ") : "Nenhum ingrediente vinculado"}</p>
+                          </div>
+                          {item.variants.length > 0 && (
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Variações ({item.variants.length})</p>
+                              <p className="text-sm text-foreground break-words">{item.variants.map((variant) => variant.name).join(", ")}</p>
+                            </div>
+                          )}
+                          <div className="flex gap-2 pt-2">
+                            <Button size="sm" className="flex-1 gap-2" onClick={() => setEditingItem(item)}>
+                              <Pencil className="h-4 w-4" /> Editar / Ficha técnica
+                            </Button>
+                            <Button size="sm" variant="outline" aria-label={`Excluir ${item.name}`}
+                              onClick={() => { if (confirm(`Excluir "${item.name}"?`)) deleteMenuItem(item.id); }}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {items.length === 0 && (
                   <p className="px-4 py-6 text-center text-sm text-muted-foreground">Nenhum item nesta categoria</p>
                 )}

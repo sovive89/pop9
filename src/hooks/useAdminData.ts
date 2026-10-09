@@ -45,6 +45,8 @@ export interface DbMenuCategory {
   label: string;
   destination: string;
   sort_order: number;
+  icon_name?: string | null;
+  icon_color?: string | null;
 }
 
 export const useAdminData = () => {
@@ -331,6 +333,8 @@ export const useAdminData = () => {
       const { error } = await supabase.from("menu_categories").insert({
         key: cat.key,
         label: cat.label,
+        icon_name: cat.icon_name ?? null,
+        icon_color: cat.icon_color ?? null,
         destination: cat.destination,
         sort_order: cat.sort_order,
         business_unit_id: businessUnitId,

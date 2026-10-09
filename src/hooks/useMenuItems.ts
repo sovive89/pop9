@@ -14,6 +14,8 @@ interface DbCategory {
   label: string;
   destination: string;
   sort_order: number;
+  icon_name: string | null;
+  icon_color: string | null;
 }
 
 /**
@@ -21,24 +23,31 @@ interface DbCategory {
  * Falls back to static data if DB fetch fails.
  */
 export const useMenuItems = () => {
-  const [items, setItems] = useState<MenuItem[]>(staticMenuItems);
+  const [items, setItems] = useState<MenuItem[]>([]);
   const [dbCategories, setDbCategories] = useState<DbCategory[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
+      setError(null);
+      const { data: session } = await supabase.auth.getUser();
+      if (!session.user) { setItems([]); setDbCategories([]); setLoading(false); return; }
+      const { data: roles, error: roleError } = await supabase.from('user_roles').select('business_unit_id').eq('user_id', session.user.id).not('business_unit_id','is',null).limit(1);
+      if (roleError) throw roleError;
+      const unitId = roles?.[0]?.business_unit_id;
+      if (!unitId) { setItems([]); setDbCategories([]); setError('Selecione uma unidade para carregar o cardápio.'); setLoading(false); return; }
       // Load categories
       const { data: cats } = await supabase
         .from("menu_categories")
-        .select("key, label, destination, sort_order")
+        .select("key, label, destination, sort_order, icon_name, icon_color")
+        .eq("business_unit_id", unitId)
         .order("sort_order");
 
-      if (cats && cats.length > 0) {
-        setDbCategories(cats);
-      }
+      setDbCategories(cats ?? []);
 
       const [itemsRes, ingredientsRes, variantsRes] = await Promise.all([
-        supabase.from("menu_items").select("id, name, price, category, description, sort_order").eq("active", true).eq("status", "published").order("sort_order"),
+        supabase.from("menu_items").select("id, name, price, category, description, sort_order").eq("active", true).eq("status", "published").eq("business_unit_id",unitId).order("sort_order"),
         supabase.from("menu_item_ingredients").select("menu_item_id, name, removable, extra_price, sort_order").order("sort_order"),
         supabase.from("menu_item_variants").select("menu_item_id, name, sort_order").order("sort_order"),
       ]);
@@ -48,9 +57,7 @@ export const useMenuItems = () => {
       // Fallback estático só em erro; lista vazia (ex.: tudo em rascunho) é
       // cardápio vazio de verdade, não motivo pra mostrar itens fictícios.
       if (iErr || !dbItems) {
-        setItems(staticMenuItems);
-        setLoading(false);
-        return;
+        throw iErr ?? new Error('Falha ao consultar cardápio');
       }
 
       const dbIngredients = ingredientsRes.data ?? [];
@@ -75,8 +82,9 @@ export const useMenuItems = () => {
       }));
 
       setItems(mapped);
-    } catch {
-      setItems(staticMenuItems);
+    } catch (e) {
+      setItems([]);
+      setError(e instanceof Error ? e.message : 'Erro ao carregar cardápio');
     }
     setLoading(false);
   }, []);
@@ -116,5 +124,5 @@ export const useMenuItems = () => {
     [items, barCategories]
   );
 
-  return { menuItems: items, loading, isKitchenItem, isBarItem, categoryLabels };
+  return { menuItems: items, loading, error, categories: dbCategories ?? [], isKitchenItem, isBarItem, categoryLabels };
 };

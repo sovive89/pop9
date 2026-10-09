@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AIConnectionsPanel } from "@/components/admin/connections/AIConnectionsPanel";
 import { IntegrationGrid } from "@/components/admin/connections/IntegrationGrid";
 import { IntegrationConfigModal } from "@/components/admin/connections/IntegrationConfigModal";
 import { CATEGORY_LABELS, TYPE_LABELS } from "@/components/admin/connections/types";
@@ -19,16 +20,22 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
 /** Filtro por papel na arquitetura. É a distinção que mais importa na hora
  * de procurar algo aqui: "quero ligar um canal de venda" e "quero puxar os
  * dados do meu PDV antigo" são tarefas diferentes. */
+const VISIBLE_CATEGORIES: IntegrationCategory[] = [
+  "DELIVERY", "COMMUNICATION", "MENU", "PAYMENTS", "FISCAL", "AI",
+];
+const VISIBLE_AI = new Set(["openai", "anthropic", "google-gemini", "xai-grok"]);
+
 const TYPE_OPTIONS: { value: IntegrationType | "all"; label: string }[] = [
   { value: "all", label: "Todos os tipos" },
-  ...(Object.entries(TYPE_LABELS) as [IntegrationType, string][]).map(([value, label]) => ({ value, label })),
+  { value: "OPERATIONAL", label: TYPE_LABELS.OPERATIONAL },
+  { value: "SUPPORT", label: TYPE_LABELS.SUPPORT },
 ];
 
 const CATEGORY_OPTIONS: { value: IntegrationCategory | "all"; label: string }[] = [
   { value: "all", label: "Todas as categorias" },
-  ...(Object.entries(CATEGORY_LABELS) as [IntegrationCategory, string][]).map(([value, label]) => ({
+  ...VISIBLE_CATEGORIES.map((value) => ({
+    label: CATEGORY_LABELS[value],
     value,
-    label,
   })),
 ];
 
@@ -55,6 +62,11 @@ export function ConnectionsTab() {
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return views.filter((view) => {
+      // Catálogo completo permanece intacto para reutilização futura no Pop9 Hub.
+      // O ERP exibe apenas conexões utilizadas diretamente na operação.
+      if (!VISIBLE_CATEGORIES.includes(view.definition.category)) return false;
+      if (view.definition.type === "IMPORT") return false;
+      if (view.definition.category === "AI" && !VISIBLE_AI.has(view.definition.slug)) return false;
       if (category !== "all" && view.definition.category !== category) return false;
       if (type !== "all" && view.definition.type !== type) return false;
       if (status === "connected" && view.status !== "CONNECTED") return false;
@@ -133,6 +145,8 @@ export function ConnectionsTab() {
           </SelectContent>
         </Select>
       </div>
+
+      <AIConnectionsPanel />
 
       {tableMissing && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-muted-foreground">

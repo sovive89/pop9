@@ -6,10 +6,6 @@ import {
   Minus,
   ShoppingCart,
   Trash2,
-  Beef,
-  Cookie,
-  CupSoda,
-  Salad,
   User,
   MessageSquare,
   Copy,
@@ -26,8 +22,9 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { categoryLabels, type MenuCategory, type MenuItem } from "@/data/menu";
+import { type MenuCategory, type MenuItem } from "@/data/menu";
 import { useMenuItems } from "@/hooks/useMenuItems";
+import { getCategoryIcon, safeCategoryColor } from "@/utils/categoryIcons";
 import {
   type ClientOrder,
   type OrderItem,
@@ -48,13 +45,6 @@ import ReceiptPreviewModal from "@/components/ReceiptPreviewModal";
 
 const MEAT_POINTS = ["Mal passado", "Ao ponto p/ mal", "Ao ponto", "Ao ponto p/ bem", "Bem passado"] as const;
 
-const categoryIcons: Record<MenuCategory, React.ElementType> = {
-  burgers: Beef,
-  sides: Salad,
-  drinks: CupSoda,
-  desserts: Cookie,
-};
-
 const orderStatusIcons: Record<OrderStatus, React.ElementType> = {
   pending: Clock,
   preparing: ChefHat,
@@ -74,7 +64,7 @@ interface Props {
 type View = "menu" | "cart" | "orders" | "item-detail";
 
 const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder, onBack }: Props) => {
-  const { menuItems } = useMenuItems();
+  const { menuItems, categories: dbCategories, categoryLabels, loading: menuLoading, error: menuError } = useMenuItems();
   const [activeCategory, setActiveCategory] = useState<MenuCategory>("burgers");
   const [view, setView] = useState<View>("menu");
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
@@ -88,7 +78,8 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
   // Preview da conta impressa (tela)
   const [receiptPreviewHtml, setReceiptPreviewHtml] = useState<string | null>(null);
 
-  const categories: MenuCategory[] = ["burgers", "sides", "drinks", "desserts"];
+  const categories: MenuCategory[] = dbCategories.map((c) => c.key as MenuCategory);
+  const selectedCategory = categories.includes(activeCategory) ? activeCategory : categories[0];
 
   const isSearching = searchQuery.trim().length > 0;
 
@@ -101,8 +92,8 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
         return name.includes(q) || desc.includes(q);
       });
     }
-    return menuItems.filter((m) => m.category === activeCategory);
-  }, [menuItems, activeCategory, searchQuery, isSearching]);
+    return menuItems.filter((m) => m.category === selectedCategory);
+  }, [menuItems, selectedCategory, searchQuery, isSearching]);
 
   const cartCount = order.cart.length; // each entry is 1 unit
   const cartTotal = getCartTotal(order.cart);
@@ -329,8 +320,10 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
             className="w-16 sm:w-20 border-r border-border bg-card/50 flex flex-col items-center py-3 gap-1 shrink-0 overflow-y-auto"
           >
             {categories.map((cat) => {
-              const Icon = categoryIcons[cat];
-              const isActive = cat === activeCategory;
+              const dbCategory = dbCategories.find((c) => c.key === cat);
+              const Icon = getCategoryIcon(dbCategory?.icon_name, dbCategory?.label ?? cat);
+              const iconColor = safeCategoryColor(dbCategory?.icon_color);
+              const isActive = cat === selectedCategory;
               return (
                 <button
                   key={cat}
@@ -344,7 +337,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                       : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
                   }`}
                 >
-                  <Icon className="h-5 w-5" />
+                  <Icon className="h-5 w-5" style={{ color: isActive ? iconColor : undefined }} />
                   <span className="text-[9px] font-medium leading-tight text-center">
                     {categoryLabels[cat]}
                   </span>
@@ -708,7 +701,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                     : categoryLabels[activeCategory]}
                 </h3>
 
-                {filteredItems.length === 0 ? (
+                {menuError ? <p role="alert" className="text-sm text-destructive">{menuError}</p> : menuLoading ? <p className="text-sm text-muted-foreground">Carregando cardápio...</p> : filteredItems.length === 0 ? (
                   <div className="text-center py-8 space-y-2">
                     <Search className="h-8 w-8 text-muted-foreground/30 mx-auto" />
                     <p className="text-sm text-muted-foreground">Nenhum item encontrado</p>

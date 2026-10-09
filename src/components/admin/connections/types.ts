@@ -22,6 +22,7 @@ export type IntegrationCategory =
   | "MENU"
   | "PAYMENTS"
   | "MANAGEMENT"
+  | "FISCAL"
   | "ECOMMERCE"
   | "AUTOMATION"
   | "AI";
@@ -33,6 +34,7 @@ export const CATEGORY_LABELS: Record<IntegrationCategory, string> = {
   MENU: "Cardápio digital",
   PAYMENTS: "Pagamentos",
   MANAGEMENT: "Gestão / ERP",
+  FISCAL: "Gestão / Fiscal",
   ECOMMERCE: "E-commerce",
   AUTOMATION: "Automação / API",
   AI: "IA",
