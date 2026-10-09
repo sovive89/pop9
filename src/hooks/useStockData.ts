@@ -207,6 +207,7 @@ export const useStockData = () => {
       .from("stock_movements")
       .select("lote_id, quantity")
       .eq("type", "saida")
+      .or("reference_type.is.null,reference_type.neq.lote_correcao")
       .not("lote_id", "is", null);
 
     // Consumo de produção (FEFO) fica registrado em production_batch_inputs,

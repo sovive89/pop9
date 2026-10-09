@@ -14,28 +14,45 @@ type ActiveSessionsResult<TData> = {
   error: SupabaseLikeError;
 };
 
+export type ActiveSessionRow = {
+  id: string;
+  table_number: number;
+  started_at: string;
+  session_clients?: unknown[];
+  orders?: unknown[];
+};
+
+type SessionsQuery = PromiseLike<ActiveSessionsResult<ActiveSessionRow[]>> & {
+  eq: (column: string, value: string) => SessionsQuery;
+};
+
 export type SessionsQueryClient = {
   from: (table: string) => {
-    select: (query: string) => {
-      eq: (column: string, value: string) => Promise<ActiveSessionsResult<unknown[]>>;
-    };
+    select: (query: string) => SessionsQuery;
   };
 };
 
 const shouldFallbackToLegacyQuery = (error: SupabaseLikeError): boolean =>
   error?.code === "42703" && Boolean(error.message?.toLowerCase().includes("origin"));
 
-export const fetchActiveSessionsWithOriginFallback = async (client: SessionsQueryClient) => {
+export const fetchActiveSessionsWithOriginFallback = async (
+  client: SessionsQueryClient,
+  businessUnitId: string | null
+) => {
+  // Nunca consulte todas as unidades enquanto a seleção ainda está carregando.
+  if (!businessUnitId) return { data: [], error: null };
   let result = await client
     .from("sessions")
     .select(SESSION_SELECT_WITH_ORIGIN)
-    .eq("status", "active");
+    .eq("status", "active")
+    .eq("business_unit_id", businessUnitId);
 
   if (shouldFallbackToLegacyQuery(result.error)) {
     result = await client
       .from("sessions")
       .select(SESSION_SELECT_LEGACY)
-      .eq("status", "active");
+      .eq("status", "active")
+      .eq("business_unit_id", businessUnitId);
   }
 
   return result;

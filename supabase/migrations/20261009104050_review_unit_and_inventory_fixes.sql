@@ -1,3 +1,59 @@
+-- Novos usuários recebem a unidade explicitamente no manage-user.
+-- Recupera permissões legadas somente quando há uma única unidade ativa:
+-- com várias unidades não é seguro escolher um vínculo automaticamente.
+do $$
+declare
+  v_unit uuid;
+begin
+  if (select count(*) from public.business_units where active) = 1 then
+    select id into v_unit from public.business_units where active;
+    update public.user_roles set business_unit_id = v_unit
+    where business_unit_id is null;
+  end if;
+end;
+$$;
+
+-- Numeração atômica por unidade. A linha da unidade serializa criações
+-- concorrentes; mesas arquivadas continuam reservando seus números.
+create or replace function public.create_dining_table(p_business_unit_id uuid)
+returns public.dining_tables
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_number integer;
+  v_table public.dining_tables%rowtype;
+begin
+  if auth.uid() is null or not exists (
+    select 1 from public.user_roles ur
+    where ur.user_id = auth.uid() and ur.role::text = 'admin'
+      and (ur.business_unit_id = p_business_unit_id or ur.business_unit_id is null)
+  ) then
+    raise exception 'Sem permissão para criar mesa nesta unidade' using errcode = '42501';
+  end if;
+
+  perform 1 from public.business_units
+  where id = p_business_unit_id and active for update;
+  if not found then
+    raise exception 'Unidade inválida ou inativa';
+  end if;
+
+  select coalesce(max(number), 0) + 1 into v_number
+  from public.dining_tables where business_unit_id = p_business_unit_id;
+
+  insert into public.dining_tables (business_unit_id, number)
+  values (p_business_unit_id, v_number) returning * into v_table;
+
+  update public.business_units set table_count = v_number
+  where id = p_business_unit_id;
+  return v_table;
+end;
+$$;
+revoke all on function public.create_dining_table(uuid) from public, anon;
+grant execute on function public.create_dining_table(uuid) to authenticated;
+
+-- Reaplica a versão corrigida também em bancos com a função já instalada.
 -- Transactional lot edits and cancellations. History is never physically deleted.
 -- Only unit-scoped admins can mutate purchase lots.
 create or replace function public.manage_purchase_lot(
