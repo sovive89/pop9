@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock, CheckCircle2, ChefHat, AlertTriangle, Bell, Package, HandPlatter, Truck } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { useDeliveredOrders } from "@/hooks/useDeliveredOrders";
 import { Button } from "@/components/ui/button";
 import { useSessionStore } from "@/hooks/useSessionStore";
 import {
@@ -36,6 +36,12 @@ const statusBadge: Record<OrderStatus, string> = {
 
 const ActiveOrdersPanel = () => {
   const { sessions, markDelivered } = useSessionStore();
+  const [view, setView] = useState<"active" | "delivered">("active");
+  const [date, setDate] = useState(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  });
+  const history = useDeliveredOrders(view === "delivered", date);
   const [deliveringId, setDeliveringId] = useState<string | null>(null);
 
   const flatOrders = useMemo<FlatOrder[]>(() => {
@@ -81,20 +87,19 @@ const ActiveOrdersPanel = () => {
   const orderTotal = (order: PlacedOrder) =>
     order.items.reduce((s, i) => s + getItemUnitPrice(i) * i.quantity, 0);
 
-  if (activeOrders.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
-        <Package className="h-12 w-12 opacity-30" />
-        <p className="text-sm">Nenhum pedido ativo no momento</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtrar pedidos">
+        <Button variant={view === "active" ? "default" : "outline"} aria-pressed={view === "active"} onClick={() => setView("active")}>Em andamento ({activeOrders.length})</Button>
+        <Button variant={view === "delivered" ? "default" : "outline"} aria-pressed={view === "delivered"} onClick={() => setView("delivered")}>Entregues</Button>
+        {view === "delivered" && <label className="text-sm">Data do pedido <input aria-label="Data do pedido" type="date" value={date} onChange={event => { if (event.target.value) setDate(event.target.value); }} className="ml-2 rounded-md border border-border bg-background p-2" /></label>}
+      </div>
+      {view === "delivered" && history.loading && <p role="status">Carregando pedidos entregues...</p>}
+      {view === "delivered" && history.error && <div role="alert">Não foi possível carregar os pedidos entregues. <Button variant="outline" onClick={history.retry}>Tentar novamente</Button></div>}
+      {((view === "active" && activeOrders.length === 0) || (view === "delivered" && !history.loading && !history.error && history.orders.length === 0)) && <p className="py-12 text-center text-muted-foreground">{view === "active" ? "Nenhum pedido ativo no momento" : "Nenhum pedido entregue nesta data"}</p>}
       {/* Summary counters */}
       <div className="flex flex-wrap gap-3">
-        {readyMesaCount > 0 && (
+        {view === "active" && readyMesaCount > 0 && (
           <motion.div
             initial={{ scale: 0.9 }}
             animate={{ scale: [1, 1.05, 1] }}
@@ -105,7 +110,7 @@ const ActiveOrdersPanel = () => {
             <span className="text-sm font-semibold text-emerald-400">{readyMesaCount} pronto{readyMesaCount > 1 ? "s" : ""}</span>
           </motion.div>
         )}
-        {readyDeliveryCount > 0 && (
+        {view === "active" && readyDeliveryCount > 0 && (
           <motion.div
             initial={{ scale: 0.9 }}
             animate={{ scale: [1, 1.05, 1] }}
@@ -116,13 +121,13 @@ const ActiveOrdersPanel = () => {
             <span className="text-sm font-semibold text-primary">{readyDeliveryCount} delivery pronto{readyDeliveryCount > 1 ? "s" : ""}</span>
           </motion.div>
         )}
-        {pendingCount > 0 && (
+        {view === "active" && pendingCount > 0 && (
           <div className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-4 py-2">
             <Clock className="h-4 w-4 text-warning" />
             <span className="text-sm text-warning">{pendingCount} pendente{pendingCount > 1 ? "s" : ""}</span>
           </div>
         )}
-        {preparingCount > 0 && (
+        {view === "active" && preparingCount > 0 && (
           <div className="flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/10 px-4 py-2">
             <ChefHat className="h-4 w-4 text-primary" />
             <span className="text-sm text-primary">{preparingCount} preparando</span>
@@ -133,7 +138,7 @@ const ActiveOrdersPanel = () => {
       {/* Orders list */}
       <div className="space-y-3">
         <AnimatePresence mode="popLayout">
-          {activeOrders.map((fo) => {
+          {(view === "active" ? activeOrders : history.orders).map((fo) => {
             const isReady = fo.order.status === "ready";
             const isLate = fo.order.status !== "ready" && fo.order.status !== "delivered" &&
               (Date.now() - fo.order.placedAt.getTime()) > 15 * 60000;
@@ -175,7 +180,7 @@ const ActiveOrdersPanel = () => {
                       <AlertTriangle className="h-4 w-4 text-destructive animate-pulse" />
                     )}
                     {isReady && fo.isDelivery && (
-                      <Truck className="h-4 w-4 text-primary shrink-0" title="Pedido delivery pronto" />
+                      <Truck className="h-4 w-4 text-primary shrink-0" aria-label="Pedido delivery pronto" />
                     )}
                     <div className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${statusBadge[fo.order.status]}`}>
                       {statusIcon[fo.order.status]}
@@ -203,7 +208,7 @@ const ActiveOrdersPanel = () => {
                 <div className="flex items-center justify-between pt-2 border-t border-border">
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Clock className="h-3 w-3" />
-                    {elapsed(fo.order.placedAt)}
+                    {view === "delivered" ? fo.order.placedAt.toLocaleString("pt-BR") : elapsed(fo.order.placedAt)}
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-semibold text-foreground">
@@ -217,8 +222,7 @@ const ActiveOrdersPanel = () => {
                         className="gap-1.5 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/15 hover:text-emerald-300"
                         onClick={async () => {
                           setDeliveringId(fo.order.id);
-                          await markDelivered(fo.order.id);
-                          setDeliveringId(null);
+                          try { await markDelivered(fo.order.id); } finally { setDeliveringId(null); }
                         }}
                       >
                         <HandPlatter className="h-3.5 w-3.5" />
@@ -231,6 +235,7 @@ const ActiveOrdersPanel = () => {
             );
           })}
         </AnimatePresence>
+        {view === "delivered" && history.more && <Button variant="outline" onClick={history.loadMore}>Carregar mais pedidos</Button>}
       </div>
     </div>
   );

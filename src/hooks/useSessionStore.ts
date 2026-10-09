@@ -11,6 +11,8 @@ import { fetchActiveSessionsWithOriginFallback } from "@/hooks/sessionQueries";
 import type { SessionsQueryClient } from "@/hooks/sessionQueries";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 
+import { beginReadyNotification, isCurrentReadyNotification, dismissReadyNotification, readyNotificationId, ORDER_DELIVERED_EVENT } from "@/utils/orderNotifications";
+
 type Zone = string;
 
 interface SessionData {
@@ -144,6 +146,21 @@ export const useSessionStore = () => {
   const sessionsRef = useRef<Record<number, SessionData>>({});
   sessionsRef.current = sessions;
 
+  useEffect(() => {
+    const onDelivered = (event: Event) => {
+      const detail = (event as CustomEvent<{ orderId: string; businessUnitId: string }>).detail;
+      if (detail.businessUnitId !== businessUnitId) return;
+      requestId.current++;
+      setLoading(false);
+      dismissReadyNotification(detail.orderId);
+      setSessions(prev => Object.fromEntries(Object.entries(prev).map(([table, sd]) => [table, {
+        ...sd, orders: sd.orders.map(co => ({ ...co, orders: co.orders.map(order => order.id === detail.orderId ? { ...order, status: "delivered" as const } : order) })),
+      }])));
+    };
+    window.addEventListener(ORDER_DELIVERED_EVENT, onDelivered);
+    return () => window.removeEventListener(ORDER_DELIVERED_EVENT, onDelivered);
+  }, [businessUnitId, setSessions]);
+
   // Realtime subscription for sessions
   useEffect(() => {
     if (!businessUnitId || !user) return;
@@ -158,7 +175,9 @@ export const useSessionStore = () => {
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders" }, async (payload) => {
         const newRecord = payload.new as any;
         if (currentScope.current !== scope || newRecord?.business_unit_id !== businessUnitId) return;
+        if (newRecord?.status !== "ready") dismissReadyNotification(newRecord.id);
         if (newRecord?.status === "ready") {
+          const notificationToken = beginReadyNotification(newRecord.id);
           // Find table number for this order
           const entry = Object.entries(sessionsRef.current).find(([_, sd]) =>
             sd.orders.some((o) => o.orders.some((po) => po.id === newRecord.id))
@@ -171,7 +190,7 @@ export const useSessionStore = () => {
             .from("order_items")
             .select("name, quantity, destination")
             .eq("order_id", newRecord.id);
-          if (currentScope.current !== scope) return;
+          if (currentScope.current !== scope || !isCurrentReadyNotification(newRecord.id, notificationToken)) return;
 
           const kitchenItems = (orderItems ?? []).filter((i: any) => i.destination === "kitchen");
           const barItems = (orderItems ?? []).filter((i: any) => i.destination === "bar");
@@ -202,6 +221,7 @@ export const useSessionStore = () => {
           toast.success(`🔔 Pedido pronto! ${tableLabel} — ${clientName}`, {
             description: descParts.join("\n"),
             duration: 20000,
+            id: readyNotificationId(newRecord.id),
           });
         }
         loadSessions();
@@ -499,6 +519,8 @@ export const useSessionStore = () => {
       return next;
     });
 
+    dismissReadyNotification(orderId);
+    window.dispatchEvent(new CustomEvent(ORDER_DELIVERED_EVENT, { detail: { orderId, businessUnitId } }));
     toast.success("Pedido marcado como entregue!");
   };
 
