@@ -175,26 +175,16 @@ export const useTables = () => {
       return true;
     }
 
-    // máximo entre TODAS (inclusive arquivadas): número arquivado não é reutilizado
-    const { data: last } = await supabase
-      .from("dining_tables")
-      .select("number")
-      .eq("business_unit_id", businessUnitId)
-      .order("number", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const next = (last?.number ?? 0) + 1;
-    const { error } = await supabase
-      .from("dining_tables")
-      .insert({ business_unit_id: businessUnitId, number: next });
+    // Número gerado atomicamente no servidor, com autorização por unidade.
+    const { error } = await supabase.rpc("create_dining_table", { p_business_unit_id: businessUnitId });
     if (error) {
-      toast.error("Não foi possível criar a mesa");
+      console.error("Erro ao criar mesa:", error);
+      toast.error(error.message || "Não foi possível criar a mesa");
       return false;
     }
-    await syncTableCount();
     await load();
     return true;
-  }, [businessUnitId, editable, tables.length, load, syncTableCount]);
+  }, [businessUnitId, editable, tables.length, load]);
 
   /** "Deletar" = arquivar. O histórico (sessions.table_number) fica intacto. */
   const archiveTables = useCallback(
