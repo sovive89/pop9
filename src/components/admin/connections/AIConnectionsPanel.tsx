@@ -17,22 +17,29 @@ export function AIConnectionsPanel() {
   const [provider,setProvider]=useState<string>("openai");
   const [key,setKey]=useState("");
   const [busy,setBusy]=useState(false);
+  const [unitError,setUnitError]=useState("");
+  const [loadingUnits,setLoadingUnits]=useState(true);
+  const [retryUnits,setRetryUnits]=useState(0);
   useEffect(()=>{
     let cancelled=false;
+    setLoadingUnits(true);
+    setUnitError("");
     void supabase.functions.invoke("manage-ai-credentials",{body:{action:"units"}})
       .then(({data,error})=>{
         if(cancelled)return;
         if(error || data?.error){
-          toast.error("Erro ao carregar unidades: "+(data?.error??error?.message??"desconhecido"));
+          setUnitError(data?.error??error?.message??"Erro desconhecido");
+          setLoadingUnits(false);
           return;
         }
         const available=(data?.units??[]) as {id:string;name:string}[];
         setUnits(available);
         setUnitId(current=>available.some(u=>u.id===current)?current:(available[0]?.id??""));
-        if(!available.length)toast.error("Nenhuma unidade ativa autorizada para este administrador");
-      });
+        if(!available.length)setUnitError("Nenhuma unidade ativa autorizada para este administrador");
+        setLoadingUnits(false);
+      }).catch(e=>{if(!cancelled){setUnitError(e instanceof Error?e.message:String(e));setLoadingUnits(false);}});
     return ()=>{cancelled=true;};
-  },[]);
+  },[retryUnits]);
   async function invoke(action:string,selectedProvider=provider,apiKey?:string){
     const {data,error}=await supabase.functions.invoke("manage-ai-credentials",{body:{action,businessUnitId:unitId,provider:selectedProvider,apiKey}});
     if(error)throw error;
@@ -62,8 +69,11 @@ export function AIConnectionsPanel() {
     <p className="text-sm text-muted-foreground">As chaves são enviadas somente ao backend, validadas e armazenadas cifradas. Não são exibidas novamente.</p>
     <label className="block text-sm">Unidade</label>
     <select className="w-full rounded-md border border-border bg-background p-2 text-sm" value={unitId} onChange={e=>setUnitId(e.target.value)}>
+      {!units.length && <option value="">{loadingUnits ? "Carregando unidades..." : "Nenhuma unidade disponível"}</option>}
       {units.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
     </select>
+    {unitError && <p role="alert" className="text-sm text-destructive">Não foi possível carregar as unidades: {unitError}</p>}
+    {(!units.length || unitError) && <Button type="button" variant="outline" onClick={()=>setRetryUnits(n=>n+1)}>Tentar carregar unidades novamente</Button>}
     <label className="block text-sm">Provedor</label>
     <select className="w-full rounded-md border border-border bg-background p-2 text-sm" value={provider} onChange={e=>setProvider(e.target.value)}>
       {PROVIDERS.map(([id,label])=><option key={id} value={id}>{label}</option>)}
