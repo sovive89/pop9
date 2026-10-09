@@ -8,7 +8,7 @@ import { useAdminData, UserWithRole } from "@/hooks/useAdminData";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-import { SENHA_ABSOLUTA_MIN } from "@/constants/auth";
+import { SENHA_ABSOLUTA_MIN, SENHA_REQUISITOS, senhaValida } from "@/constants/auth";
 
 const ALL_ROLES = ["admin", "attendant", "kitchen"] as const;
 const ROLE_LABELS: Record<string, string> = {
@@ -104,16 +104,16 @@ const UsersTab = () => {
         const cpfDigits = formCpf.replace(/\D/g, "");
         if (cpfDigits.length !== 11) { toast.error("CPF inválido"); setFormLoading(false); return; }
         if (!formName.trim()) { toast.error("Nome obrigatório"); setFormLoading(false); return; }
-        if (formPassword.length < SENHA_ABSOLUTA_MIN) {
-          toast.error(`Senha absoluta: mínimo ${SENHA_ABSOLUTA_MIN} caracteres`);
+        if (!senhaValida(formPassword)) {
+          toast.error(SENHA_REQUISITOS);
           setFormLoading(false);
           return;
         }
 
         body = { ...body, action: "create", full_name: formName.trim(), cpf: cpfDigits, password: formPassword, roles: formRoles };
       } else if (modalMode === "edit") {
-        if (formPassword && formPassword.length < SENHA_ABSOLUTA_MIN) {
-          toast.error(`Senha absoluta: mínimo ${SENHA_ABSOLUTA_MIN} caracteres`);
+        if (formPassword && !senhaValida(formPassword)) {
+          toast.error(SENHA_REQUISITOS);
           setFormLoading(false);
           return;
         }
@@ -243,8 +243,8 @@ const UsersTab = () => {
               {modalMode === "delete"
                 ? `Tem certeza que deseja excluir "${selectedUser?.fullName}"? Esta ação não pode ser desfeita.`
                 : modalMode === "edit"
-                ? "Altere os dados do usuário. Deixe a senha em branco para manter a atual. Nova senha: mín. 12 caracteres (senha absoluta)."
-                : "Registre o usuário e defina a atribuição. Exija senha absoluta (mín. 12 caracteres)."}
+                ? "Altere os dados do usuário. Deixe a senha em branco para manter a atual. Nova senha: mínimo de 8 caracteres, uma maiúscula e um caractere especial."
+                : "Registre o usuário e defina a atribuição. Exija senha de 8 caracteres, uma maiúscula e um caractere especial."}
             </DialogDescription>
           </DialogHeader>
 
