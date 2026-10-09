@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
 
     const { data: adminRole } = await supabaseAdmin
       .from("user_roles")
-      .select("id")
+      .select("id, business_unit_id")
       .eq("user_id", caller.id)
       .eq("role", "admin")
       .maybeSingle();
@@ -45,7 +45,11 @@ Deno.serve(async (req) => {
     const { action, admin_password } = body;
 
     // Verify admin password
-    const { error: signInError } = await supabaseAdmin.auth.signInWithPassword({
+    // Reautenticar em outro cliente: não trocar o JWT do cliente service role.
+    const passwordClient = createClient(supabaseUrl, anonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { error: signInError } = await passwordClient.auth.signInWithPassword({
       email: caller.email!,
       password: admin_password,
     });
@@ -59,7 +63,28 @@ Deno.serve(async (req) => {
     const SENHA_ABSOLUTA_MIN = 8;
 
     if (action === "create") {
-      const { full_name, cpf, password, roles } = body;
+      const { full_name, cpf, password, business_unit_id } = body;
+      const roles = body.roles?.length ? body.roles : ["attendant"];
+      if (!Array.isArray(roles) || !roles.every((role: unknown) =>
+        typeof role === "string" && ["admin", "attendant", "kitchen"].includes(role)
+      )) {
+        return new Response(JSON.stringify({ error: "Permissões inválidas" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (!business_unit_id || (adminRole.business_unit_id && adminRole.business_unit_id !== business_unit_id)) {
+        return new Response(JSON.stringify({ error: "Selecione uma unidade em que você seja administrador" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { data: unit, error: unitError } = await supabaseAdmin
+        .from("business_units").select("id").eq("id", business_unit_id).eq("active", true).maybeSingle();
+      if (unitError) throw unitError;
+      if (!unit) {
+        return new Response(JSON.stringify({ error: "Unidade inválida ou inativa" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       if (!password || typeof password !== "string" || (password.length < SENHA_ABSOLUTA_MIN || !/[A-Z]/.test(password) || !/[^A-Za-z0-9\s]/.test(password))) {
         return new Response(JSON.stringify({ error: "Senha: mínimo de 8 caracteres, uma letra maiúscula e um caractere especial" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -84,11 +109,15 @@ Deno.serve(async (req) => {
       }
 
       // Remove default role added by trigger, then add selected roles
-      if (roles && roles.length > 0) {
-        await supabaseAdmin.from("user_roles").delete().eq("user_id", newUser.user.id);
+      const { error: deleteRoleError } = await supabaseAdmin.from("user_roles").delete().eq("user_id", newUser.user.id);
+      const { error: insertRoleError } = deleteRoleError ? { error: deleteRoleError } :
         await supabaseAdmin.from("user_roles").insert(
-          roles.map((role: string) => ({ user_id: newUser.user.id, role }))
+          [...new Set(roles as string[])].map((role) => ({ user_id: newUser.user.id, role, business_unit_id }))
         );
+      if (insertRoleError) {
+        const { error: rollbackError } = await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);
+        if (rollbackError) console.error("Erro ao desfazer cadastro sem permissões:", rollbackError);
+        throw insertRoleError;
       }
 
       return new Response(JSON.stringify({ success: true, user_id: newUser.user.id }), {

@@ -177,9 +177,10 @@ export const useAdminData = () => {
 
   // ── Role management ──
   const addRole = async (userId: string, role: string) => {
+    if (!businessUnitId) { toast.error("Selecione uma unidade para atribuir permissões"); return false; }
     const { error } = await supabase
       .from("user_roles")
-      .insert({ user_id: userId, role: role as any });
+      .insert({ user_id: userId, role: role as any, business_unit_id: businessUnitId });
     if (error) {
       toast.error("Erro ao adicionar role");
       return false;

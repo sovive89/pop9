@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { useAdminData, UserWithRole } from "@/hooks/useAdminData";
 import { supabase } from "@/integrations/supabase/client";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import { toast } from "sonner";
 
 import { SENHA_ABSOLUTA_MIN, SENHA_REQUISITOS, senhaValida } from "@/constants/auth";
@@ -38,6 +39,7 @@ const formatCPFInput = (value: string) => {
 type ModalMode = "create" | "edit" | "delete" | null;
 
 const UsersTab = () => {
+  const { businessUnitId } = useCurrentBusinessUnit();
   const { users, loadingUsers, addRole, removeRole, refreshUsers } = useAdminData();
   const [search, setSearch] = useState("");
 
@@ -101,6 +103,7 @@ const UsersTab = () => {
       let body: any = { admin_password: adminPassword };
 
       if (modalMode === "create") {
+        if (!businessUnitId) { toast.error("Selecione uma unidade para cadastrar o usuário"); setFormLoading(false); return; }
         const cpfDigits = formCpf.replace(/\D/g, "");
         if (cpfDigits.length !== 11) { toast.error("CPF inválido"); setFormLoading(false); return; }
         if (!formName.trim()) { toast.error("Nome obrigatório"); setFormLoading(false); return; }
@@ -110,7 +113,7 @@ const UsersTab = () => {
           return;
         }
 
-        body = { ...body, action: "create", full_name: formName.trim(), cpf: cpfDigits, password: formPassword, roles: formRoles };
+        body = { ...body, action: "create", full_name: formName.trim(), cpf: cpfDigits, password: formPassword, roles: formRoles, business_unit_id: businessUnitId };
       } else if (modalMode === "edit") {
         if (formPassword && !senhaValida(formPassword)) {
           toast.error(SENHA_REQUISITOS);

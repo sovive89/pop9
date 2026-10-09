@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import type { SetStateAction } from "react";
 import { isKitchenItem } from "@/data/menu";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -7,6 +8,7 @@ import type { ClientInfo, TableSession } from "@/components/TableSessionPanel";
 import type { ClientOrder, PlacedOrder, OrderItem, IngredientMod } from "@/utils/orders";
 import { buildKitchenReceipts, printReceipt } from "@/utils/thermal-print";
 import { fetchActiveSessionsWithOriginFallback } from "@/hooks/sessionQueries";
+import type { SessionsQueryClient } from "@/hooks/sessionQueries";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 
 type Zone = string;
@@ -19,7 +21,22 @@ interface SessionData {
 export const useSessionStore = () => {
   const { user, loading: authLoading } = useAuth();
   const { businessUnitId } = useCurrentBusinessUnit();
-  const [sessions, setSessions] = useState<Record<number, SessionData>>({});
+  const scope = `${user?.id ?? ""}:${businessUnitId ?? ""}`;
+  const currentScope = useRef(scope);
+  currentScope.current = scope;
+  const requestId = useRef(0);
+  const [sessionState, setSessionState] = useState<{ scope: string; data: Record<number, SessionData> }>({ scope, data: {} });
+  // A troca de unidade oculta imediatamente os dados anteriores, inclusive
+  // antes dos effects, e descarta resultados de escritas/leitura já em andamento.
+  const sessions = sessionState.scope === scope ? sessionState.data : {};
+  const setSessions = useCallback((update: SetStateAction<Record<number, SessionData>>) => {
+    if (currentScope.current !== scope) return;
+    setSessionState((prev) => {
+      if (currentScope.current !== scope) return prev;
+      const data = prev.scope === scope ? prev.data : {};
+      return { scope, data: typeof update === "function" ? update(data) : update };
+    });
+  }, [scope]);
   const [loading, setLoading] = useState(true);
 
   const getSupabaseErrorMessage = useCallback((fallback: string, error?: { message?: string | null; code?: string | null }) => {
@@ -29,15 +46,19 @@ export const useSessionStore = () => {
 
   // Load active sessions after auth is ready
   const loadSessions = useCallback(async () => {
-    if (authLoading) return;
-    if (!user) {
+    if (authLoading || currentScope.current !== scope) return;
+    const request = ++requestId.current;
+    if (!user || !businessUnitId) {
       setSessions({});
       setLoading(false);
       return;
     }
 
     setLoading(true);
-    const { data: dbSessions, error } = await fetchActiveSessionsWithOriginFallback(supabase);
+    // A projeção dinâmica inclui joins opcionais; limita o contrato aos campos
+    // que o store usa sem expandir recursivamente os genéricos do SDK.
+    const { data: dbSessions, error } = await fetchActiveSessionsWithOriginFallback(supabase as unknown as SessionsQueryClient, businessUnitId);
+    if (currentScope.current !== scope || request !== requestId.current) return;
 
     if (error) {
       console.error("Error loading sessions:", error);
@@ -91,7 +112,7 @@ export const useSessionStore = () => {
 
     setSessions(map);
     setLoading(false);
-  }, [authLoading, getSupabaseErrorMessage, user]);
+  }, [authLoading, businessUnitId, getSupabaseErrorMessage, scope, setSessions, user]);
 
   useEffect(() => {
     loadSessions();
@@ -121,12 +142,11 @@ export const useSessionStore = () => {
 
   // Use ref for sessions to avoid re-subscribing on every state change
   const sessionsRef = useRef<Record<number, SessionData>>({});
-  useEffect(() => {
-    sessionsRef.current = sessions;
-  }, [sessions]);
+  sessionsRef.current = sessions;
 
   // Realtime subscription for sessions
   useEffect(() => {
+    if (!businessUnitId || !user) return;
     const channel = supabase
       .channel("sessions-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "sessions" }, () => {
@@ -137,6 +157,7 @@ export const useSessionStore = () => {
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders" }, async (payload) => {
         const newRecord = payload.new as any;
+        if (currentScope.current !== scope || newRecord?.business_unit_id !== businessUnitId) return;
         if (newRecord?.status === "ready") {
           // Find table number for this order
           const entry = Object.entries(sessionsRef.current).find(([_, sd]) =>
@@ -150,6 +171,7 @@ export const useSessionStore = () => {
             .from("order_items")
             .select("name, quantity, destination")
             .eq("order_id", newRecord.id);
+          if (currentScope.current !== scope) return;
 
           const kitchenItems = (orderItems ?? []).filter((i: any) => i.destination === "kitchen");
           const barItems = (orderItems ?? []).filter((i: any) => i.destination === "bar");
@@ -190,7 +212,7 @@ export const useSessionStore = () => {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [loadSessions, playReadySound]);
+  }, [businessUnitId, loadSessions, playReadySound, scope, user]);
 
   const startSession = async (
     tableNumber: number,
@@ -344,7 +366,8 @@ export const useSessionStore = () => {
     const { error } = await supabase
       .from("sessions")
       .update({ status: "closed", ended_at: new Date().toISOString() })
-      .eq("id", sessionData.session.dbId);
+      .eq("id", sessionData.session.dbId)
+      .eq("business_unit_id", businessUnitId!);
 
     if (error) {
       toast.error("Erro ao encerrar sessão");
@@ -448,10 +471,12 @@ export const useSessionStore = () => {
   };
 
   const markDelivered = async (orderId: string) => {
+    if (!businessUnitId) return;
     const { error } = await supabase
       .from("orders")
       .update({ status: "delivered" })
-      .eq("id", orderId);
+      .eq("id", orderId)
+      .eq("business_unit_id", businessUnitId!);
 
     if (error) {
       toast.error("Erro ao marcar como entregue");

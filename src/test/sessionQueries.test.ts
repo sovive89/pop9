@@ -1,66 +1,60 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchActiveSessionsWithOriginFallback } from "@/hooks/sessionQueries";
+import { fetchActiveSessionsWithOriginFallback, SESSION_SELECT_LEGACY, SESSION_SELECT_WITH_ORIGIN } from "@/hooks/sessionQueries";
 
-const selectWithOrigin =
-  "id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, origin, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))";
-const selectLegacy =
-  "id, table_number, started_at, session_clients(id, name, phone, added_at, email, cep, bairro, genero), orders(id, client_id, status, placed_at, order_items(menu_item_id, name, price, quantity, observation, ingredient_mods))";
+type Client = Parameters<typeof fetchActiveSessionsWithOriginFallback>[0];
+const fixtures = [
+  { id: "a1", table_number: 1, business_unit_id: "a", status: "active" },
+  { id: "b1", table_number: 1, business_unit_id: "b", status: "active" },
+  { id: "a2", table_number: 2, business_unit_id: "a", status: "closed" },
+];
 
-type SupabaseLikeClient = Parameters<typeof fetchActiveSessionsWithOriginFallback>[0];
+function clientWithError(error?: { code: string; message: string }) {
+  const filters: Array<Array<[string, string]>> = [];
+  const select = vi.fn((selection: string) => {
+    const where: Array<[string, string]> = [];
+    filters.push(where);
+    const query = {
+      eq: vi.fn((key: string, value: string) => { where.push([key, value]); return query; }),
+      then: (resolve: (value: unknown) => unknown) => Promise.resolve(
+        error && selection !== SESSION_SELECT_LEGACY
+          ? { data: null, error }
+          : { data: fixtures.filter(row => where.every(([key, value]) => row[key as keyof typeof row] === value)), error: null }
+      ).then(resolve),
+    };
+    return query;
+  });
+  const from = vi.fn(() => ({ select }));
+  return { client: { from } as unknown as Client, from, select, filters };
+}
 
-describe("fetchActiveSessionsWithOriginFallback", () => {
-  it("returns first query result when origin is available", async () => {
-    const eqMock = vi.fn().mockResolvedValue({ data: [{ id: "s1" }], error: null });
-    const selectMock = vi.fn().mockReturnValue({ eq: eqMock });
-    const fromMock = vi.fn().mockReturnValue({ select: selectMock });
-    const supabaseLike = { from: fromMock } as unknown as SupabaseLikeClient;
-
-    const result = await fetchActiveSessionsWithOriginFallback(supabaseLike);
-
-    expect(result).toEqual({ data: [{ id: "s1" }], error: null });
-    expect(fromMock).toHaveBeenCalledWith("sessions");
-    expect(selectMock).toHaveBeenCalledWith(selectWithOrigin);
-    expect(eqMock).toHaveBeenCalledWith("status", "active");
-    expect(selectMock).toHaveBeenCalledTimes(1);
+describe("active sessions by business unit", () => {
+  it("keeps identically numbered tables in separate units", async () => {
+    const { client, select } = clientWithError();
+    expect((await fetchActiveSessionsWithOriginFallback(client, "a")).data).toEqual([fixtures[0]]);
+    expect((await fetchActiveSessionsWithOriginFallback(client, "b")).data).toEqual([fixtures[1]]);
+    expect(select).toHaveBeenCalledWith(SESSION_SELECT_WITH_ORIGIN);
   });
 
-  it("retries with legacy select when origin column is missing", async () => {
-    const firstEq = vi.fn().mockResolvedValue({
-      data: null,
-      error: { code: "42703", message: "column orders_1.origin does not exist" },
-    });
-    const secondEq = vi.fn().mockResolvedValue({ data: [{ id: "legacy" }], error: null });
-    const selectMock = vi
-      .fn()
-      .mockReturnValueOnce({ eq: firstEq })
-      .mockReturnValueOnce({ eq: secondEq });
-    const fromMock = vi.fn().mockReturnValue({ select: selectMock });
-    const supabaseLike = { from: fromMock } as unknown as SupabaseLikeClient;
-
-    const result = await fetchActiveSessionsWithOriginFallback(supabaseLike);
-
-    expect(result).toEqual({ data: [{ id: "legacy" }], error: null });
-    expect(selectMock).toHaveBeenNthCalledWith(1, selectWithOrigin);
-    expect(selectMock).toHaveBeenNthCalledWith(2, selectLegacy);
-    expect(firstEq).toHaveBeenCalledWith("status", "active");
-    expect(secondEq).toHaveBeenCalledWith("status", "active");
+  it("keeps the unit filter when retrying without origin", async () => {
+    const { client, select, filters } = clientWithError({ code: "42703", message: "column orders_1.origin does not exist" });
+    expect((await fetchActiveSessionsWithOriginFallback(client, "a")).data).toEqual([fixtures[0]]);
+    expect(select).toHaveBeenNthCalledWith(2, SESSION_SELECT_LEGACY);
+    expect(filters).toEqual([
+      [["status", "active"], ["business_unit_id", "a"]],
+      [["status", "active"], ["business_unit_id", "a"]],
+    ]);
   });
 
-  it("does not retry for unrelated errors", async () => {
-    const firstEq = vi.fn().mockResolvedValue({
-      data: null,
-      error: { code: "42501", message: "permission denied" },
-    });
-    const selectMock = vi.fn().mockReturnValue({ eq: firstEq });
-    const fromMock = vi.fn().mockReturnValue({ select: selectMock });
-    const supabaseLike = { from: fromMock } as unknown as SupabaseLikeClient;
+  it("does not query all units before selection", async () => {
+    const { client, from } = clientWithError();
+    expect(await fetchActiveSessionsWithOriginFallback(client, null)).toEqual({ data: [], error: null });
+    expect(from).not.toHaveBeenCalled();
+  });
 
-    const result = await fetchActiveSessionsWithOriginFallback(supabaseLike);
-
-    expect(result).toEqual({
-      data: null,
-      error: { code: "42501", message: "permission denied" },
-    });
-    expect(selectMock).toHaveBeenCalledTimes(1);
+  it("does not retry a permission error", async () => {
+    const error = { code: "42501", message: "permission denied" };
+    const { client, select } = clientWithError(error);
+    expect(await fetchActiveSessionsWithOriginFallback(client, "a")).toEqual({ data: null, error });
+    expect(select).toHaveBeenCalledTimes(1);
   });
 });
