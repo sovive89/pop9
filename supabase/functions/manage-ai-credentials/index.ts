@@ -48,6 +48,19 @@ Deno.serve(async(req)=>{
   if(authErr||!user)return reply({error:"Não autenticado"},401);
   const admin=createClient(url,service);
   const {action,businessUnitId,provider,apiKey}=await req.json();
+  if(action==="units"){
+    const {data:roles,error:rolesError}=await admin.from("user_roles").select("business_unit_id").eq("user_id",user.id).eq("role","admin");
+    if(rolesError)throw rolesError;
+    if(!roles?.length)return reply({error:"Sem permissão de administrador"},403);
+    let query=admin.from("business_units").select("id,name").eq("active",true).order("name");
+    if(!roles.some(r=>r.business_unit_id===null)){
+      const ids=roles.map(r=>r.business_unit_id).filter(Boolean);
+      query=query.in("id",ids);
+    }
+    const {data:units,error:unitsError}=await query;
+    if(unitsError)throw unitsError;
+    return reply({units:units??[]});
+  }
   if(typeof businessUnitId!=="string"||!businessUnitId)return reply({error:"Unidade obrigatória"},400);
   const {data:role}=await admin.from("user_roles").select("id").eq("user_id",user.id).eq("role","admin").or(`business_unit_id.eq.${businessUnitId},business_unit_id.is.null`).limit(1).maybeSingle();
   if(!role)return reply({error:"Sem permissão de administrador nesta unidade"},403);
