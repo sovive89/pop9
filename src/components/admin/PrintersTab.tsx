@@ -47,7 +47,7 @@ const PrintersTab = () => {
   const [tipo, setTipo] = useState<PrinterTipo>("termica");
   const [gatilho, setGatilho] = useState<PrinterGatilho>("comanda_cozinha");
   const [connectionType, setConnectionType] = useState<PrinterConnectionType>("browser");
-  const [deviceIdentifier, setDeviceIdentifier] = useState("");
+  const [deviceIdentifier, setDeviceIdentifier] = useState("");\n  const [host,setHost] = useState("");\n  const [port,setPort] = useState("9100");\n  const [paperWidth,setPaperWidth] = useState("80");\n  const [transport,setTransport] = useState("tcp");\n  const [copies,setCopies] = useState("1");\n  const [autoCut,setAutoCut] = useState(false);\n  const [encoding,setEncoding] = useState("cp850");
 
   const handleTestPrint = (printerName: string, connectionType: PrinterConnectionType) => {
     if (connectionType !== "browser") {
@@ -62,18 +62,18 @@ const PrintersTab = () => {
     setTipo("termica");
     setGatilho("comanda_cozinha");
     setConnectionType("browser");
-    setDeviceIdentifier("");
+    setDeviceIdentifier(""); setHost(""); setPort("9100"); setPaperWidth("80"); setTransport("tcp"); setCopies("1"); setAutoCut(false); setEncoding("cp850");
   };
 
   const handleCreate = async () => {
-    if (!name.trim()) return;
+    if (!name.trim()) return;\n    if (transport === "tcp" && connectionType !== "browser" && (!host.trim() || !/^\\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535)) { toast.error("Informe IP/host e porta TCP válida."); return; }
     setSaving(true);
     const ok = await createPrinter({
       name: name.trim(),
       tipo,
       gatilho,
       connectionType,
-      deviceIdentifier: deviceIdentifier.trim() || null,
+      deviceIdentifier: deviceIdentifier.trim() || null,\n      host: host.trim() || null, port: Number(port), paperWidth: Number(paperWidth), transport, copies: Number(copies), autoCut, encoding,
     });
     setSaving(false);
     if (ok) {
@@ -125,7 +125,7 @@ const PrintersTab = () => {
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
                   {GATILHO_LABELS[p.gatilho]} · {CONNECTION_TYPE_LABELS[p.connectionType]}
-                  {p.deviceIdentifier && ` · ${p.deviceIdentifier}`}
+                  {p.deviceIdentifier && ` · ${p.deviceIdentifier}`}\n                  {p.host && ` · ${p.host}:${p.port}`} · {p.paperWidth}mm
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">\n                <Button size="sm" variant="outline" onClick={() => handleTestPrint(p.name, p.connectionType)} title="Teste via navegador"><TestTube2 className="h-4 w-4 mr-1" /> Testar</Button>
