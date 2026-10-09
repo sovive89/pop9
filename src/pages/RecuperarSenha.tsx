@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Flame, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
-import { SENHA_ABSOLUTA_MIN } from "@/constants/auth";
+import { SENHA_ABSOLUTA_MIN, SENHA_REQUISITOS, senhaValida } from "@/constants/auth";
 
 const RecuperarSenha = () => {
   const navigate = useNavigate();
@@ -28,8 +28,8 @@ const RecuperarSenha = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password.length < SENHA_ABSOLUTA_MIN) {
-      toast.error(`Senha absoluta: mínimo ${SENHA_ABSOLUTA_MIN} caracteres`);
+    if (!senhaValida(password)) {
+      toast.error(SENHA_REQUISITOS);
       return;
     }
     if (password !== confirmPassword) {
@@ -80,7 +80,7 @@ const RecuperarSenha = () => {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder={`Mínimo ${SENHA_ABSOLUTA_MIN} caracteres`}
+                  placeholder={SENHA_REQUISITOS}
                   required
                   minLength={SENHA_ABSOLUTA_MIN}
                   autoComplete="new-password"
