@@ -180,6 +180,27 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   const [category, setCategory] = useState(item?.category ?? (categories[0]?.key ?? ""));
   const [description, setDescription] = useState(item?.description ?? "");
   const [imageUrl, setImageUrl] = useState(item?.image_url ?? "");
+  const [libraryPhotos, setLibraryPhotos] = useState<string[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
+  const loadPhotoLibrary = async () => {
+    if (!businessUnitId) return;
+    setLibraryLoading(true);
+    try {
+      const bucket = supabase.storage.from("menu-images");
+      const [uploads, generated] = await Promise.all([
+        bucket.list(`${businessUnitId}/uploads`, { limit: 100, sortBy: { column: "created_at", order: "desc" } }),
+        bucket.list(`${businessUnitId}/ai`, { limit: 100, sortBy: { column: "created_at", order: "desc" } }),
+      ]);
+      if (uploads.error || generated.error) throw uploads.error ?? generated.error;
+      setLibraryPhotos([
+        ...(uploads.data ?? []).map(file => `${businessUnitId}/uploads/${file.name}`),
+        ...(generated.data ?? []).map(file => `${businessUnitId}/ai/${file.name}`),
+      ].filter(path => !path.endsWith("/.emptyFolderPlaceholder")).map(path => bucket.getPublicUrl(path).data.publicUrl));
+    } catch (error) {
+      toast.error("Não foi possível listar as fotos: " + (error instanceof Error ? error.message : String(error)));
+    } finally { setLibraryLoading(false); }
+  };
   const [sortOrder, setSortOrder] = useState(item?.sort_order?.toString() ?? "0");
   const [active, setActive] = useState(item?.active ?? true);
   // Status já gravado no banco (não o do item aberto): muda assim que um save
@@ -221,7 +242,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     try {
       if (!businessUnitId) { toast.error("Selecione uma unidade antes de enviar a foto"); return; }
       const url = await uploadMenuImage(file, businessUnitId);
-      if (url && trackImage(url)) setImageUrl(url);
+      if (url && trackImage(url)) { setImageUrl(url); setImageFailed(false); }
     } catch (err) {
       toast.error("Erro ao enviar imagem: " + (err instanceof Error ? err.message : String(err)));
     } finally {
@@ -271,10 +292,12 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       return;
     }
     setImageUrl(data.url);
+    setImageFailed(false);
     toast.success("Foto gerada — salve o item para manter");
   };
 
   const removeImage = () => {
+    setImageFailed(false);
     setImageUrl("");
   };
 
