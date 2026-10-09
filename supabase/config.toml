@@ -18,3 +18,7 @@ verify_jwt = false
 
 [functions.admin-assistant]
 verify_jwt = false
+
+[functions.menu-import]
+# Explicit getUser + unit-scoped admin authorization inside the function.
+verify_jwt = false

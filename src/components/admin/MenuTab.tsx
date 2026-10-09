@@ -9,6 +9,8 @@ import { CATEGORY_ICON_OPTIONS, CATEGORY_COLORS, getCategoryIcon, safeCategoryCo
 import { toast } from "sonner";
 import RecipeBuilder, { type RecipeBuilderHandle } from "@/components/admin/RecipeBuilder";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
+import { useSearchParams } from "react-router-dom";
+import MenuImportDialog from "@/components/admin/MenuImportDialog";
 
 // ── Image Upload Helper ──
 // O nome do arquivo é gerado aqui (não depende do ID do item, que só existe
@@ -585,7 +587,14 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
 
 // ── Menu Tab ──
 const MenuTab = () => {
-  const { menuItems, categories, loadingMenu, loadingCategories, saveMenuItem, deleteMenuItem, saveCategory, deleteCategory } = useAdminData();
+  const { menuItems, categories, loadingMenu, loadingCategories, saveMenuItem, deleteMenuItem, saveCategory, deleteCategory, refreshMenu, refreshCategories } = useAdminData();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const importOpen = searchParams.get("import") === "1";
+  const setImportOpen = (value: boolean) => setSearchParams(previous => {
+    const next = new URLSearchParams(previous);
+    if (value) next.set("import", "1"); else next.delete("import");
+    return next;
+  });
   const [editingItem, setEditingItem] = useState<DbMenuItem | null>(null);
   const [creating, setCreating] = useState(false);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
@@ -618,7 +627,11 @@ const MenuTab = () => {
         <Button data-tooltip="Abra ou recolha o cadastro das categorias do cardápio." variant="outline" onClick={() => setShowCategories(!showCategories)} className="gap-2">
           <Tags className="h-4 w-4" /> Categorias ({categories.length})
         </Button>
+        <Button data-tooltip="Envie cardápios e fichas técnicas (PDF, foto, planilha). A IA monta um rascunho para você revisar e gravar." variant="outline" onClick={() => setImportOpen(true)} className="gap-2">
+          <Sparkles className="h-4 w-4" /> Importar com IA
+        </Button>
       </div>
+      <MenuImportDialog open={importOpen} onOpenChange={setImportOpen} onImported={() => { void refreshMenu(); void refreshCategories(); }} />
 
       {/* Categories Management */}
       {showCategories && (
