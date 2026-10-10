@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 
@@ -37,6 +38,25 @@ export interface Lote {
   conteudoPorCaixa: number | null;
   statusValidade: "sem_validade" | "vencido" | "vence_em_breve" | "valido";
 }
+
+/**
+ * Payload aceito pela edição de lote de compra.
+ *
+ * Todos os valores são JSON nativo para que o contrato também seja válido
+ * como `p_data` da RPC, sem converter um Record genérico por cast. O caller
+ * da tela monta exatamente este formato.
+ */
+export type PurchaseLotEditData = {
+  quantidade_compra: number;
+  fator_conversao: number;
+  unidade_compra: string;
+  custo_total: number | null;
+  fornecedor_id: string | null;
+  validade: string | null;
+  numero_lote: string;
+  caixas: number | null;
+  conteudo_por_caixa: number | null;
+};
 
 export interface AlocacaoFefo {
   loteId: string | null; // null = sem lote rastreado suficiente (fallback, não bloqueia)
@@ -248,12 +268,12 @@ export const useStockData = () => {
           validade: l.validade,
           fornecedorId: l.fornecedor_id,
           precoUnitario: l.preco_unitario !== null ? Number(l.preco_unitario) : null,
-          unidadeCompra: (l as any).unidade_compra ?? null,
-          quantidadeCompra: (l as any).quantidade_compra == null ? null : Number((l as any).quantidade_compra),
-          fatorConversao: (l as any).fator_conversao == null ? null : Number((l as any).fator_conversao),
-          custoTotal: (l as any).custo_total == null ? null : Number((l as any).custo_total),
-          caixas: (l as any).caixas == null ? null : Number((l as any).caixas),
-          conteudoPorCaixa: (l as any).conteudo_por_caixa == null ? null : Number((l as any).conteudo_por_caixa),
+          unidadeCompra: l.unidade_compra ?? null,
+          quantidadeCompra: l.quantidade_compra == null ? null : Number(l.quantidade_compra),
+          fatorConversao: l.fator_conversao == null ? null : Number(l.fator_conversao),
+          custoTotal: l.custo_total == null ? null : Number(l.custo_total),
+          caixas: l.caixas == null ? null : Number(l.caixas),
+          conteudoPorCaixa: l.conteudo_por_caixa == null ? null : Number(l.conteudo_por_caixa),
           statusValidade: statusValidade(l.validade),
         };
       })
@@ -433,24 +453,30 @@ export const useStockData = () => {
       input.numeroLote?.trim() ||
       `L-${new Date().toISOString().replace(/[-:T.]/g, "").slice(0, 14)}`;
 
+    // Estes campos pertencem às migrations de lotes de compra, cujo contrato
+    // já está tipado aqui, mas ainda não existe no remoto atual. Se a
+    // migration não foi aplicada, preserve o erro do insert e o aviso abaixo;
+    // não aplicar migrations automaticamente nem esconder o drift com cast.
+    const lotePayload = {
+      raw_material_id: input.rawMaterialId,
+      numero_lote: numeroLote,
+      origem: "compra",
+      quantidade_entrada: input.quantity,
+      validade: input.validade || null,
+      fornecedor_id: input.supplierId,
+      preco_unitario: input.unitCost,
+      unidade_compra: input.purchaseUnit,
+      quantidade_compra: input.purchaseQuantity,
+      fator_conversao: input.conversionFactor,
+      custo_total: input.totalCost,
+      caixas: input.boxCount ?? null,
+      conteudo_por_caixa: input.unitsPerBox ?? null,
+      business_unit_id: businessUnitId,
+    } satisfies Database["public"]["Tables"]["lotes"]["Insert"];
+
     const { data: loteRow, error: loteErr } = await supabase
       .from("lotes")
-      .insert({
-        raw_material_id: input.rawMaterialId,
-        numero_lote: numeroLote,
-        origem: "compra",
-        quantidade_entrada: input.quantity,
-        validade: input.validade || null,
-        fornecedor_id: input.supplierId,
-        preco_unitario: input.unitCost,
-        unidade_compra: input.purchaseUnit,
-        quantidade_compra: input.purchaseQuantity,
-        fator_conversao: input.conversionFactor,
-        custo_total: input.totalCost,
-        caixas: input.boxCount ?? null,
-        conteudo_por_caixa: input.unitsPerBox ?? null,
-        business_unit_id: businessUnitId,
-      } as any)
+      .insert(lotePayload)
       .select()
       .single();
 
@@ -630,10 +656,20 @@ export const useStockData = () => {
     return true;
   };
 
-  const managePurchaseLot = async (loteId: string, action: "edit" | "cancel", data?: Record<string, unknown>) => {
-    const { error } = await supabase.rpc("manage_purchase_lot" as any, {
-      p_lote_id: loteId, p_action: action, p_data: data ?? {},
-    } as any);
+  const managePurchaseLot = async (
+    loteId: string,
+    action: "edit" | "cancel",
+    data?: PurchaseLotEditData,
+  ) => {
+    // A RPC também depende de migration ausente no remoto atual. Use o
+    // contrato gerado para manter p_data como Json e deixe o erro chegar ao
+    // toast, em vez de afirmar que a função existe com uma asserção genérica.
+    const args: Database["public"]["Functions"]["manage_purchase_lot"]["Args"] = {
+      p_lote_id: loteId,
+      p_action: action,
+      ...(data === undefined ? {} : { p_data: data }),
+    };
+    const { error } = await supabase.rpc("manage_purchase_lot", args);
     if (error) {
       toast.error("Não foi possível alterar o lote: " + error.message);
       return false;

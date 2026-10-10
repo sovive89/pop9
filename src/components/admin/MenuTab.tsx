@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Flame, Plus, Trash2, Pencil, Save, X, ChevronDown, ChevronUp, Tags, ImagePlus, Image, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,10 +49,19 @@ const AI_IMAGE_MODELS = [
   { id: "openai/gpt-image-1", label: "GPT Image (OpenAI)", provider: "openai" },
 ];
 
+type CategoryInput = Omit<DbMenuCategory, "id"> & { id?: string };
+type MenuItemInput = Omit<DbMenuItem, "id" | "sku" | "sort_order" | "ingredients" | "variants"> & {
+  id?: string;
+  sort_order?: number;
+  ingredients: Omit<DbIngredient, "id">[];
+  variants: Omit<DbVariant, "id">[];
+};
+type MenuItemSaveResult = string | false | { failedId: string };
+
 // ── Category Editor ──
 interface CategoryEditorProps {
   category?: DbMenuCategory;
-  onSave: (cat: any, isNew: boolean) => Promise<boolean>;
+  onSave: (cat: CategoryInput, isNew: boolean) => Promise<boolean>;
   onCancel: () => void;
 }
 
@@ -152,7 +161,7 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
 interface MenuEditorProps {
   item?: DbMenuItem;
   categories: DbMenuCategory[];
-  onSave: (item: any, isNew: boolean) => Promise<string | false | { failedId: string }>;
+  onSave: (item: MenuItemInput, isNew: boolean) => Promise<MenuItemSaveResult>;
   onCancel: () => void;
 }
 
@@ -303,13 +312,12 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     setImageUrl("");
   };
 
-  // Cancelar: descarta tudo que foi enviado/gerado nesta edição.
-  const discardSessionImages = () => {
+  // Encerra o estado desta edição; mantém as fotos no acervo.
+  const discardSessionImages = useCallback(() => {
     closed.current = true;
-    const leftovers = sessionImages.current.filter((u) => u !== persistedImage.current);
     sessionImages.current = [];
     // Preserva todas as fotos no acervo para reutilização posterior.
-  };
+  }, []);
 
   // Não deixa fechar no meio do save: a foto ainda não foi gravada no item e
   // seria apagada antes de a URL chegar ao banco.
@@ -319,9 +327,8 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     onCancel();
   };
 
-  // Trocar de seção do admin desmonta o editor sem passar por Cancelar/Salvar:
-  // apaga as fotos enviadas/geradas que não foram gravadas e ignora respostas atrasadas.
-  useEffect(() => discardSessionImages, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Ao desmontar, limpa o rastreamento local e ignora respostas atrasadas.
+  useEffect(() => discardSessionImages, [discardSessionImages]);
 
   // ID, SKU e ordem inicial são definidos pelo banco (trigger + defaults).
   // O status muda pela ação escolhida: "Salvar rascunho" ou "Publicar".
@@ -380,8 +387,9 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     setIngredients([...ingredients, { name: "", removable: true, extra_price: null, sort_order: ingredients.length }]);
   };
 
-  const updateIngredient = (idx: number, field: string, value: any) => {
-    setIngredients(ingredients.map((ing, i) => i === idx ? { ...ing, [field]: value } : ing));
+  type IngredientPatch = Partial<Pick<DbIngredient, "name" | "extra_price" | "removable">>;
+  const updateIngredient = (idx: number, patch: IngredientPatch) => {
+    setIngredients((current) => current.map((ing, i) => i === idx ? { ...ing, ...patch } : ing));
   };
 
   const removeIngredient = (idx: number) => {
@@ -533,10 +541,10 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
         </div>
         {ingredients.map((ing, idx) => (
           <div key={idx} className="flex items-center gap-2 rounded-lg bg-secondary/30 p-2">
-            <Input value={ing.name} onChange={(e) => updateIngredient(idx, "name", e.target.value)} placeholder="Nome" className="h-8 text-xs flex-1" />
-            <Input type="number" step="0.01" value={ing.extra_price ?? ""} onChange={(e) => updateIngredient(idx, "extra_price", e.target.value ? parseFloat(e.target.value) : null)} placeholder="Extra R$" className="h-8 text-xs w-20" />
+            <Input value={ing.name} onChange={(e) => updateIngredient(idx, { name: e.target.value })} placeholder="Nome" className="h-8 text-xs flex-1" />
+            <Input type="number" step="0.01" value={ing.extra_price ?? ""} onChange={(e) => updateIngredient(idx, { extra_price: e.target.value ? parseFloat(e.target.value) : null })} placeholder="Extra R$" className="h-8 text-xs w-20" />
             <label className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
-              <input type="checkbox" checked={ing.removable} onChange={(e) => updateIngredient(idx, "removable", e.target.checked)} />
+              <input type="checkbox" checked={ing.removable} onChange={(e) => updateIngredient(idx, { removable: e.target.checked })} />
               Removível
             </label>
             <button data-tooltip="Retire este ingrediente da lista exibida ao cliente. A ficha técnica é editada separadamente." aria-label="Retire este ingrediente da lista exibida ao cliente. A ficha técnica é editada separadamente." onClick={() => removeIngredient(idx)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-3.5 w-3.5" /></button>

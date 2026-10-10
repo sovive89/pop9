@@ -40,6 +40,38 @@ const formatCPFInput = (value: string) => {
 
 type ModalMode = "create" | "edit" | "delete" | null;
 
+type ManageUserPayload =
+  | { admin_password: string }
+  | {
+      admin_password: string;
+      action: "create";
+      full_name: string;
+      cpf: string;
+      password: string;
+      roles: string[];
+      business_unit_id: string;
+    }
+  | {
+      admin_password: string;
+      action: "update";
+      user_id: string;
+      full_name?: string;
+      new_password?: string;
+    }
+  | { admin_password: string; action: "delete"; user_id: string };
+
+type ManageUserResponse =
+  | { success: true; user_id?: string }
+  | { error: string };
+
+type ErrorWithMessage = { message: string };
+
+const isErrorWithMessage = (value: unknown): value is ErrorWithMessage =>
+  typeof value === "object" &&
+  value !== null &&
+  "message" in value &&
+  typeof value.message === "string";
+
 const UsersTab = () => {
   const { businessUnitId } = useCurrentBusinessUnit();
   const { users, loadingUsers, addRole, removeRole, refreshUsers } = useAdminData();
@@ -102,7 +134,7 @@ const UsersTab = () => {
 
     setFormLoading(true);
     try {
-      let body: any = { admin_password: adminPassword };
+      let body: ManageUserPayload = { admin_password: adminPassword };
 
       if (modalMode === "create") {
         if (!businessUnitId) { toast.error("Selecione uma unidade para cadastrar o usuário"); setFormLoading(false); return; }
@@ -115,26 +147,44 @@ const UsersTab = () => {
           return;
         }
 
-        body = { ...body, action: "create", full_name: formName.trim(), cpf: cpfDigits, password: formPassword, roles: formRoles, business_unit_id: businessUnitId };
+        body = {
+          admin_password: adminPassword,
+          action: "create",
+          full_name: formName.trim(),
+          cpf: cpfDigits,
+          password: formPassword,
+          roles: formRoles,
+          business_unit_id: businessUnitId,
+        };
       } else if (modalMode === "edit") {
         if (formPassword && !senhaValida(formPassword)) {
           toast.error(SENHA_REQUISITOS);
           setFormLoading(false);
           return;
         }
-        body = { ...body, action: "update", user_id: selectedUser!.userId, full_name: formName.trim() || undefined, new_password: formPassword || undefined };
+        body = {
+          admin_password: adminPassword,
+          action: "update",
+          user_id: selectedUser!.userId,
+          full_name: formName.trim() || undefined,
+          new_password: formPassword || undefined,
+        };
       } else if (modalMode === "delete") {
-        body = { ...body, action: "delete", user_id: selectedUser!.userId };
+        body = {
+          admin_password: adminPassword,
+          action: "delete",
+          user_id: selectedUser!.userId,
+        };
       }
 
-      const { data, error } = await supabase.functions.invoke("manage-user", { body });
+      const { data, error } = await supabase.functions.invoke<ManageUserResponse>("manage-user", { body });
 
       if (error) {
         toast.error(error.message || "Erro na operação");
         setFormLoading(false);
         return;
       }
-      if (data?.error) {
+      if (data && "error" in data) {
         toast.error(data.error);
         setFormLoading(false);
         return;
@@ -147,8 +197,8 @@ const UsersTab = () => {
       );
       closeModal();
       await refreshUsers();
-    } catch (err: any) {
-      toast.error(err.message || "Erro inesperado");
+    } catch (err: unknown) {
+      toast.error(isErrorWithMessage(err) ? err.message : "Erro inesperado");
     } finally {
       setFormLoading(false);
     }

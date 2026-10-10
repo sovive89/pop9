@@ -8,11 +8,13 @@ import { motion } from "framer-motion";
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Flame, ArrowLeft, TrendingUp, ShoppingBag, BarChart3, CalendarIcon, DollarSign, Package, Hash, CreditCard, Banknote, Smartphone, Wallet, Thermometer } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, LineChart, Line } from "recharts";
+import type { TooltipProps } from "recharts";
 
 type PeriodPreset = "today" | "week" | "month" | "custom";
 
@@ -51,6 +53,22 @@ const CHART_COLORS = [
 ];
 
 const DAY_NAMES = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+
+const METHOD_LABELS: Record<string, string> = {
+  dinheiro: "Dinheiro",
+  cartao: "Cartão",
+  pix: "Pix",
+};
+
+const METHOD_ICONS: Record<string, LucideIcon> = {
+  dinheiro: Banknote,
+  cartao: CreditCard,
+  pix: Smartphone,
+};
+
+type CustomTooltipProps = Pick<TooltipProps<number, string>, "active" | "payload"> & {
+  label?: string | number;
+};
 
 const Reports = () => {
   const { user, loading } = useAuth();
@@ -178,9 +196,6 @@ const Reports = () => {
   }, [orders]);
 
   // ── Payments by method ──
-  const METHOD_LABELS: Record<string, string> = { dinheiro: "Dinheiro", cartao: "Cartão", pix: "Pix" };
-  const METHOD_ICONS: Record<string, React.ComponentType<any>> = { dinheiro: Banknote, cartao: CreditCard, pix: Smartphone };
-
   const paymentsByMethod = useMemo(() => {
     const map = new Map<string, { method: string; label: string; total: number; count: number; serviceCharge: number }>();
     for (const p of payments) {
@@ -239,12 +254,12 @@ const Reports = () => {
   const formatCurrency = (v: number) =>
     v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
     if (!active || !payload?.length) return null;
     return (
       <div className="rounded-lg border border-border bg-card p-3 shadow-lg">
         <p className="text-sm font-medium text-foreground">{label}</p>
-        {payload.map((p: any, i: number) => (
+        {payload.map((p, i) => (
           <p key={i} className="text-sm text-muted-foreground">
             {p.name === "revenue" ? "Faturamento" : p.name}: {" "}
             <span className="font-semibold text-primary">

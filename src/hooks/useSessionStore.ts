@@ -3,13 +3,22 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import type { SetStateAction } from "react";
 import { isKitchenItem } from "@/data/menu";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import type { ClientInfo, TableSession } from "@/components/TableSessionPanel";
-import type { ClientOrder, PlacedOrder, OrderItem, IngredientMod } from "@/utils/orders";
+import type { ClientOrder, PlacedOrder, OrderItem } from "@/utils/orders";
 import { buildKitchenReceipts, printReceipt } from "@/utils/thermal-print";
 import { fetchActiveSessionsWithOriginFallback } from "@/hooks/sessionQueries";
 import type { SessionsQueryClient } from "@/hooks/sessionQueries";
+import {
+  parseActiveSessionRow,
+  parsePlacedOrder,
+  parseSessionClientRows,
+  parseSessionOrderRows,
+  parseOrderRealtimeRow,
+  toClientInfo,
+} from "@/lib/session-row-parsers";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 
 import { beginReadyNotification, isCurrentReadyNotification, dismissReadyNotification, readyNotificationId, ORDER_DELIVERED_EVENT } from "@/utils/orderNotifications";
@@ -72,34 +81,22 @@ export const useSessionStore = () => {
 
     const map: Record<number, SessionData> = {};
 
-    for (const s of dbSessions ?? []) {
-      const clients: ClientInfo[] = ((s as any).session_clients ?? []).map((c: any) => ({
-        id: c.id,
-        name: c.name,
-        phone: c.phone ?? undefined,
-        addedAt: new Date(c.added_at),
-        email: c.email ?? undefined,
-        cep: c.cep ?? undefined,
-        bairro: c.bairro ?? undefined,
-        genero: c.genero ?? undefined,
-      }));
+    for (const rawSession of dbSessions ?? []) {
+      const s = parseActiveSessionRow(rawSession);
+      if (!s) {
+        console.warn("Ignoring malformed active session row");
+        continue;
+      }
+
+      const clients: ClientInfo[] = parseSessionClientRows(s.session_clients).map(toClientInfo);
 
       const clientOrders: ClientOrder[] = clients.map((c) => {
-        const dbOrders = ((s as any).orders ?? []).filter((o: any) => o.client_id === c.id && o.status !== "cancelled");
-        const placedOrders: PlacedOrder[] = dbOrders.map((o: any) => ({
-          id: o.id,
-          status: o.status,
-          placedAt: new Date(o.placed_at),
-          origin: o.origin === "pwa" ? "pwa" : "mesa",
-          items: (o.order_items ?? []).map((oi: any) => ({
-            menuItemId: oi.menu_item_id,
-            name: oi.name,
-            price: Number(oi.price),
-            quantity: oi.quantity,
-            observation: oi.observation ?? undefined,
-            ingredientMods: (oi.ingredient_mods as IngredientMod[]) ?? undefined,
-          })),
-        }));
+        const dbOrders = parseSessionOrderRows(s.orders)
+          .filter((o) => o.client_id === c.id && o.status !== "cancelled");
+        const placedOrders: PlacedOrder[] = dbOrders.flatMap((o) => {
+          const placedOrder = parsePlacedOrder(o);
+          return placedOrder ? [placedOrder] : [];
+        });
         return { clientId: c.id, cart: [], orders: placedOrders };
       });
 
@@ -176,10 +173,10 @@ export const useSessionStore = () => {
         loadSessions();
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders" }, async (payload) => {
-        const newRecord = payload.new as any;
-        if (currentScope.current !== scope || newRecord?.business_unit_id !== businessUnitId) return;
-        if (newRecord?.status !== "ready") dismissReadyNotification(newRecord.id);
-        if (newRecord?.status === "ready") {
+        const newRecord = parseOrderRealtimeRow(payload.new);
+        if (!newRecord || currentScope.current !== scope || newRecord.business_unit_id !== businessUnitId) return;
+        if (newRecord.status !== "ready") dismissReadyNotification(newRecord.id);
+        if (newRecord.status === "ready") {
           const notificationToken = beginReadyNotification(newRecord.id);
           // Find table number for this order
           const entry = Object.entries(sessionsRef.current).find(([_, sd]) =>
@@ -195,8 +192,8 @@ export const useSessionStore = () => {
             .eq("order_id", newRecord.id);
           if (currentScope.current !== scope || !isCurrentReadyNotification(newRecord.id, notificationToken)) return;
 
-          const kitchenItems = (orderItems ?? []).filter((i: any) => i.destination === "kitchen");
-          const barItems = (orderItems ?? []).filter((i: any) => i.destination === "bar");
+          const kitchenItems = (orderItems ?? []).filter((i) => i.destination === "kitchen");
+          const barItems = (orderItems ?? []).filter((i) => i.destination === "bar");
 
           // Find client name
           const clientName = entry
@@ -208,8 +205,8 @@ export const useSessionStore = () => {
               })()
             : "Cliente";
 
-          const kitchenList = kitchenItems.map((i: any) => `${i.quantity}× ${i.name}`).join(", ");
-          const barList = barItems.map((i: any) => `${i.quantity}× ${i.name}`).join(", ");
+          const kitchenList = kitchenItems.map((i) => `${i.quantity}× ${i.name}`).join(", ");
+          const barList = barItems.map((i) => `${i.quantity}× ${i.name}`).join(", ");
 
           playReadySound();
 
@@ -267,20 +264,22 @@ export const useSessionStore = () => {
       return false;
     }
 
+    const clientInsert = {
+      session_id: session.id,
+      name: clientData.name,
+      phone: clientData.phone,
+      email: clientData.email,
+      cep: clientData.cep,
+      bairro: clientData.bairro,
+      genero: clientData.genero,
+      faixa_etaria: clientData.faixa_etaria,
+      origem_conhecimento: clientData.origem_conhecimento,
+      business_unit_id: businessUnitId,
+    } satisfies Database["public"]["Tables"]["session_clients"]["Insert"];
+
     const { data: client, error: cErr } = await supabase
       .from("session_clients")
-      .insert({
-        session_id: session.id,
-        name: clientData.name,
-        phone: clientData.phone,
-        email: clientData.email,
-        cep: clientData.cep,
-        bairro: clientData.bairro,
-        genero: clientData.genero,
-        faixa_etaria: clientData.faixa_etaria,
-        origem_conhecimento: clientData.origem_conhecimento,
-        business_unit_id: businessUnitId,
-      } as any)
+      .insert(clientInsert)
       .select()
       .single();
 
@@ -305,6 +304,8 @@ export const useSessionStore = () => {
             cep: client.cep ?? undefined,
             bairro: client.bairro ?? undefined,
             genero: client.genero ?? undefined,
+            faixa_etaria: client.faixa_etaria ?? undefined,
+            origem_conhecimento: client.origem_conhecimento ?? undefined,
           }],
         },
         orders: [{ clientId: client.id, cart: [], orders: [] }],
@@ -331,20 +332,22 @@ export const useSessionStore = () => {
     const sessionData = sessions[tableNumber];
     if (!sessionData) return false;
 
+    const clientInsert = {
+      session_id: sessionData.session.dbId,
+      name: clientData.name,
+      phone: clientData.phone,
+      email: clientData.email,
+      cep: clientData.cep,
+      bairro: clientData.bairro,
+      genero: clientData.genero,
+      faixa_etaria: clientData.faixa_etaria,
+      origem_conhecimento: clientData.origem_conhecimento,
+      business_unit_id: businessUnitId,
+    } satisfies Database["public"]["Tables"]["session_clients"]["Insert"];
+
     const { data: client, error } = await supabase
       .from("session_clients")
-      .insert({
-        session_id: sessionData.session.dbId,
-        name: clientData.name,
-        phone: clientData.phone,
-        email: clientData.email,
-        cep: clientData.cep,
-        bairro: clientData.bairro,
-        genero: clientData.genero,
-        faixa_etaria: clientData.faixa_etaria,
-        origem_conhecimento: clientData.origem_conhecimento,
-        business_unit_id: businessUnitId,
-      } as any)
+      .insert(clientInsert)
       .select()
       .single();
 
@@ -371,6 +374,8 @@ export const useSessionStore = () => {
               cep: client.cep ?? undefined,
               bairro: client.bairro ?? undefined,
               genero: client.genero ?? undefined,
+              faixa_etaria: client.faixa_etaria ?? undefined,
+              origem_conhecimento: client.origem_conhecimento ?? undefined,
             }],
           },
           orders: [...curr.orders, { clientId: client.id, cart: [], orders: [] }],

@@ -6,6 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+type UserRoleIdRow = { user_id: string };
+
 // Web Push crypto helpers using Web Crypto API
 async function generatePushPayload(
   subscription: { endpoint: string; p256dh: string; auth: string },
@@ -47,7 +49,7 @@ function base64urlEncode(data: Uint8Array): string {
     .replace(/=+$/, "");
 }
 
-function base64urlDecode(str: string): Uint8Array {
+function base64urlDecode(str: string): Uint8Array<ArrayBuffer> {
   str = str.replace(/-/g, "+").replace(/_/g, "/");
   while (str.length % 4) str += "=";
   const binary = atob(str);
@@ -144,7 +146,7 @@ async function encryptPayload(
   payload: string,
   p256dhBase64: string,
   authBase64: string
-): Promise<Uint8Array> {
+): Promise<Uint8Array<ArrayBuffer>> {
   const userPublicKey = base64urlDecode(p256dhBase64);
   const userAuth = base64urlDecode(authBase64);
 
@@ -228,9 +230,9 @@ async function hkdf(
   ikm: Uint8Array,
   info: Uint8Array,
   length: number
-): Promise<Uint8Array> {
-  const key = await crypto.subtle.importKey("raw", ikm, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const prk = new Uint8Array(await crypto.subtle.sign("HMAC", key, salt));
+): Promise<Uint8Array<ArrayBuffer>> {
+  const key = await crypto.subtle.importKey("raw", new Uint8Array(ikm), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const prk = new Uint8Array(await crypto.subtle.sign("HMAC", key, new Uint8Array(salt)));
 
   const prkKey = await crypto.subtle.importKey("raw", prk, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const infoFull = new Uint8Array(info.length + 1);
@@ -349,9 +351,10 @@ serve(async (req) => {
       const { data: roles } = await supabaseAdmin
         .from("user_roles")
         .select("user_id")
-        .in("role", ["attendant", "admin"]);
+        .in("role", ["attendant", "admin"])
+        .overrideTypes<UserRoleIdRow[]>();
 
-      const userIds = [...new Set((roles ?? []).map((r: any) => r.user_id))];
+      const userIds = [...new Set((roles ?? []).map((r) => r.user_id))];
 
       if (userIds.length === 0) {
         return new Response(JSON.stringify({ sent: 0 }), {

@@ -27,8 +27,16 @@ export function normalizeUnit(value: unknown): string {
   };
   return map[raw] ?? raw;
 }
+export function replaceAsciiControlChars(value: string): string {
+  let sanitized = '';
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+    sanitized += codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f) ? ' ' : character;
+  }
+  return sanitized;
+}
 function text(value: unknown, max = LIMITS.text): string {
-  return typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) : '';
+  return typeof value === 'string' ? replaceAsciiControlChars(value).replace(/\s+/g, ' ').trim().slice(0, max) : '';
 }
 function positive(value: unknown): number | null {
   const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value.replace(',', '.')) : NaN;

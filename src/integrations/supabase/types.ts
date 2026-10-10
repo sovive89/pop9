@@ -14,6 +14,21 @@ export type Database = {
   }
   public: {
     Tables: {
+      // Verified in public schema; types only, never expose credential rows to UI.
+      ai_provider_credentials: {
+        Row: { id: string; business_unit_id: string; provider: string; encrypted_key: string; iv: string; status: string; validated_at: string | null; created_at: string; updated_at: string }
+        Insert: { id?: string; business_unit_id: string; provider: string; encrypted_key: string; iv: string; status?: string; validated_at?: string | null; created_at?: string; updated_at?: string }
+        Update: { provider?: string; encrypted_key?: string; iv?: string; status?: string; validated_at?: string | null; updated_at?: string }
+        Relationships: []
+      }
+      // Legacy migration 20260226214555. Absent in current production;
+      // useTableZones must retain its fallback when this relation is unavailable.
+      table_zones: {
+        Row: { id: string; key: string; label: string; icon: string; cols: number; table_start: number; table_end: number; sort_order: number; created_at: string; updated_at: string }
+        Insert: { id?: string; key: string; label: string; icon?: string; cols?: number; table_start: number; table_end: number; sort_order?: number; created_at?: string; updated_at?: string }
+        Update: { key?: string; label?: string; icon?: string; cols?: number; table_start?: number; table_end?: number; sort_order?: number; updated_at?: string }
+        Relationships: []
+      }
       app_config: {
         Row: {
           key: string
@@ -229,6 +244,14 @@ export type Database = {
       }
       lotes: {
         Row: {
+          // Target contract of migration 20261008180000; not deployed by type edits.
+          unidade_compra: string | null
+          quantidade_compra: number | null
+          fator_conversao: number | null
+          custo_total: number | null
+          caixas: number | null
+          conteudo_por_caixa: number | null
+          cancelado_em: string | null
           batch_id: string | null
           business_unit_id: string
           created_at: string
@@ -244,6 +267,13 @@ export type Database = {
           validade: string | null
         }
         Insert: {
+          unidade_compra?: string | null
+          quantidade_compra?: number | null
+          fator_conversao?: number | null
+          custo_total?: number | null
+          caixas?: number | null
+          conteudo_por_caixa?: number | null
+          cancelado_em?: string | null
           batch_id?: string | null
           business_unit_id: string
           created_at?: string
@@ -259,6 +289,13 @@ export type Database = {
           validade?: string | null
         }
         Update: {
+          unidade_compra?: string | null
+          quantidade_compra?: number | null
+          fator_conversao?: number | null
+          custo_total?: number | null
+          caixas?: number | null
+          conteudo_por_caixa?: number | null
+          cancelado_em?: string | null
           batch_id?: string | null
           business_unit_id?: string
           created_at?: string
@@ -1236,6 +1273,8 @@ export type Database = {
       session_clients: {
         Row: {
           added_at: string
+          faixa_etaria: string | null
+          origem_conhecimento: string | null
           bairro: string | null
           business_unit_id: string
           cep: string | null
@@ -1250,6 +1289,8 @@ export type Database = {
         }
         Insert: {
           added_at?: string
+          faixa_etaria?: string | null
+          origem_conhecimento?: string | null
           bairro?: string | null
           business_unit_id: string
           cep?: string | null
@@ -1264,6 +1305,8 @@ export type Database = {
         }
         Update: {
           added_at?: string
+          faixa_etaria?: string | null
+          origem_conhecimento?: string | null
           bairro?: string | null
           business_unit_id?: string
           cep?: string | null
@@ -1816,6 +1859,11 @@ export type Database = {
       }
     }
     Functions: {
+      // Requires deployment of the versioned purchase-lot migrations.
+      manage_purchase_lot: {
+        Args: { p_lote_id: string; p_action: string; p_data?: Json }
+        Returns: undefined
+      }
       get_session_checkout: { Args: { p_session_id: string }; Returns: Json }
       request_session_closure: { Args: { p_session_id: string; p_service_charge?: boolean }; Returns: Json }
 

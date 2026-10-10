@@ -3,6 +3,7 @@ import {pickupLabel} from "@/utils/operationalLinks";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import type { QueryData } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import type { IngredientMod } from "@/utils/orders";
+import { parseIngredientMods } from "@/lib/kitchen-order-parsers";
 import { useAuth } from "@/hooks/useAuth";
 
 // ── Types ──
@@ -37,10 +39,24 @@ interface KitchenOrder {
   items: KitchenItem[];
 }
 
+type AudioWindow = Window & {
+  AudioContext?: typeof AudioContext;
+  webkitAudioContext?: typeof AudioContext;
+};
+
+const createAudioContext = (): AudioContext | undefined => {
+  if (typeof window === "undefined") return undefined;
+  const win = window as AudioWindow;
+  const Ctor = win.AudioContext ?? win.webkitAudioContext;
+  if (!Ctor) return undefined;
+  return new Ctor();
+};
+
 // ── Sound Effects ──
 const playNewOrderSound = () => {
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const ctx = createAudioContext();
+    if (!ctx) return;
     const playTone = (freq: number, start: number, dur: number) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -60,7 +76,8 @@ const playNewOrderSound = () => {
 
 const playReadySound = () => {
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const ctx = createAudioContext();
+    if (!ctx) return;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = "sine";
@@ -159,6 +176,33 @@ const getFoodEmoji = (name: string): string => {
   if (n.includes("onion") || n.includes("cebola")) return "🧅";
   return "🍽️";
 };
+
+const kitchenOrderQuery = () => supabase.from("orders").select(
+  "id, status, placed_at, order_items(*), sessions!inner(table_number), session_clients!inner(name)",
+);
+type KitchenOrderRow = QueryData<ReturnType<typeof kitchenOrderQuery>>[number];
+
+const mapOrder = (o: KitchenOrderRow): KitchenOrder => ({
+  id: o.id,
+  status: o.status,
+  placedAt: new Date(o.placed_at),
+  startedAt: o.status === "preparing" ? new Date(o.placed_at) : undefined,
+  tableNumber: o.sessions?.table_number ?? 0,
+  clientName: o.session_clients?.name ?? "Cliente",
+  items: (o.order_items ?? [])
+    .filter((oi) => oi.destination === "kitchen")
+    .map((oi) => ({
+      id: oi.id,
+      menuItemId: oi.menu_item_id,
+      name: oi.name,
+      quantity: oi.quantity,
+      readyQuantity: oi.ready_quantity ?? 0,
+      observation: oi.observation ?? undefined,
+      ingredientMods: parseIngredientMods(oi.ingredient_mods),
+      claimedBy: oi.claimed_by ?? undefined,
+      claimedAt: oi.claimed_at ? new Date(oi.claimed_at) : undefined,
+    })),
+});
 
 // ── Kitchen Display ──
 const KitchenDisplay = () => {
@@ -270,32 +314,8 @@ const KitchenDisplay = () => {
     });
   }, []);
 
-  const mapOrder = (o: any): KitchenOrder => ({
-    id: o.id,
-    status: o.status,
-    placedAt: new Date(o.placed_at),
-    startedAt: o.status === "preparing" ? new Date(o.placed_at) : undefined,
-    tableNumber: o.sessions?.table_number ?? 0,
-    clientName: o.session_clients?.name ?? "Cliente",
-    items: (o.order_items ?? [])
-      .filter((oi: any) => oi.destination === "kitchen")
-      .map((oi: any) => ({
-        id: oi.id,
-        menuItemId: oi.menu_item_id,
-        name: oi.name,
-        quantity: oi.quantity,
-        readyQuantity: oi.ready_quantity ?? 0,
-        observation: oi.observation ?? undefined,
-        ingredientMods: (oi.ingredient_mods as IngredientMod[]) ?? undefined,
-        claimedBy: oi.claimed_by ?? undefined,
-        claimedAt: oi.claimed_at ? new Date(oi.claimed_at) : undefined,
-      })),
-  });
-
   const loadOrders = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("orders")
-      .select("id, status, placed_at, order_items(*), sessions!inner(table_number), session_clients!inner(name)")
+    const { data, error } = await kitchenOrderQuery()
       .in("status", ["pending", "preparing"])
       .order("placed_at", { ascending: true });
 
@@ -321,9 +341,7 @@ const KitchenDisplay = () => {
 
   const loadFinished = useCallback(async () => {
     const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-    const { data } = await supabase
-      .from("orders")
-      .select("id, status, placed_at, order_items(*), sessions!inner(table_number), session_clients!inner(name)")
+    const { data } = await kitchenOrderQuery()
       .eq("status", "ready")
       .gte("placed_at", thirtyMinAgo)
       .order("placed_at", { ascending: false })
@@ -762,7 +780,7 @@ const KitchenDisplay = () => {
                             <div
                               key={order.id}
                               draggable={!paused && !isReadOnly}
-                              onDragStart={(e) => !isReadOnly && handleDragStart(e as any, order.id)}
+                              onDragStart={(e) => !isReadOnly && handleDragStart(e, order.id)}
                               onDoubleClick={() => !paused && !isReadOnly && order.status === "pending" && handleStartPreparing(order.id)}
                               className={`rounded-lg bg-black/10 p-2 transition-colors ${isReadOnly ? "" : "cursor-pointer hover:bg-black/15"}`}
                             >
