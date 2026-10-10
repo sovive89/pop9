@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Flame, Plus, Trash2, Pencil, Save, X, ChevronDown, ChevronUp, Tags, ImagePlus, Image, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -312,13 +312,12 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     setImageUrl("");
   };
 
-  // Cancelar: descarta tudo que foi enviado/gerado nesta edição.
-  const discardSessionImages = () => {
+  // Encerra o estado desta edição; mantém as fotos no acervo.
+  const discardSessionImages = useCallback(() => {
     closed.current = true;
-    const leftovers = sessionImages.current.filter((u) => u !== persistedImage.current);
     sessionImages.current = [];
     // Preserva todas as fotos no acervo para reutilização posterior.
-  };
+  }, []);
 
   // Não deixa fechar no meio do save: a foto ainda não foi gravada no item e
   // seria apagada antes de a URL chegar ao banco.
@@ -328,9 +327,8 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     onCancel();
   };
 
-  // Trocar de seção do admin desmonta o editor sem passar por Cancelar/Salvar:
-  // apaga as fotos enviadas/geradas que não foram gravadas e ignora respostas atrasadas.
-  useEffect(() => discardSessionImages, []);
+  // Ao desmontar, limpa o rastreamento local e ignora respostas atrasadas.
+  useEffect(() => discardSessionImages, [discardSessionImages]);
 
   // ID, SKU e ordem inicial são definidos pelo banco (trigger + defaults).
   // O status muda pela ação escolhida: "Salvar rascunho" ou "Publicar".

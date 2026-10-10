@@ -90,6 +90,21 @@ describe("parseCheckinRequest", () => {
     expect(parseCheckinRequest(body)).toEqual({ ok: false, error });
   });
 
+  it("respeita o limite integer em todos os métodos", () => {
+    const requests = [
+      { action: "get_table_info" },
+      { action: "staff_generate_code" },
+      { action: "request_code", method: "whatsapp_otp", phone: "11999999999" },
+      { action: "verify_code", method: "staff_code", code: "1234" },
+    ];
+    for (const request of requests) {
+      expect(parseCheckinRequest({ ...request, table_number: 2147483647 }).ok).toBe(true);
+      for (const table_number of [2147483648, Number.MAX_SAFE_INTEGER, NaN, Infinity, -1, 0, 1.5]) {
+        expect(parseCheckinRequest({ ...request, table_number })).toEqual({ ok: false, error: "Número da mesa inválido" });
+      }
+    }
+  });
+
   it("rejeita JSON que não é objeto e campos obrigatórios ausentes", () => {
     expect(parseCheckinRequest(null)).toEqual({ ok: false, error: "Dados inválidos" });
     expect(parseCheckinRequest({ action: "verify_code", method: "staff_code" })).toEqual({

@@ -63,6 +63,8 @@ function isJsonRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+const POSTGRES_INTEGER_MAX = 2147483647;
+
 function parseRequiredTableNumber(
   body: JsonRecord,
   missingMessage: string,
@@ -71,7 +73,7 @@ function parseRequiredTableNumber(
   if (value === undefined || value === null) {
     return { ok: false, error: missingMessage };
   }
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0 || value > POSTGRES_INTEGER_MAX) {
     return { ok: false, error: "Número da mesa inválido" };
   }
   return { ok: true, value };
@@ -80,7 +82,7 @@ function parseRequiredTableNumber(
 function parseOptionalTableNumber(body: JsonRecord): OptionalNumberParseResult {
   const value = body.table_number;
   if (value === undefined) return { ok: true, value: undefined };
-  if (value === null || typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
+  if (value === null || typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0 || value > POSTGRES_INTEGER_MAX) {
     return { ok: false, error: "Número da mesa inválido" };
   }
   return { ok: true, value };

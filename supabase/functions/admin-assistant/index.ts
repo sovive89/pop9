@@ -54,7 +54,15 @@ Deno.serve(async(req)=>{
   // estiver aplicada, a função antiga rejeita não-admin como "Não autorizado";
   // isso é uma falha de dependência/deploy, não esgotamento de quota.
   const {error:reserveError}=await admin.rpc('reserve_assistant_request',{p_id:validatedRequestId,p_unit:unit,p_user:user.id,p_action:'chat',p_model:model.id});
-  if(reserveError){const message=reserveError.message??'';if(message.includes('Não autorizado'))return json({error:'Seu perfil não está autorizado a iniciar tarefas nesta unidade. A habilitação da quota para este perfil ainda está pendente.'},403);if(message.includes('Limite'))return json({error:'Limite de IA da unidade atingido. Tente novamente mais tarde.'},429);return json({error:'Não foi possível iniciar esta tarefa. Envie uma nova solicitação.'},503);}reserved=true;
+  if(reserveError){
+   const code=reserveError.code??'';const message=reserveError.message??'';
+   const legacy=code===''||code==='P0001';
+   if(code==='42501'||(legacy&&message.includes('Não autorizado')))return json({error:'Seu perfil não está autorizado a iniciar tarefas nesta unidade. A habilitação da quota para este perfil ainda está pendente.'},403);
+   if(code==='54000'||(legacy&&message.includes('Limite')))return json({error:'Limite de IA da unidade atingido. Tente novamente mais tarde.'},429);
+   if(code==='23505')return json({error:'Esta solicitação já foi utilizada. Envie uma nova tarefa.'},409);
+   if(code==='22023')return json({error:'Os dados da solicitação são inválidos ou a unidade está inativa.'},400);
+   return json({error:'Não foi possível iniciar esta tarefa. Envie uma nova solicitação.'},503);
+  }reserved=true;
   const allowedPages=AGENT_PAGES.filter(target=>canAccessAgentPage(unitRoles,target)).map(({id,label,path,draftForm})=>({id,label,path,draftForm:draftForm??null}));
   const system=AGENT_TASK_RULES+'\nUnidade autorizada: '+business.name+'\nTutoriais do produto: '+JSON.stringify(TUTORIALS)+'\nPágina atual validada: '+JSON.stringify({id:currentPage.id,label:currentPage.label,path:currentPage.path})+'\nRotas disponíveis para este papel: '+JSON.stringify(allowedPages);
   const result=await textCompletion(model.provider,model.model,await decryptAIKey(credential.encrypted_key,credential.iv),system,[{role:'user',content:prompt.trim()}]);

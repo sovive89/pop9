@@ -1,12 +1,13 @@
 import type { ClientInfo } from "@/components/TableSessionPanel";
 import type {
-  IngredientMod,
   OrderItem,
   OrderOrigin,
   OrderStatus,
   PlacedOrder,
 } from "@/utils/orders";
 import type { ActiveSessionRow } from "@/hooks/sessionQueries";
+import { parseIngredientMods } from "./ingredient-mod-parsers";
+export { parseIngredientMods } from "./ingredient-mod-parsers";
 
 type RecordValue = Record<string, unknown>;
 
@@ -122,38 +123,6 @@ export const parseSessionClientRows = (value: unknown): SessionClientJoinRow[] =
     const parsed = parseSessionClientRow(row);
     return parsed ? [parsed] : [];
   });
-
-/**
- * Parse the JSON column as a whole. A malformed array falls back to undefined
- * rather than returning a partially changed list; valid values keep their
- * order, action and optional extra price exactly.
- */
-export const parseIngredientMods = (value: unknown): IngredientMod[] | undefined => {
-  if (value === undefined || value === null) return undefined;
-  if (!Array.isArray(value)) return undefined;
-
-  const parsed: IngredientMod[] = [];
-  for (const entry of value) {
-    const record = asRecord(entry);
-    if (!record || typeof record.name !== "string" || (record.action !== "remove" && record.action !== "extra")) {
-      return undefined;
-    }
-
-    const extraPrice = record.extraPrice;
-    const parsedExtraPrice = extraPrice === undefined || extraPrice === null ? undefined : finiteNumber(extraPrice);
-    if (extraPrice !== undefined && extraPrice !== null && parsedExtraPrice === undefined) {
-      return undefined;
-    }
-
-    parsed.push({
-      name: record.name,
-      action: record.action,
-      ...(parsedExtraPrice === undefined ? {} : { extraPrice: parsedExtraPrice }),
-    });
-  }
-
-  return parsed;
-};
 
 /** Validate the selected order columns and normalize an absent nested join to []. */
 export const parseSessionOrderRow = (value: unknown): SessionOrderJoinRow | null => {
