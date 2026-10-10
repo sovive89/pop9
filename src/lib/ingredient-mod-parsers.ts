@@ -3,7 +3,8 @@ import type { IngredientMod } from '@/utils/orders';
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-/** Validate the entire list; a null optional price is normalized as absent. */
+/** Read legacy JSON; clamp negative extras like checkout_snapshot, without
+ * dropping other valid prices. Unknown labels are explicit, never invented. */
 export function parseIngredientMods(value: unknown): IngredientMod[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const parsed: IngredientMod[] = [];
@@ -14,9 +15,9 @@ export function parseIngredientMods(value: unknown): IngredientMod[] | undefined
     if (price !== undefined && price !== null &&
         (typeof price !== 'number' || !Number.isFinite(price))) return undefined;
     parsed.push({
-      name: entry.name,
+      name: entry.name.trim() || (entry.action === 'extra' ? 'Adicional sem identificação' : 'Ingrediente sem identificação'),
       action: entry.action,
-      ...(typeof price === 'number' ? { extraPrice: price } : {}),
+      ...(typeof price === 'number' ? { extraPrice: Math.max(0, price) } : {}),
     });
   }
   return parsed;

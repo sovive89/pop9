@@ -23,3 +23,21 @@ describe('agente PØP9',()=>{
  it('descarta o rascunho da unidade anterior antes de exibir o painel na nova unidade',async()=>{mocks.invoke.mockImplementation(async(_name,{body})=>body.action==='models'?{data:{models:[{id:'google/gemini-2.5-flash',label:'Gemini',provider:'google'}],warnings:[]}}:{data:{plan:menuPlan}});const view=render(<App path="/admin?sec=menu"/>);fireEvent.click(screen.getByRole('button',{name:'Abrir agente PØP9'}));await waitFor(()=>expect(screen.getByLabelText('Modelo do agente')).toHaveValue('google/gemini-2.5-flash'));fireEvent.change(screen.getByLabelText('Descreva a tarefa'),{target:{value:'Monte Burger da Casa'}});fireEvent.click(screen.getByRole('button',{name:'Analisar tarefa'}));await waitFor(()=>expect(screen.getByText('Preparei um rascunho local com os dados informados.')).toBeInTheDocument());fireEvent.click(screen.getByRole('button',{name:'Aplicar ao rascunho local'}));expect(screen.getByLabelText('Nome do produto')).toHaveValue('Burger da Casa');mocks.unit='u2';view.rerender(<App path="/admin?sec=menu"/>);fireEvent.click(screen.getByRole('button',{name:'Abrir agente PØP9'}));fireEvent.click(screen.getByRole('tab',{name:'Rascunho de cardápio'}));expect(screen.getByLabelText('Nome do produto')).toHaveValue('');});
  it('descarta proposta em andamento e rascunho quando a unidade muda',async()=>{let finish:(value:unknown)=>void=()=>{};mocks.invoke.mockImplementation(async(_name,{body})=>body.action==='models'?{data:{models:[{id:'google/gemini-2.5-flash',label:'Gemini',provider:'google'}],warnings:[]}}:new Promise(resolve=>{finish=resolve;}));const view=render(<App path="/admin?sec=stock"/>);fireEvent.click(screen.getByRole('button',{name:'Abrir agente PØP9'}));await waitFor(()=>expect(screen.getByLabelText('Modelo do agente')).toHaveValue('google/gemini-2.5-flash'));fireEvent.change(screen.getByLabelText('Descreva a tarefa'),{target:{value:'Veja o estoque da Confit'}});fireEvent.click(screen.getByRole('button',{name:'Analisar tarefa'}));mocks.unit='u2';view.rerender(<App path="/admin?sec=stock"/>);finish({data:{plan:{action:'explain',routeId:'stock',formId:null,fields:{},explanation:'Dados da Confit',missing:[]}}});fireEvent.click(screen.getByRole('button',{name:'Abrir agente PØP9'}));await waitFor(()=>expect(screen.getByLabelText('Modelo do agente')).toHaveValue('google/gemini-2.5-flash'));expect(screen.queryByText('Dados da Confit')).not.toBeInTheDocument();expect(screen.queryByText('Veja o estoque da Confit')).not.toBeInTheDocument();expect(screen.getByText('Outra · Administrador · Estoque')).toBeInTheDocument();});
 });
+
+describe('escopo do rascunho de cardápio',()=>{
+ it.each([['attendant','/atendimento'],['kitchen','/cozinha'],['cashier','/caixa']])('não oferece rascunho a %s',async(role,path)=>{
+  mocks.roles=[role];render(<App path={path}/>);fireEvent.click(screen.getByRole('button',{name:'Abrir agente PØP9'}));
+  expect(screen.queryByRole('tab',{name:'Rascunho de cardápio'})).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Nome do produto')).not.toBeInTheDocument();
+  await waitFor(()=>expect(screen.getByLabelText('Modelo do agente')).toHaveValue('google/gemini-2.5-flash'));
+ });
+ it('oculta e descarta o rascunho quando perde acesso ao cardápio',async()=>{
+  const view=render(<App path="/atendimento"/>);fireEvent.click(screen.getByRole('button',{name:'Abrir agente PØP9'}));
+  fireEvent.click(screen.getByRole('tab',{name:'Rascunho de cardápio'}));fireEvent.change(screen.getByLabelText('Nome do produto'),{target:{value:'Rascunho administrativo'}});
+  mocks.roles=['attendant'];view.rerender(<App path="/atendimento"/>);fireEvent.click(screen.getByRole('button',{name:'Abrir agente PØP9'}));
+  expect(screen.queryByRole('tab',{name:'Rascunho de cardápio'})).not.toBeInTheDocument();expect(screen.queryByLabelText('Nome do produto')).not.toBeInTheDocument();
+  mocks.roles=['admin'];view.rerender(<App path="/atendimento"/>);fireEvent.click(screen.getByRole('button',{name:'Abrir agente PØP9'}));fireEvent.click(screen.getByRole('tab',{name:'Rascunho de cardápio'}));
+  expect(screen.getByLabelText('Nome do produto')).toHaveValue('');
+  await waitFor(()=>expect(mocks.invoke).toHaveBeenCalled());
+ });
+});
