@@ -6,10 +6,6 @@ const API_KEY_FIELD: IntegrationConfigField[] = [
   { key: "apiKey", label: "Chave de API", type: "password", required: true, secret: true },
 ];
 
-const WEBHOOK_FIELD: IntegrationConfigField[] = [
-  { key: "webhookUrl", label: "URL do Webhook", type: "url", required: true },
-];
-
 const OAUTH_FIELDS: IntegrationConfigField[] = [];
 
 /** Monta o registro completo de capacidades a partir só do que é suportado —
@@ -35,47 +31,23 @@ const caps = (partial: Partial<IntegrationCapabilities>): IntegrationCapabilitie
  * quebraria o Outbound Engine em produção, não no cadastro.
  */
 const CAPS_DELIVERY_FULL = caps({ READ: "YES", WRITE: "YES", WEBHOOK: "YES", SYNC: "YES", IMPORT: "YES" });
-const CAPS_DELIVERY_PARTIAL = caps({
-  READ: "YES",
-  WRITE: "API_DEPENDENT",
-  WEBHOOK: "API_DEPENDENT",
-  SYNC: "API_DEPENDENT",
-  IMPORT: "YES",
-});
 const CAPS_PAYMENT_FULL = caps({ READ: "YES", WRITE: "YES", WEBHOOK: "YES", SYNC: "YES" });
 const CAPS_PAYMENT_PARTIAL = caps({ READ: "YES", WRITE: "API_DEPENDENT", WEBHOOK: "YES", SYNC: "YES" });
-const CAPS_ERP = caps({
-  READ: "YES",
-  WRITE: "YES",
-  WEBHOOK: "API_DEPENDENT",
-  SYNC: "YES",
-  IMPORT: "API_DEPENDENT",
-});
-const CAPS_ECOMMERCE_FULL = caps({ READ: "YES", WRITE: "YES", WEBHOOK: "YES", SYNC: "YES", IMPORT: "YES" });
-const CAPS_ECOMMERCE_PARTIAL = caps({
-  READ: "YES",
-  WRITE: "API_DEPENDENT",
-  WEBHOOK: "API_DEPENDENT",
-  SYNC: "API_DEPENDENT",
-  IMPORT: "YES",
-});
 /**
  * Catálogo de integrações da central de Conexões.
  *
- * Isto é a ÚNICA lista que precisa mudar para adicionar uma integração
- * nova — nenhum componente da galeria conhece um app específico por nome.
+ * Os provedores de IA são configurados exclusivamente no painel de
+ * credenciais cifradas, não nesta galeria de conectores.
  *
  * Cada entrada declara `type` (papel na arquitetura) e `capabilities` (o que
  * sabe fazer). A UI e, no futuro, o Outbound Engine leem essas duas coisas
  * em vez de ter uma lista de exceções por nome de integração.
  *
- * `implemented: true` só em WhatsApp por enquanto (é a única com um
- * provider real por trás, ver `providers/whatsappProvider.ts`). Todas as
- * outras ficam com `implemented: false` — o card mostra "Configuração
- * necessária" e o modal explica o que falta, sem fingir uma conexão.
+ * WhatsApp, bot e PWA próprio são configurados no painel dedicado.
+ * Os demais conectores permanecem `implemented: false` até existir
+ * integração real com a API oficial; pré-configuração não ativa conexão.
  */
 export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
-  // ── DELIVERY ─────────────────────────────────────────────────────────
   {
     id: "ifood",
     slug: "ifood",
@@ -109,38 +81,6 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
     implemented: false,
   },
   {
-    id: "rappi",
-    slug: "rappi",
-    domain: "rappi.com.br",
-    name: "Rappi",
-    category: "DELIVERY",
-    type: "OPERATIONAL",
-    capabilities: CAPS_DELIVERY_PARTIAL,
-    description: "Recebe pedidos do Rappi diretamente no painel.",
-    whatItEnables: "Sincroniza pedidos e cardápio com a plataforma Rappi.",
-    configType: "oauth",
-    fallbackColor: "FF441F",
-    fields: OAUTH_FIELDS,
-    implemented: false,
-  },
-  {
-    id: "aiqfome",
-    slug: "aiqfome",
-    domain: "aiqfome.com",
-    name: "Aiqfome",
-    category: "DELIVERY",
-    type: "OPERATIONAL",
-    capabilities: CAPS_DELIVERY_PARTIAL,
-    description: "Integra pedidos feitos pelo Aiqfome.",
-    whatItEnables: "Sincroniza pedidos recebidos no Aiqfome com o painel de cozinha.",
-    configType: "api_key",
-    simpleIconSlug: "aiqfome",
-    fields: API_KEY_FIELD,
-    implemented: false,
-  },
-
-  // ── COMUNICAÇÃO ──────────────────────────────────────────────────────
-  {
     id: "whatsapp",
     slug: "whatsapp",
     domain: "whatsapp.com",
@@ -161,57 +101,6 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
     implemented: true,
     docsUrl: "https://developers.facebook.com/docs/whatsapp",
   },
-  {
-    id: "instagram",
-    slug: "instagram",
-    domain: "instagram.com",
-    name: "Instagram",
-    category: "COMMUNICATION",
-    type: "OPERATIONAL",
-    capabilities: caps({ READ: "YES", WRITE: "API_DEPENDENT", WEBHOOK: "API_DEPENDENT" }),
-    description: "Recebe mensagens diretas do Instagram no painel de atendimento.",
-    whatItEnables: "Centraliza DMs do Instagram junto com os outros canais de atendimento.",
-    configType: "oauth",
-    simpleIconSlug: "instagram",
-    fields: OAUTH_FIELDS,
-    implemented: false,
-    docsUrl: "https://developers.facebook.com/docs/messenger-platform/instagram",
-  },
-  {
-    id: "telegram",
-    slug: "telegram",
-    domain: "telegram.org",
-    name: "Telegram",
-    category: "COMMUNICATION",
-    type: "OPERATIONAL",
-    capabilities: caps({ READ: "YES", WRITE: "YES", WEBHOOK: "API_DEPENDENT" }),
-    description: "Notificações e atendimento via bot do Telegram.",
-    whatItEnables: "Envia notificações de pedido e permite atendimento via bot do Telegram.",
-    configType: "api_key",
-    simpleIconSlug: "telegram",
-    fields: [{ key: "botToken", label: "Token do bot (@BotFather)", type: "password", required: true, secret: true }],
-    implemented: false,
-    docsUrl: "https://core.telegram.org/bots",
-  },
-
-  {
-    id: "goomer",
-    slug: "goomer",
-    domain: "goomer.com.br",
-    name: "Goomer",
-    category: "MENU",
-    type: "OPERATIONAL",
-    capabilities: caps({ READ: "YES", WRITE: "API_DEPENDENT", SYNC: "API_DEPENDENT", IMPORT: "YES" }),
-    description: "Sincroniza o cardápio digital publicado no Goomer.",
-    whatItEnables:
-      "Importa o cardápio existente na migração e, depois, mantém o Goomer atualizado a partir do cardápio do Pipeline.",
-    configType: "api_key",
-    fallbackColor: "FF5A5F",
-    fields: API_KEY_FIELD,
-    implemented: false,
-  },
-
-  // ── PAGAMENTOS ───────────────────────────────────────────────────────
   {
     id: "mercadopago",
     slug: "mercadopago",
@@ -317,58 +206,6 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
     fields: [{ key: "pixKey", label: "Chave Pix", type: "text", required: true }],
     implemented: false,
   },
-
-  // ── GESTÃO / ERP ─────────────────────────────────────────────────────
-  {
-    id: "omie",
-    slug: "omie",
-    domain: "omie.com.br",
-    name: "Omie",
-    category: "MANAGEMENT",
-    type: "OPERATIONAL",
-    capabilities: CAPS_ERP,
-    description: "Sincroniza financeiro e notas fiscais com o Omie.",
-    whatItEnables: "Envia vendas e despesas do Pipeline para o ERP Omie.",
-    configType: "api_key",
-    fallbackColor: "6D28D9",
-    fields: API_KEY_FIELD,
-    implemented: false,
-  },
-  {
-    id: "bling",
-    slug: "bling",
-    domain: "bling.com.br",
-    name: "Bling",
-    category: "MANAGEMENT",
-    type: "OPERATIONAL",
-    capabilities: CAPS_ERP,
-    description: "Sincroniza estoque, vendas e notas fiscais com o Bling.",
-    whatItEnables: "Envia vendas e mantém o estoque sincronizado com o Bling.",
-    configType: "oauth",
-    fallbackColor: "00B0B9",
-    fields: OAUTH_FIELDS,
-    implemented: false,
-  },
-  {
-    id: "contaazul",
-    slug: "contaazul",
-    domain: "contaazul.com",
-    name: "Conta Azul",
-    category: "MANAGEMENT",
-    type: "OPERATIONAL",
-    capabilities: CAPS_ERP,
-    description: "Sincroniza financeiro com o Conta Azul.",
-    whatItEnables: "Envia vendas e despesas do Pipeline para o Conta Azul.",
-    configType: "oauth",
-    fallbackColor: "0084F4",
-    fields: OAUTH_FIELDS,
-    implemented: false,
-  },
-
-  // ── GESTÃO / FISCAL ───────────────────────────────────────────────────
-  // Cards de provedores reais, ainda sem provider operacional no Pop9.
-  // NFC-e (modelo 65), NF-e (modelo 55) e NFS-e são tipos de documento,
-  // não marcas de integração. Cada provedor abaixo suporta os três.
   {
     id: "focusnfe",
     slug: "focusnfe",
@@ -398,207 +235,6 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
     fields: OAUTH_FIELDS,
     implemented: false,
     docsUrl: "https://dev.nuvemfiscal.com.br/docs/",
-  },
-
-  // ── E-COMMERCE ───────────────────────────────────────────────────────
-  {
-    id: "shopify",
-    slug: "shopify",
-    domain: "shopify.com",
-    name: "Shopify",
-    category: "ECOMMERCE",
-    type: "OPERATIONAL",
-    capabilities: CAPS_ECOMMERCE_FULL,
-    description: "Sincroniza produtos e pedidos com uma loja Shopify.",
-    whatItEnables: "Mantém catálogo e estoque sincronizados entre o Pipeline e a Shopify.",
-    configType: "oauth",
-    simpleIconSlug: "shopify",
-    fields: OAUTH_FIELDS,
-    implemented: false,
-  },
-  {
-    id: "woocommerce",
-    slug: "woocommerce",
-    domain: "woocommerce.com",
-    name: "WooCommerce",
-    category: "ECOMMERCE",
-    type: "OPERATIONAL",
-    capabilities: CAPS_ECOMMERCE_FULL,
-    description: "Sincroniza produtos e pedidos com uma loja WooCommerce.",
-    whatItEnables: "Mantém catálogo e estoque sincronizados entre o Pipeline e o WooCommerce.",
-    configType: "api_key",
-    simpleIconSlug: "woocommerce",
-    fields: [
-      { key: "storeUrl", label: "URL da loja", type: "url", required: true },
-      { key: "apiKey", label: "Consumer Key", type: "password", required: true, secret: true },
-    ],
-    implemented: false,
-  },
-  {
-    id: "mercadolivre",
-    slug: "mercadolivre",
-    domain: "mercadolivre.com.br",
-    name: "Mercado Livre",
-    category: "ECOMMERCE",
-    type: "OPERATIONAL",
-    capabilities: CAPS_ECOMMERCE_PARTIAL,
-    description: "Sincroniza anúncios e pedidos do Mercado Livre.",
-    whatItEnables: "Traz pedidos feitos no Mercado Livre para o Pipeline.",
-    configType: "oauth",
-    fallbackColor: "FFE600",
-    fields: OAUTH_FIELDS,
-    implemented: false,
-  },
-  {
-    id: "shopee",
-    slug: "shopee",
-    domain: "shopee.com.br",
-    name: "Shopee",
-    category: "ECOMMERCE",
-    type: "OPERATIONAL",
-    capabilities: CAPS_ECOMMERCE_PARTIAL,
-    description: "Sincroniza anúncios e pedidos da Shopee.",
-    whatItEnables: "Traz pedidos feitos na Shopee para o Pipeline.",
-    configType: "oauth",
-    simpleIconSlug: "shopee",
-    fields: OAUTH_FIELDS,
-    implemented: false,
-  },
-
-  // ── AUTOMAÇÃO / API ──────────────────────────────────────────────────
-  // Atenção: aqui a seta se inverte. O Pipeline não consome esses
-  // "conectores" — ele os EXPÕE para que outros sistemas leiam ou reajam a
-  // ele. Por isso são SUPPORT e não declaram capacidades de entrada de dado.
-  {
-    id: "webhook",
-    slug: "webhook",
-    name: "Webhook",
-    category: "AUTOMATION",
-    type: "SUPPORT",
-    capabilities: null,
-    description: "Envia eventos do Pipeline para qualquer URL externa.",
-    whatItEnables: "Dispara um POST para a URL configurada a cada evento assinado (novo pedido, venda, etc.).",
-    configType: "webhook",
-    fields: WEBHOOK_FIELD,
-    implemented: false,
-  },
-  {
-    id: "rest-api",
-    slug: "rest-api",
-    name: "REST API",
-    category: "AUTOMATION",
-    type: "SUPPORT",
-    capabilities: null,
-    description: "Acesso programático aos dados do Pipeline via API REST.",
-    whatItEnables: "Gera uma chave de API para que outro sistema consuma os dados do Pipeline.",
-    configType: "api_key",
-    fields: API_KEY_FIELD,
-    implemented: false,
-  },
-  {
-    id: "graphql",
-    slug: "graphql",
-    name: "GraphQL",
-    category: "AUTOMATION",
-    type: "SUPPORT",
-    capabilities: null,
-    description: "Acesso programático aos dados do Pipeline via GraphQL.",
-    whatItEnables: "Gera uma chave de API para consultar os dados do Pipeline via GraphQL.",
-    configType: "api_key",
-    simpleIconSlug: "graphql",
-    fields: API_KEY_FIELD,
-    implemented: false,
-  },
-  {
-    id: "http",
-    slug: "http",
-    name: "HTTP",
-    category: "AUTOMATION",
-    type: "SUPPORT",
-    capabilities: null,
-    description: "Integração genérica via requisições HTTP customizadas.",
-    whatItEnables: "Permite configurar chamadas HTTP customizadas para sistemas sem conector dedicado.",
-    configType: "webhook",
-    fields: WEBHOOK_FIELD,
-    implemented: false,
-  },
-
-  // ── IA ────────────────────────────────────────────────────────────────
-  // Também SUPPORT: são chamadas diretas do Core. Não trazem Cliente,
-  // Pedido nem Produto, então não passam pelo normalizador.
-  {
-    id: "openai",
-    slug: "openai",
-    domain: "openai.com",
-    name: "OpenAI",
-    category: "AI",
-    type: "SUPPORT",
-    capabilities: null,
-    description: "Usa modelos da OpenAI para recursos de IA do Pipeline.",
-    whatItEnables: "Habilita recursos de IA (sugestões, respostas automáticas) usando a API da OpenAI.",
-    configType: "api_key",
-    fallbackColor: "10A37F",
-    fields: API_KEY_FIELD,
-    implemented: false,
-  },
-  {
-    id: "google-gemini",
-    slug: "google-gemini",
-    domain: "gemini.google.com",
-    name: "Google Gemini",
-    category: "AI",
-    type: "SUPPORT",
-    capabilities: null,
-    description: "Usa modelos Gemini do Google para recursos de IA do Pipeline.",
-    whatItEnables: "Habilita recursos de IA usando a API do Google Gemini.",
-    configType: "api_key",
-    simpleIconSlug: "googlegemini",
-    fields: API_KEY_FIELD,
-    implemented: false,
-  },
-  {
-    id: "anthropic",
-    slug: "anthropic",
-    domain: "anthropic.com",
-    name: "Anthropic",
-    category: "AI",
-    type: "SUPPORT",
-    capabilities: null,
-    description: "Usa modelos Claude da Anthropic para recursos de IA do Pipeline.",
-    whatItEnables: "Habilita recursos de IA usando a API da Anthropic (Claude).",
-    configType: "api_key",
-    simpleIconSlug: "anthropic",
-    fields: API_KEY_FIELD,
-    implemented: false,
-  },
-  {
-    id: "xai-grok",
-    slug: "xai-grok",
-    domain: "x.ai",
-    name: "Grok (xAI)",
-    category: "AI",
-    type: "SUPPORT",
-    capabilities: null,
-    description: "Usa modelos Grok da xAI para recursos de IA do ERP.",
-    whatItEnables: "Habilita recursos de IA usando a API da xAI.",
-    configType: "api_key",
-    fields: API_KEY_FIELD,
-    implemented: false,
-  },
-  {
-    id: "elevenlabs",
-    slug: "elevenlabs",
-    domain: "elevenlabs.io",
-    name: "ElevenLabs",
-    category: "AI",
-    type: "SUPPORT",
-    capabilities: null,
-    description: "Geração de voz para atendimento e notificações por áudio.",
-    whatItEnables: "Habilita respostas e avisos em áudio usando a API da ElevenLabs.",
-    configType: "api_key",
-    fallbackColor: "111827",
-    fields: API_KEY_FIELD,
-    implemented: false,
   },
 ];
 

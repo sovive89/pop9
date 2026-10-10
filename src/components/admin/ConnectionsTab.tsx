@@ -8,8 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AIConnectionsPanel } from "@/components/admin/connections/AIConnectionsPanel";
 import { IntegrationGrid } from "@/components/admin/connections/IntegrationGrid";
 import { IntegrationConfigModal } from "@/components/admin/connections/IntegrationConfigModal";
-import { CATEGORY_LABELS, TYPE_LABELS } from "@/components/admin/connections/types";
-import type { IntegrationCategory, IntegrationType, IntegrationView } from "@/components/admin/connections/types";
+import { CATEGORY_LABELS } from "@/components/admin/connections/types";
+import type { IntegrationCategory, IntegrationView } from "@/components/admin/connections/types";
+import { INTEGRATIONS_CATALOG } from "@/components/admin/connections/catalog";
 import { useIntegrations } from "@/hooks/useIntegrations";
 
 type StatusFilter = "all" | "connected" | "not_connected";
@@ -20,20 +21,10 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: "not_connected", label: "Não conectados" },
 ];
 
-/** Filtro por papel na arquitetura. É a distinção que mais importa na hora
- * de procurar algo aqui: "quero ligar um canal de venda" e "quero puxar os
- * dados do meu PDV antigo" são tarefas diferentes. */
-const VISIBLE_CATEGORIES: IntegrationCategory[] = [
-  "DELIVERY", "COMMUNICATION", "MENU", "PAYMENTS", "FISCAL", "AI", "MANAGEMENT", "ECOMMERCE", "AUTOMATION",
-];
-const VISIBLE_AI = new Set(["openai", "anthropic", "google-gemini", "xai-grok"]);
-
-const TYPE_OPTIONS: { value: IntegrationType | "all"; label: string }[] = [
-  { value: "all", label: "Todos os tipos" },
-  { value: "OPERATIONAL", label: TYPE_LABELS.OPERATIONAL },
-  { value: "SUPPORT", label: TYPE_LABELS.SUPPORT },
-  { value: "IMPORT", label: TYPE_LABELS.IMPORT },
-];
+// WhatsApp/PWA e IA têm painéis próprios. Os filtros acompanham o catálogo.
+const VISIBLE_CATEGORIES = [...new Set(INTEGRATIONS_CATALOG
+  .filter(definition => definition.slug !== "whatsapp")
+  .map(definition => definition.category))];
 
 const CATEGORY_OPTIONS: { value: IntegrationCategory | "all"; label: string }[] = [
   { value: "all", label: "Todas as categorias" },
@@ -48,7 +39,6 @@ export function ConnectionsTab() {
   const { views, loading, tableMissing, saveConfig, connect, disconnect } = useIntegrations();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<IntegrationCategory | "all">("all");
-  const [type, setType] = useState<IntegrationType | "all">("all");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [activeView, setActiveView] = useState<IntegrationView | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -56,14 +46,10 @@ export function ConnectionsTab() {
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return views.filter((view) => {
-      // Catálogo completo permanece intacto para reutilização futura no Pop9 Hub.
-      // O ERP exibe apenas conexões utilizadas diretamente na operação.
+      // Os painéis próprios concentram WhatsApp/PWA e credenciais de IA.
       if(view.definition.slug==="whatsapp")return false;
       if (!VISIBLE_CATEGORIES.includes(view.definition.category)) return false;
-      if (view.definition.type === "IMPORT") return false;
-      if (view.definition.category === "AI" && !VISIBLE_AI.has(view.definition.slug)) return false;
       if (category !== "all" && view.definition.category !== category) return false;
-      if (type !== "all" && view.definition.type !== type) return false;
       if (status === "connected" && view.status !== "CONNECTED") return false;
       if (status === "not_connected" && view.status === "CONNECTED") return false;
       if (query) {
@@ -72,7 +58,7 @@ export function ConnectionsTab() {
       }
       return true;
     });
-  }, [views, search, category, type, status]);
+  }, [views, search, category, status]);
 
   const handleOpen = (view: IntegrationView) => {
     setActiveView(view);
@@ -92,7 +78,7 @@ export function ConnectionsTab() {
       <div className="space-y-1">
         <h2 tabIndex={0} data-tooltip={PAGE_HELP["connections"]} className="text-lg font-semibold text-foreground">Conexões</h2>
         <p className="text-sm text-muted-foreground">
-          Conecte o Pipeline aos serviços que sua operação utiliza.
+          Conexões para delivery, pagamentos e fiscal. Configure WhatsApp, pedidos próprios e IA nos painéis desta página.
         </p>
       </div>
 
@@ -102,12 +88,13 @@ export function ConnectionsTab() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            aria-label="Buscar integração"
             placeholder="Buscar integração..."
             className="pl-9"
           />
         </div>
         <Select value={category} onValueChange={(v) => setCategory(v as IntegrationCategory | "all")}>
-          <SelectTrigger className="sm:w-56">
+          <SelectTrigger aria-label="Categoria de integração" className="sm:w-56">
             <SelectValue placeholder="Categoria" />
           </SelectTrigger>
           <SelectContent>
@@ -118,20 +105,8 @@ export function ConnectionsTab() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={type} onValueChange={(v) => setType(v as IntegrationType | "all")}>
-          <SelectTrigger className="sm:w-44">
-            <SelectValue placeholder="Tipo" />
-          </SelectTrigger>
-          <SelectContent>
-            {TYPE_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
         <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
-          <SelectTrigger className="sm:w-44">
+          <SelectTrigger aria-label="Status da integração" className="sm:w-44">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
