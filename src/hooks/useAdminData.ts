@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
@@ -54,6 +54,14 @@ type Role = Database["public"]["Enums"]["app_role"];
 
 export const useAdminData = () => {
   const { businessUnitId } = useCurrentBusinessUnit();
+  const unitEpoch = useRef({ unit: businessUnitId, version: 0 });
+  if (unitEpoch.current.unit !== businessUnitId) unitEpoch.current = { unit: businessUnitId, version: unitEpoch.current.version + 1 };
+  const unitScope = `${businessUnitId ?? ''}:${unitEpoch.current.version}`;
+  const currentScope = useRef(unitScope);
+  currentScope.current = unitScope;
+  const menuRequest = useRef(0), categoryRequest = useRef(0);
+  const [menuScope, setMenuScope] = useState('');
+  const [categoriesScope, setCategoriesScope] = useState('');
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [menuItems, setMenuItems] = useState<DbMenuItem[]>([]);
   const [categories, setCategories] = useState<DbMenuCategory[]>([]);
@@ -96,28 +104,36 @@ export const useAdminData = () => {
   }, []);
 
   const loadMenu = useCallback(async () => {
+    const request = ++menuRequest.current;
+    const isCurrent = () => currentScope.current === unitScope && menuRequest.current === request;
+    setMenuScope(unitScope); setMenuItems([]);
+    if (!businessUnitId) { setLoadingMenu(false); return; }
     setLoadingMenu(true);
     const { data: items, error: iErr } = await supabase
       .from("menu_items")
       .select("*")
+      .eq("business_unit_id", businessUnitId)
       .order("category")
       .order("sort_order");
 
+    if (!isCurrent()) return;
     if (iErr) {
       toast.error("Erro ao carregar cardápio");
       setLoadingMenu(false);
       return;
     }
 
-    const { data: ingredients } = await supabase
-      .from("menu_item_ingredients")
-      .select("*")
-      .order("sort_order");
-
-    const { data: variants } = await supabase
-      .from("menu_item_variants")
-      .select("*")
-      .order("sort_order");
+    const itemIds = (items ?? []).map(item => item.id);
+    const [ingredientResult, variantResult] = itemIds.length ? await Promise.all([
+      supabase.from("menu_item_ingredients").select("*").in("menu_item_id", itemIds).order("sort_order"),
+      supabase.from("menu_item_variants").select("*").in("menu_item_id", itemIds).order("sort_order"),
+    ]) : [{ data: [], error: null }, { data: [], error: null }];
+    if (!isCurrent()) return;
+    if (ingredientResult.error || variantResult.error) {
+      toast.error("Erro ao carregar ingredientes ou variantes do cardápio");
+      setLoadingMenu(false); return;
+    }
+    const ingredients = ingredientResult.data, variants = variantResult.data;
 
     const mapped: DbMenuItem[] = (items ?? []).map((item) => ({
       id: item.id,
@@ -150,14 +166,19 @@ export const useAdminData = () => {
 
     setMenuItems(mapped);
     setLoadingMenu(false);
-  }, []);
+  }, [businessUnitId, unitScope]);
 
   const loadCategories = useCallback(async () => {
+    const request = ++categoryRequest.current;
+    setCategoriesScope(unitScope); setCategories([]);
+    if (!businessUnitId) { setLoadingCategories(false); return; }
     setLoadingCategories(true);
     const { data, error } = await supabase
       .from("menu_categories")
       .select("*")
+      .eq("business_unit_id", businessUnitId)
       .order("sort_order");
+    if (currentScope.current !== unitScope || categoryRequest.current !== request) return;
     if (error) {
       toast.error("Erro ao carregar categorias");
     } else {
@@ -170,7 +191,7 @@ export const useAdminData = () => {
       })));
     }
     setLoadingCategories(false);
-  }, []);
+  }, [businessUnitId, unitScope]);
 
   useEffect(() => {
     loadUsers();
@@ -368,11 +389,11 @@ export const useAdminData = () => {
 
   return {
     users,
-    menuItems,
-    categories,
+    menuItems: menuScope === unitScope ? menuItems : [],
+    categories: categoriesScope === unitScope ? categories : [],
     loadingUsers,
-    loadingMenu,
-    loadingCategories,
+    loadingMenu: loadingMenu || (Boolean(businessUnitId) && menuScope !== unitScope),
+    loadingCategories: loadingCategories || (Boolean(businessUnitId) && categoriesScope !== unitScope),
     addRole,
     removeRole,
     resetPassword,

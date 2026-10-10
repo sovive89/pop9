@@ -11,6 +11,10 @@ import RecipeBuilder, { type RecipeBuilderHandle } from "@/components/admin/Reci
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import { useSearchParams } from "react-router-dom";
 import MenuImportDialog from "@/components/admin/MenuImportDialog";
+import MenuPrefixField from '@/components/admin/MenuPrefixField';
+import { useMenuSuggestionCatalog } from '@/hooks/useMenuSuggestionCatalog';
+import { useAuth } from '@/hooks/useAuth';
+import { useUnitRoles } from '@/hooks/useUnitRoles';
 
 // ── Image Upload Helper ──
 // O nome do arquivo é gerado aqui (não depende do ID do item, que só existe
@@ -220,6 +224,10 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   const isPublished = savedStatus === "published";
   const [uploading, setUploading] = useState(false);
   const { businessUnitId } = useCurrentBusinessUnit();
+  const { user } = useAuth();
+  const { roles, loading: rolesLoading } = useUnitRoles();
+  const catalog = useMenuSuggestionCatalog(businessUnitId, user?.id, !rolesLoading && roles.includes('admin'));
+  const [categorySearch, setCategorySearch] = useState('');
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [aiModel, setAiModel] = useState(AI_IMAGE_MODELS[0].id);
   useEffect(() => {
@@ -424,12 +432,14 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
           <select data-tooltip="Escolha a categoria em que o item aparecerá no cardápio." aria-label="Escolha a categoria em que o item aparecerá no cardápio." value={category} onChange={(e) => setCategory(e.target.value)} className="w-full h-9 rounded-md border border-border bg-muted px-3 text-sm text-foreground">
             {categories.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
           </select>
+          <MenuPrefixField label="Buscar categoria pelo início" placeholder="Digite o início da categoria" value={categorySearch} onChange={setCategorySearch} mode="whole" suggestions={catalog.suggestions.categories}
+            onPick={suggestion => { const found = catalog.categories.find(row => row.id === suggestion.id); if (found) setCategory(found.key); setCategorySearch(''); }} />
         </div>
       </div>
 
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">Nome</label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} className="h-9" />
+          <MenuPrefixField label="Nome do produto" value={name} onChange={setName} suggestions={[...catalog.suggestions.products, ...catalog.suggestions.words]} className="h-9" />
       </div>
 
       <div className="grid grid-cols-3 gap-3">
@@ -453,15 +463,15 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
 
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">Descrição</label>
-        <textarea
+        <MenuPrefixField multiline label="Descrição do produto"
           value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          rows={2}
+          onChange={setDescription} suggestions={catalog.suggestions.words}
           className="w-full rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
         />
       </div>
 
       {/* Image Upload */}
+      <p className="text-xs text-muted-foreground">{catalog.loading ? 'Carregando sugestões…' : catalog.error ? 'Autocomplete indisponível. Você pode continuar digitando.' : catalog.limited ? 'Autocomplete limitado aos primeiros 500 cadastros por tipo.' : 'Digite duas letras para ver sugestões desta unidade.'}</p>
       <div className="space-y-2">
         <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Foto do Item</label>
         <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
@@ -594,7 +604,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
 };
 
 // ── Menu Tab ──
-const MenuTab = () => {
+const UnitMenuTab = () => {
   const { menuItems, categories, loadingMenu, loadingCategories, saveMenuItem, deleteMenuItem, saveCategory, deleteCategory, refreshMenu, refreshCategories } = useAdminData();
   const [searchParams, setSearchParams] = useSearchParams();
   const importOpen = searchParams.get("import") === "1";
@@ -772,6 +782,11 @@ const MenuTab = () => {
       })}
     </div>
   );
+};
+
+const MenuTab = () => {
+  const { businessUnitId } = useCurrentBusinessUnit();
+  return <UnitMenuTab key={businessUnitId ?? 'no-unit'} />;
 };
 
 export default MenuTab;
