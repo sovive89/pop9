@@ -133,7 +133,7 @@ export function findAgentPage(path:string):AgentPage|null{
   return AGENT_PAGES.find(p=>p.path===url.pathname)??null;
  }catch{return null;}
 }
-export function canAccessAgentPage(roles:string[],page:AgentPage|null):page is AgentPage{
+export function canAccessAgentPage(roles:string[],page:AgentPage|null|undefined):page is AgentPage{
  return Boolean(page&&roles.some(role=>page.roles.includes(role as AgentRole)));
 }
 export function validateAgentPlan(value:unknown,roles:string[],currentPage:AgentPage):AgentTaskPlan{
@@ -144,7 +144,7 @@ export function validateAgentPlan(value:unknown,roles:string[],currentPage:Agent
  const target=AGENT_PAGES.find(page=>page.id===row.routeId);
  const targetAllowed=canAccessAgentPage(roles,target);
  const route=targetAllowed?target:currentPage;
- const explanation=targetAllowed&&typeof row.explanation==='string'?row.explanation.trim().slice(0,2000):'Esse módulo não está liberado para o seu perfil. Posso orientar a partir da página atual.';
+ const explanation=targetAllowed?(typeof row.explanation==='string'&&row.explanation.trim()?row.explanation.trim().slice(0,2000):'Posso orientar a partir deste módulo.'):'Esse módulo não está liberado para o seu perfil. Posso orientar a partir da página atual.';
  const missing=Array.isArray(row.missing)?row.missing.filter((item):item is string=>typeof item==='string').slice(0,8).map(item=>item.slice(0,160)):[];
  if(!targetAllowed)return {action:'clarify',routeId:currentPage.id,formId:null,fields:{},explanation,missing:[]};
  if(row.action==='draft'){

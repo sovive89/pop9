@@ -10,8 +10,9 @@ import {Textarea} from '@/components/ui/textarea';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import {toast} from 'sonner';
 import {AGENT_PAGES,TUTORIALS,canAccessAgentPage,findAgentPage,validateAgentPlan,type AgentTaskPlan} from '../../supabase/functions/_shared/assistant-help';
+import {parseAgentModelsResponse,type AgentModel} from '@/lib/agent-model-response';
 
-type Model={id:string;label:string;provider:string};
+type Model=AgentModel;
 type AsyncState<T>={scope:string;value:T|null;error:string;busy:boolean};
 async function invoke(body:Record<string,unknown>){
  const {data,error}=await supabase.functions.invoke('admin-assistant',{body});
@@ -49,8 +50,9 @@ export default function AdminAssistant(){
  const available=modelState.scope===scope?modelState:{scope,models:[],warning:'',loading:true};
  const unitName=units.find(u=>u.id===businessUnitId)?.name??'Unidade selecionada';
  const tutorial=accessibleTutorials.find(t=>t.id===tutorialId)??accessibleTutorials[0];
+ const firstTutorialId=accessibleTutorials[0]?.id??'menu';
  const currentRole=roles.filter(role=>currentPage?.roles.includes(role as never)).map(role=>roleLabels[role]??role).join(' / ');
- useEffect(()=>{setPromptState({scope,value:''});setModel('');setOpen(false);sending.current=false;setTask({scope,value:null,error:'',busy:false});},[scope]);
+ useEffect(()=>{setPromptState({scope,value:''});setModel('');setOpen(false);sending.current=false;setTask({scope,value:null,error:'',busy:false});setTutorialId(firstTutorialId);setTutorialStep(0);},[scope,firstTutorialId]);
  useEffect(()=>{setDraftState({scope:unitScope,fields:emptyGuided,step:0});},[unitScope]);
  useEffect(()=>{if(!allowed)setOpen(false);},[allowed]);
  useEffect(()=>{
@@ -58,8 +60,8 @@ export default function AdminAssistant(){
   setModelState({scope,models:[],warning:'',loading:true});
   void invoke({action:'models',businessUnitId,page:pagePath}).then(data=>{
    if(disposed||current.current!==scope)return;
-   const models=Array.isArray(data.models)?data.models as Model[]:[];
-   setModelState({scope,models,warning:(data.warnings??[]).join(' '),loading:false});
+   const {models,warnings}=parseAgentModelsResponse(data);
+   setModelState({scope,models,warning:warnings.join(' '),loading:false});
    setModel(prev=>models.some(m=>m.id===prev)?prev:models[0]?.id??'');
   }).catch(e=>{if(!disposed&&current.current===scope)setModelState({scope,models:[],warning:e instanceof Error?e.message:'Falha ao consultar modelos',loading:false});});
   return ()=>{disposed=true;};

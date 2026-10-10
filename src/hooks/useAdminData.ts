@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 
@@ -48,6 +49,8 @@ export interface DbMenuCategory {
   icon_name?: string | null;
   icon_color?: string | null;
 }
+
+type Role = Database["public"]["Enums"]["app_role"];
 
 export const useAdminData = () => {
   const { businessUnitId } = useCurrentBusinessUnit();
@@ -176,11 +179,11 @@ export const useAdminData = () => {
   }, [loadUsers, loadMenu, loadCategories]);
 
   // ── Role management ──
-  const addRole = async (userId: string, role: string) => {
+  const addRole = async (userId: string, role: Role) => {
     if (!businessUnitId) { toast.error("Selecione uma unidade para atribuir permissões"); return false; }
     const { error } = await supabase
       .from("user_roles")
-      .insert({ user_id: userId, role: role as any, business_unit_id: businessUnitId });
+      .insert({ user_id: userId, role, business_unit_id: businessUnitId });
     if (error) {
       toast.error("Erro ao adicionar role");
       return false;
@@ -190,12 +193,12 @@ export const useAdminData = () => {
     return true;
   };
 
-  const removeRole = async (userId: string, role: string) => {
+  const removeRole = async (userId: string, role: Role) => {
     const { error } = await supabase
       .from("user_roles")
       .delete()
       .eq("user_id", userId)
-      .eq("role", role as any);
+      .eq("role", role);
     if (error) {
       toast.error("Erro ao remover role");
       return false;
