@@ -273,10 +273,19 @@ const StockTab = () => {
     setPurchaseOpen(true);
   };
 
+  const purchaseBaseUnit = purchaseTarget ? materialsById[purchaseTarget]?.unit || "" : "";
+  const samePurchaseUnit = pPurchaseUnit === purchaseBaseUnit;
+  const automaticConversions: Record<string, number> = { "kg:g": 1000, "g:kg": 0.001, "L:ml": 1000, "ml:L": 0.001 };
+  const automaticConversion = samePurchaseUnit ? 1 : automaticConversions[`${pPurchaseUnit}:${purchaseBaseUnit}`];
+  const requiresManualConversion = Boolean(pPurchaseUnit && purchaseBaseUnit && automaticConversion === undefined);
+  const crossDimension = (["kg", "g"].includes(pPurchaseUnit) && ["un", "L", "ml"].includes(purchaseBaseUnit)) ||
+    (["L", "ml"].includes(pPurchaseUnit) && ["un", "kg", "g"].includes(purchaseBaseUnit)) ||
+    (pPurchaseUnit === "un" && ["kg", "g", "L", "ml"].includes(purchaseBaseUnit));
+
   const handleRegisterPurchase = async () => {
     if (!purchaseTarget || !pQuantity || !pPurchaseUnit.trim()) return;
     const purchaseQuantity = Number(pQuantity);
-    const conversionFactor = Number(pConversion);
+    const conversionFactor = automaticConversion ?? Number(pConversion);
     if (!Number.isFinite(purchaseQuantity) || purchaseQuantity <= 0 ||
         !Number.isFinite(conversionFactor) || conversionFactor <= 0) return;
     const normalizedQuantity = purchaseQuantity * conversionFactor;
@@ -729,6 +738,311 @@ const StockTab = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Unidade da compra</Label>
+                <Select value={pPurchaseUnit} onValueChange={(v) => {
+                  setPPurchaseUnit(v);
+                  const base = purchaseTarget ? materialsById[purchaseTarget]?.unit : "";
+                  const factor: Record<string, number> = { "kg:g": 1000, "g:kg": 0.001, "L:ml": 1000, "ml:L": 0.001 };
+                  setPConversion(String(v === base ? 1 : factor[`${v}:${base}`] ?? ""));
+                }}>
+                  <SelectTrigger><SelectValue placeholder="Escolha..." /></SelectTrigger>
+                  <SelectContent>
+                    {[...new Set([purchaseTarget ? materialsById[purchaseTarget]?.unit : "", "kg", "g", "L", "ml", "un", "pé", "ramo", "maço", "cabeça", "cacho", "bandeja", "caixa", "pacote", "saco", "fardo", "galão", "botijão", "dúzia", "garrafa", "lata", "pote", "frasco", "rolo"].filter(Boolean))].map((u) => (
+                      <SelectItem key={u} value={u!}>{u}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Quantidade comprada</Label>
+                <Input type="number" min="0" step="any" value={pQuantity} onChange={(e) => {
+                  const q = e.target.value;
+                  setPQuantity(q);
+                  if (pUnitCost !== "" && q !== "") setPTotalCost(String(Number(q) * Number(pUnitCost)));
+                }} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Equivalência: 1 {pPurchaseUnit || "unidade de compra"} corresponde a quantos {purchaseTarget ? materialsById[purchaseTarget]?.unit : "na unidade de estoque"}?</Label>
+              <Input type="number" min="0" step="any" value={pConversion} onChange={(e) => setPConversion(e.target.value)} placeholder="Informe a conversão exata" />
+              <p className="text-xs text-muted-foreground">
+                Entrada no estoque: {Number(pQuantity) > 0 && Number(pConversion) > 0
+                  ? (Number(pQuantity) * Number(pConversion)).toLocaleString("pt-BR") : "—"} {purchaseTarget ? materialsById[purchaseTarget]?.unit : ""}.
+                Para caixa, pacote ou unidade sem equivalência conhecida, informe a conversão; o sistema não estima pesos.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Custo unitário (R$/{pPurchaseUnit || "un"})</Label>
+                <Input type="number" min="0" step="0.01" value={pUnitCost} onChange={(e) => {
+                  setPUnitCost(e.target.value);
+                  setPTotalCost(e.target.value === "" || pQuantity === "" ? "" : String(Number(e.target.value) * Number(pQuantity)));
+                }} />
+              </div>
+              <div className="space-y-2">
+                <Label>Custo total do lote (R$)</Label>
+                <Input type="number" min="0" step="0.01" value={pTotalCost} onChange={(e) => {
+                  setPTotalCost(e.target.value);
+                  setPUnitCost(e.target.value === "" || !(Number(pQuantity) > 0) ? "" : String(Number(e.target.value) / Number(pQuantity)));
+                }} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Fornecedor (opcional)</Label>
+              <Select value={pSupplierId} onValueChange={setPSupplierId}>
+                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                <SelectContent>
+                  {suppliers.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {!editingLotId && <div className="space-y-2 border-t border-border pt-3">
+              <Label>Data de entrada do lote</Label>
+              <Input type="date" value={pDataEntrada} max={new Date().toLocaleDateString("en-CA")} onChange={(e) => setPDataEntrada(e.target.value)} />
+            </div>}
+            <div className="grid grid-cols-2 gap-3 border-t border-border pt-3">
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground flex items-center gap-1">
+                  <CalendarClock className="h-3.5 w-3.5" /> Validade (opcional)
+                </Label>
+                <Input type="date" value={pValidade} onChange={(e) => setPValidade(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Nº do lote (opcional)</Label>
+                <Input value={pNumeroLote} onChange={(e) => setPNumeroLote(e.target.value)} placeholder="Gerado automaticamente" />
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setPurchaseOpen(false)} disabled={saving}>Cancelar</Button>
+            <Button data-tooltip="Salve os dados da compra ou da correção do lote e atualize o estoque real." onClick={handleRegisterPurchase} disabled={saving || !(Number(pQuantity) > 0) || !((automaticConversion ?? Number(pConversion)) > 0) || !pPurchaseUnit}>
+              {saving ? "Aguarde..." : editingLotId ? "Salvar alterações" : "Registrar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={newSupplierOpen} onOpenChange={(o) => { setNewSupplierOpen(o); if (!o) resetSupplierForm(); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Novo Fornecedor</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Nome</Label>
+              <Input value={supName} onChange={(e) => setSupName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">CNPJ/CPF</Label>
+              <Input value={supDocument} onChange={(e) => setSupDocument(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Telefone</Label>
+              <Input value={supPhone} onChange={(e) => setSupPhone(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">E-mail</Label>
+              <Input value={supEmail} onChange={(e) => setSupEmail(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setNewSupplierOpen(false)} disabled={saving}>Cancelar</Button>
+            <Button data-tooltip="Salve o cadastro do fornecedor." onClick={handleCreateSupplier} disabled={saving || !supName.trim()}>
+              {saving ? "Aguarde..." : "Criar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={newRecipeOpen} onOpenChange={(o) => { setNewRecipeOpen(o); if (!o) resetRecipeForm(); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Nova Receita de Produção</DialogTitle>
+            <DialogDescription>Defina o porcionamento: quais insumos entram e o que sai.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Nome da receita</Label>
+              <Input value={recName} onChange={(e) => setRecName(e.target.value)} placeholder="Ex: Porcionamento hambúrguer 100g" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Item produzido (saída)</Label>
+                <Select value={recOutputId} onValueChange={setRecOutputId}>
+                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>
+                    {rawMaterials
+                      .filter((m) => m.itemType !== "revenda")
+                      .map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Rendimento padrão</Label>
+                <Input type="number" value={recOutputQty} onChange={(e) => setRecOutputQty(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Validade padrão (dias, opcional)</Label>
+              <Input type="number" value={recShelfDays} onChange={(e) => setRecShelfDays(e.target.value)} placeholder="Ex: 3" />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Tipo de ficha</Label>
+              <Select value={recTipo} onValueChange={(v) => setRecTipo(v as FichaTipo)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {FICHA_TIPO_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Perda esperada % (opcional)</Label>
+                <Input type="number" value={recPerdaEsperada} onChange={(e) => setRecPerdaEsperada(e.target.value)} placeholder="Ex: 5" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Tempo de produção (min, opcional)</Label>
+                <Input type="number" value={recTempoProducao} onChange={(e) => setRecTempoProducao(e.target.value)} placeholder="Ex: 30" />
+              </div>
+            </div>
+
+            <div className="space-y-2 border-t border-border pt-3">
+              <Label className="text-sm text-muted-foreground">Insumos consumidos por lote</Label>
+              {recInputs.map((inp, idx) => (
+                <div key={idx} className="flex gap-2 items-center">
+                  <Select value={inp.rawMaterialId} onValueChange={(v) => updateRecInput(idx, { rawMaterialId: v })}>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="Insumo..." /></SelectTrigger>
+                    <SelectContent>
+                      {rawMaterials.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number"
+                    className="w-24"
+                    value={inp.quantity || ""}
+                    onChange={(e) => updateRecInput(idx, { quantity: Number(e.target.value) })}
+                    placeholder="Qtd"
+                  />
+                  <button data-tooltip="Remova este insumo da receita em edição." aria-label="Remova este insumo da receita em edição."
+                    type="button"
+                    onClick={() => setRecInputs((prev) => prev.filter((_, i) => i !== idx))}
+                    className="p-2 text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+              <Button data-tooltip="Adicione um insumo e sua quantidade à receita de produção."
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setRecInputs((prev) => [...prev, { rawMaterialId: "", quantity: 0 }])}
+              >
+                <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar insumo
+              </Button>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setNewRecipeOpen(false)} disabled={saving}>Cancelar</Button>
+            <Button data-tooltip="Salve a receita e suas quantidades de referência. A produção real será lançada depois." onClick={handleCreateRecipe} disabled={saving || !recName.trim() || !recOutputId || !recOutputQty}>
+              {saving ? "Aguarde..." : "Criar receita"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={produceOpen} onOpenChange={(o) => { setProduceOpen(o); if (!o) resetProduceForm(); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Produzir Lote</DialogTitle>
+            <div className="space-y-1"><Label htmlFor="production-recipe-select">Ficha técnica do item produzido</Label><select id="production-recipe-select" className="w-full rounded-md border bg-background p-2 text-sm" value={prodRecipeId} onChange={event => openProduce(event.target.value)}>{recipes.filter(r => r.active).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select></div>
+            <DialogDescription>
+              Ao confirmar, gera etiqueta automaticamente (código + validade) e credita o item produzido no estoque.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Quantidade produzida (real)</Label>
+              <div className="flex items-center gap-2"><Input type="number" min="0" step="any" value={prodQuantity} onChange={(e) => handleProductionQuantityChange(e.target.value)} /><span className="text-sm text-muted-foreground">{outputUnit}</span></div>
+              <p className="text-xs text-muted-foreground">Receita: {selectedProductionRecipe?.name ?? "Não selecionada"} · rendimento padrão: {selectedProductionRecipe?.outputQuantity} {outputUnit}. Insumos calculados proporcionalmente.</p>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Insumos necessários (ajuste o consumo real se necessário)</Label>
+              {insufficientInputs.length > 0 && <p role="alert" className="text-sm text-destructive">Estoque insuficiente, insumo ausente ou quantidade inválida. Regularize os insumos antes de produzir.</p>}
+              {prodInputs.map((inp, idx) => {
+                const alocacao = fefoPreview[inp.rawMaterialId];
+                return (
+                  <div key={idx} className="space-y-1">
+                    <div className="flex gap-2 items-center">
+                      <span className="flex-1 text-sm text-foreground">
+                        {materialsById[inp.rawMaterialId]?.name ?? "?"} — disponível: {materialsById[inp.rawMaterialId]?.currentStock ?? 0} {materialsById[inp.rawMaterialId]?.unit ?? ""}
+                      </span>
+                      <Input
+                        type="number"
+                        className="w-24"
+                        value={inp.quantityUsed || ""}
+                        onChange={(e) =>
+                          setProdInputs((prev) =>
+                            prev.map((p, i) => (i === idx ? { ...p, quantityUsed: Number(e.target.value) } : p))
+                          )
+                        }
+                      />
+                      <span className="text-xs text-muted-foreground w-8">{materialsById[inp.rawMaterialId]?.unit}</span>
+                    </div>
+                    {alocacao && alocacao.length > 0 && (
+                      <p className="text-[11px] text-muted-foreground pl-1 flex items-center gap-1">
+                        <Boxes className="h-3 w-3 shrink-0" />
+                        FEFO: {alocacao.map((a, i) => (
+                          <span key={i}>
+                            {i > 0 && " + "}
+                            {a.quantidade.toFixed(a.quantidade % 1 === 0 ? 0 : 2)}
+                            {" "}
+                            {a.loteId
+                              ? `do lote ${a.numeroLote}${a.validade ? ` (val. ${new Date(a.validade).toLocaleDateString("pt-BR")})` : ""}`
+                              : "sem lote rastreado"}
+                          </span>
+                        ))}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Observações (opcional)</Label>
+              <Input value={prodNotes} onChange={(e) => setProdNotes(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setProduceOpen(false)} disabled={saving}>Cancelar</Button>
+            <Button data-tooltip="Confirme a produção: registre o lote e o consumo dos insumos." onClick={handleProduceBatch} disabled={saving || invalidProductionQuantity || !prodInputs.length || insufficientInputs.length > 0}>
+              {saving ? "Aguarde..." : "Confirmar produção"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
+
+export default StockTab;            {requiresManualConversion && <div className="space-y-2">
+              <Label>{crossDimension ? "Quantidade real na unidade do estoque" : `Conteúdo de 1 ${pPurchaseUnit} em ${purchaseBaseUnit}`}</Label>
+              <Input type="number" min="0" step="any" value={pConversion} onChange={(e) => setPConversion(e.target.value)} placeholder={crossDimension ? `Informe quantos ${purchaseBaseUnit} foram recebidos por ${pPurchaseUnit}` : "Informe o conteúdo da embalagem"} />
+              <p className="text-xs text-muted-foreground">Não estimamos peso, volume ou quantidade por unidade. Informe apenas valores conferidos.</p>
+            </div>}
+            {pPurchaseUnit && purchaseBaseUnit && <p className="text-xs text-muted-foreground">
+              Entrada no estoque: {Number(pQuantity) > 0 && conversionFactor > 0 ? (Number(pQuantity) * conversionFactor).toLocaleString("pt-BR") : "—"} {purchaseBaseUnit}.
+            </p>}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Unidade da compra</Label>
