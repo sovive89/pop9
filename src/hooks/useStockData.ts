@@ -452,6 +452,7 @@ export const useStockData = () => {
     purchaseQuantity: number;
     conversionFactor: number;
     totalCost: number | null;
+    dataEntrada?: string; // YYYY-MM-DD, data de entrada informada pelo operador
     validade?: string | null; // YYYY-MM-DD, opcional — pilar "Lotes/Validade"
     numeroLote?: string | null; // opcional; se vazio, gera um código
   }) => {
@@ -486,6 +487,7 @@ export const useStockData = () => {
       numero_lote: numeroLote,
       origem: "compra",
       quantidade_entrada: input.quantity,
+      ...(input.dataEntrada ? { data_entrada: `${input.dataEntrada}T12:00:00` } : {}),
       validade: input.validade || null,
       fornecedor_id: input.supplierId,
       preco_unitario: input.unitCost,
