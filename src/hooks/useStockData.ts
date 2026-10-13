@@ -585,8 +585,13 @@ export const useStockData = () => {
       }
     }
 
+    // Um insumo teórico vindo do Cardápio pode virar saída produzida somente
+    // neste momento, quando a receita é criada em Estoque → Produção.
+    await supabase.from("raw_materials").update({ tipo: "semiacabado" })
+      .eq("id", input.outputRawMaterialId).eq("business_unit_id", businessUnitId);
+
     toast.success("Receita de produção criada");
-    await loadRecipes();
+    await Promise.all([loadRecipes(), loadRawMaterials()]);
     return true;
   };
 
