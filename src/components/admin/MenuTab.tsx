@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { formatCurrency } from "@/utils/orders";
 import { CATEGORY_ICON_OPTIONS, CATEGORY_COLORS, getCategoryIcon, safeCategoryColor, suggestCategoryIcon } from "@/utils/categoryIcons";
 import { toast } from "sonner";
+import type { MenuRecipeDraft } from "@/lib/recipeDraft";
 import RecipeBuilder, { type RecipeBuilderHandle } from "@/components/admin/RecipeBuilder";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import { useSearchParams } from "react-router-dom";
@@ -60,8 +61,9 @@ type MenuItemInput = Omit<DbMenuItem, "id" | "sku" | "sort_order" | "ingredients
   sort_order?: number;
   ingredients: Omit<DbIngredient, "id">[];
   variants: Omit<DbVariant, "id">[];
+  recipe: MenuRecipeDraft[];
 };
-type MenuItemSaveResult = string | false | { failedId: string };
+type MenuItemSaveResult = string | false;
 
 // ── Category Editor ──
 interface CategoryEditorProps {
@@ -211,15 +213,13 @@ interface MenuEditorProps {
 }
 
 const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps) => {
-  // Se o item novo já foi criado mas um passo seguinte (ficha técnica) falhou,
-  // guardamos o ID para que "salvar de novo" atualize em vez de duplicar.
-  const [createdId, setCreatedId] = useState<string | null>(null);
-  const isNew = !item && !createdId;
+  // Stable across network retries; the atomic RPC never leaves a partial item.
+  const newItemId = useRef(crypto.randomUUID());
+  const isNew = !item;
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Imagens enviadas/geradas nesta edição; as não usadas são apagadas ao fechar.
   const sessionImages = useRef<string[]>([]);
-  // Imagem já gravada no item (save ok, mas um passo seguinte falhou):
-  // não pode ser apagada ao cancelar, senão a URL do item fica quebrada.
+  // Imagem já gravada no item; o acervo permanece disponível para reutilização.
   const persistedImage = useRef<string | null>(null);
   // Editor fechado: upload/geração que terminar depois disso é apagado na hora.
   const closed = useRef(false);
@@ -259,8 +259,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   };
   const [sortOrder, setSortOrder] = useState(item?.sort_order?.toString() ?? "0");
   const [active, setActive] = useState(item?.active ?? true);
-  // Status já gravado no banco (não o do item aberto): muda assim que um save
-  // passa, mesmo que um passo seguinte (ficha técnica) falhe e o editor continue aberto.
+  // Status confirmado pela gravação atômica do item e da ficha.
   const [savedStatus, setSavedStatus] = useState(item?.status);
   const isPublished = savedStatus === "published";
   const [uploading, setUploading] = useState(false);
@@ -305,7 +304,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       const {data,error} = await supabase.from("menu_items").select("id,name")
         .eq("business_unit_id",businessUnitId).order("name");
       if(error) throw error;
-      setDocumentSheets((data??[]).filter(source=>source.id!==item?.id && source.id!==createdId));
+      setDocumentSheets((data??[]).filter(source=>source.id!==item?.id && source.id!==newItemId.current));
       setSelectedDocument("");
       setDocumentPickerOpen(true);
     }catch{toast.error("Não foi possível consultar as fichas de Documentos.");}
@@ -406,8 +405,8 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   // ID, SKU e ordem inicial são definidos pelo banco (trigger + defaults).
   // O status muda pela ação escolhida: "Salvar rascunho" ou "Publicar".
   const handleSave = async (status: "draft" | "published") => {
-    if (!name.trim() || !price) {
-      toast.error("Nome e preço são obrigatórios");
+    if (!name.trim() || !price || !Number.isFinite(Number(price)) || Number(price) < 0 || (status === "published" && Number(price) <= 0)) {
+      toast.error("Informe nome e preço válido; para publicar, o preço deve ser maior que zero");
       return;
     }
     if (status === "published" && !recipeBuilderRef.current) {
@@ -415,9 +414,8 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       return;
     }
     setSaving(true);
-    // Primeiro o item do cardápio é salvo sem exigir a ficha técnica. A ficha
-    // é montada depois, ao reabrir o item já criado, quando a lista de
-    // ingredientes/necessidades estiver definida.
+    // Um rascunho pode começar sem ficha. As linhas preenchidas e a publicação
+    // são gravadas junto com o item, sem uma segunda etapa de escrita.
     if (recipeBuilderRef.current && !recipeBuilderRef.current.validate()) { setSaving(false); return; }
     const finalImage = imageUrl.trim() || null;
     const listedIngredients = ingredientsFromDescription(description, ingredients);
@@ -425,36 +423,24 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       {
         ...(item
           ? { id: item.id, sort_order: parseInt(sortOrder) || 0 }
-          : createdId ? { id: createdId } : {}),
+          : { id: newItemId.current }),
         name: name.trim(),
-        price: parseFloat(price),
+        price: Number(price),
         category,
         description: description.trim() || null,
         image_url: finalImage,
         active,
-        status: status === "published" ? "draft" : status,
+        status,
         ingredients: listedIngredients,
         variants,
+        recipe: recipeBuilderRef.current?.getDraft() ?? [],
       },
       isNew
     );
-    if (typeof savedId !== "string") {
-      // Item novo ficou no banco sem conseguir desfazer: próxima tentativa atualiza ele.
-      if (savedId) {
-        if (!item) setCreatedId(savedId.failedId);
-        // A linha existe e já aponta para esta foto/status: Cancelar não pode apagá-la.
-        persistedImage.current = finalImage;
-        setSavedStatus(status);
-      }
-      setSaving(false);
-      return;
-    }
-    if (!item) setCreatedId(savedId);
+    setSaving(false);
+    if (typeof savedId !== "string") return;
     persistedImage.current = finalImage;
     setSavedStatus(status);
-    const recipeOk = recipeBuilderRef.current ? await recipeBuilderRef.current.commit(savedId) : true;
-    setSaving(false);
-    if (recipeOk === false) return;
 
     // Salvo: apaga a foto antiga (se foi trocada) e as tentativas descartadas.
     const stale = [item?.image_url, ...sessionImages.current].filter((u) => u && u !== finalImage);
@@ -638,7 +624,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
         <Button type="button" variant="outline" disabled={saving || documentPickerBusy}
           onClick={() => void openDocumentPicker()}>Puxar ficha de Documentos</Button>
         <p className="text-xs text-muted-foreground">Selecione uma ficha técnica já salva nesta unidade. A importação só será vinculada após salvar o item.</p>
-        <RecipeBuilder ref={recipeBuilderRef} menuItemId={item?.id ?? createdId ?? undefined}
+        <RecipeBuilder ref={recipeBuilderRef} menuItemId={item?.id}
           menuItemName={name} disabled={saving || uploading || generating} />
       </div>
       {documentPickerOpen && <div role="dialog" aria-label="Puxar ficha técnica de Documentos"

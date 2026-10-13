@@ -74,7 +74,7 @@ const FICHA_TIPO_OPTIONS: { value: FichaTipo; label: string }[] = [
   { value: "porcionamento", label: "Porcionamento" },
 ];
 
-const StockTab = () => {
+const UnitStockTab = () => {
   const { businessUnitId } = useCurrentBusinessUnit();
   const [removingMaterial,setRemovingMaterial] = useState<string | null>(null);
   const {
@@ -93,6 +93,7 @@ const StockTab = () => {
     createSupplier,
     createRecipe,
     produceBatch,
+    error: stockError,
   } = useStockData();
 
   const removeMaterialCard = async (id:string,name:string) => {
@@ -168,8 +169,8 @@ const StockTab = () => {
 
   // Prévia do FEFO: de qual(is) lote(s) cada insumo do "Produzir Lote" vai
   // sair, antes de confirmar. Puramente informativo — quem decide de
-  // verdade, na hora de salvar, é a mesma função (alocarFefo) rodando
-  // dentro de produceBatch, com os mesmos dados.
+  // verdade, na hora de salvar, é o banco, com saldo atualizado e bloqueio
+  // dos insumos. A prévia pode mudar se outro pedido consumir esses lotes.
   const fefoPreview = useMemo(() => {
     const preview: Record<string, ReturnType<typeof alocarFefo>> = {};
     prodInputs.forEach((inp) => {
@@ -443,6 +444,11 @@ const StockTab = () => {
       resetProduceForm();
     }
   };
+
+  if (stockError) return <div role="alert" className="space-y-3 rounded-lg border border-destructive p-4">
+    <p>Não foi possível carregar o estoque desta unidade.</p>
+    <Button variant="outline" onClick={() => void refreshAll()}>Tentar novamente</Button>
+  </div>;
 
   if (loading) {
     return (
@@ -1089,4 +1095,8 @@ const StockTab = () => {
   );
 };
 
+const StockTab = () => {
+  const { businessUnitId } = useCurrentBusinessUnit();
+  return <UnitStockTab key={businessUnitId ?? "no-unit"} />;
+};
 export default StockTab;
