@@ -12,3 +12,17 @@ alter table public.brand_settings
   add column if not exists about_text text check (about_text is null or length(about_text) <= 500),
   add column if not exists address text check (address is null or length(address) <= 200),
   add column if not exists opening_hours text check (opening_hours is null or length(opening_hours) <= 300);
+
+-- Quem editou por último e quando: definido pelo banco (o app não consegue forjar).
+create or replace function app_private.touch_brand_settings()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  new.updated_by := coalesce(auth.uid(), new.updated_by);
+  new.updated_at := now();
+  return new;
+end;
+$$;
+revoke all on function app_private.touch_brand_settings() from public;
+drop trigger if exists touch_brand_settings on public.brand_settings;
+create trigger touch_brand_settings before insert or update on public.brand_settings
+  for each row execute function app_private.touch_brand_settings();

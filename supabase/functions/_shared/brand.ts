@@ -81,8 +81,10 @@ export function sanitizeBrand(row: Partial<Record<keyof Brand, unknown>> | null 
   if (!/^https:\/\//.test(assetPrefix)) assetPrefix = "\u0000";
   const social = (k: SocialKey, v: unknown) => (typeof v === "string" && v.length <= 200 && SOCIAL_PATTERNS[k].test(v) ? v : null);
   const color = (v: unknown) => (typeof v === "string" && HEX.test(v) ? v.toLowerCase() : null);
+  // Depois do prefixo só um nome de arquivo simples (ex.: logo-123.png): sem subpastas,
+  // "..", "%2e%2e" ou aspas — nada que leve a outra unidade ou quebre o CSS.
   const image = (v: unknown) =>
-    typeof v === "string" && v.length <= 500 && v.startsWith(assetPrefix) && !/[\s"'()<>\\]/.test(v) && !v.slice(assetPrefix.length).includes("..")
+    typeof v === "string" && v.length <= 500 && v.startsWith(assetPrefix) && /^[A-Za-z0-9_-]+\.(png|jpe?g|webp)$/.test(v.slice(assetPrefix.length))
       ? v : null;
   return {
     logo_url: image(row?.logo_url),
@@ -129,12 +131,33 @@ export function hexToHslVar(hex: string) {
   return `${Math.round(h)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
 }
 
+// Cores do tema padrão (src/index.css), usadas quando a marca não define a sua.
+const THEME = { background: "#161412", card: "#211f1c", text: "#eeeae4" };
+const readableOn = (bg: string) => (contrast(bg, "#000000") >= contrast(bg, "#ffffff") ? "#000000" : "#ffffff");
+function mix(a: string, b: string, t: number) {
+  const ch = (h: string, i: number) => parseInt(h.slice(1 + i * 2, 3 + i * 2), 16);
+  return "#" + [0, 1, 2].map((i) => Math.round(ch(a, i) * (1 - t) + ch(b, i) * t).toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Cores efetivas do cardápio. Sem cor de texto definida, o texto vira preto ou
+ * branco conforme cada superfície (fundo e cartões), para nunca ficar ilegível.
+ */
+export function brandColors(b: Brand) {
+  const background = b.background_color ?? THEME.background;
+  const card = b.card_color ?? THEME.card;
+  const custom = Boolean(b.background_color || b.card_color);
+  const pageText = b.text_color ?? (custom ? readableOn(background) : THEME.text);
+  const cardText = b.text_color ?? (custom ? readableOn(card) : THEME.text);
+  return { background, card, pageText, cardText, mutedText: mix(pageText, background, 0.35), mutedCardText: mix(cardText, card, 0.35) };
+}
+
 /** Avisos de legibilidade para o admin (não bloqueiam o salvamento). */
 export function brandWarnings(b: Brand) {
   const out: string[] = [];
-  const text = b.text_color, bg = b.card_color ?? b.background_color;
-  if (text && bg && contrast(text, bg) < 4.5) out.push("O texto pode ficar difícil de ler sobre os cartões/fundo (contraste baixo).");
-  if (b.primary_color && b.background_color && contrast(b.primary_color, b.background_color) < 1.5) out.push("A cor principal quase some no fundo; os botões podem ficar pouco visíveis.");
+  const c = brandColors(b);
+  if (contrast(c.pageText, c.background) < 4.5 || contrast(c.cardText, c.card) < 4.5) out.push("O texto pode ficar difícil de ler sobre o fundo ou os cartões (contraste baixo).");
+  if (b.primary_color && contrast(b.primary_color, c.background) < 1.5) out.push("A cor principal quase some no fundo; os botões podem ficar pouco visíveis.");
   return out;
 }
 
@@ -146,15 +169,17 @@ export function brandCssVars(b: Brand): Record<string, string> {
   const vars: Record<string, string> = {};
   if (b.primary_color) {
     vars["--primary"] = hexToHslVar(b.primary_color);
-    vars["--primary-foreground"] = contrast(b.primary_color, "#000000") >= contrast(b.primary_color, "#ffffff") ? "0 0% 0%" : "0 0% 100%";
+    vars["--primary-foreground"] = hexToHslVar(readableOn(b.primary_color));
     vars["--ring"] = vars["--primary"];
   }
-  if (b.background_color) vars["--background"] = hexToHslVar(b.background_color);
-  if (b.card_color) vars["--card"] = hexToHslVar(b.card_color);
-  if (b.text_color) {
-    vars["--foreground"] = hexToHslVar(b.text_color);
-    vars["--card-foreground"] = vars["--foreground"];
-    vars["--muted-foreground"] = vars["--foreground"];
+  if (b.background_color || b.card_color || b.text_color) {
+    const c = brandColors(b);
+    vars["--background"] = hexToHslVar(c.background);
+    vars["--card"] = hexToHslVar(c.card);
+    vars["--foreground"] = hexToHslVar(c.pageText);
+    vars["--card-foreground"] = hexToHslVar(c.cardText);
+    // Texto secundário: mesma cor do texto, mais próximo do fundo, mantendo a hierarquia.
+    vars["--muted-foreground"] = hexToHslVar(c.mutedText);
   }
   return vars;
 }

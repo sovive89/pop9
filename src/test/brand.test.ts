@@ -23,6 +23,9 @@ describe("brand", () => {
     expect(sanitizeBrand({ logo_url: `${prefix}../x/a.png` }, prefix).logo_url).toBeNull();
     expect(sanitizeBrand({ logo_url: `${prefix}a.png")` }, prefix).logo_url).toBeNull();
     expect(sanitizeBrand(null, prefix).logo_url).toBeNull();
+    expect(sanitizeBrand({ logo_url: prefix }, prefix).logo_url).toBeNull();
+    expect(sanitizeBrand({ logo_url: `${prefix}%2e%2e/%2e%2e/outra/a.png` }, prefix).logo_url).toBeNull();
+    expect(sanitizeBrand({ logo_url: `${prefix}sub/a.png` }, prefix).logo_url).toBeNull();
   });
 
   it("converts colors and picks readable button text", () => {
@@ -34,7 +37,18 @@ describe("brand", () => {
 
   it("warns about low contrast", () => {
     expect(brandWarnings({ ...sanitizeBrand({}, prefix), text_color: "#777777", card_color: "#888888" })).toHaveLength(1);
-    expect(brandWarnings({ ...sanitizeBrand({}, prefix), text_color: "#000000", card_color: "#ffffff" })).toHaveLength(0);
+    expect(brandWarnings({ ...sanitizeBrand({}, prefix), text_color: "#000000", card_color: "#ffffff", background_color: "#f5f5f5" })).toHaveLength(0);
+    // Texto preto em fundo preto avisa mesmo com cartões brancos.
+    expect(brandWarnings({ ...sanitizeBrand({}, prefix), text_color: "#000000", card_color: "#ffffff", background_color: "#000000" })).toHaveLength(1);
+  });
+
+  it("keeps text readable on a light background when no text color is set", () => {
+    const b = { ...sanitizeBrand({}, prefix), background_color: "#ffffff", card_color: "#f4f4f4" };
+    const vars = brandCssVars(b);
+    expect(vars["--foreground"]).toBe("0 0% 0%");
+    expect(vars["--card-foreground"]).toBe("0 0% 0%");
+    expect(vars["--muted-foreground"]).not.toBe(vars["--foreground"]);
+    expect(brandWarnings(b)).toHaveLength(0);
   });
 });
 

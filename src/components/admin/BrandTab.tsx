@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { ExternalLink, ImagePlus, Palette, RotateCcw, Trash2 } from "lucide-react";
 import { SOCIALS } from "@/lib/brandSocial";
 import { toast } from "sonner";
@@ -31,6 +31,30 @@ const COLORS: { key: keyof Brand; label: string; hint: string; fallback: string 
   { key: "text_color", label: "Texto", hint: "Nomes, preços e descrições", fallback: "#eeeae4" },
 ];
 
+type ImageKey = "logo_url" | "background_url";
+type ImageFieldProps = { k: ImageKey; label: string; hint: string; value: string | null; disabled: boolean; uploading: boolean; onFile: (file: File | undefined) => void; onRemove: () => void };
+
+// Fora do BrandTab para manter a identidade do componente entre renders (não perde o foco).
+function ImageField({ k, label, hint, value, disabled, uploading, onFile, onRemove }: ImageFieldProps) {
+  return (
+    <div className="space-y-2 rounded-xl border border-border bg-card p-4">
+      <p className="font-medium">{label}</p>
+      <p className="text-xs text-muted-foreground">{hint}</p>
+      {value && <img src={value} alt="" className={k === "logo_url" ? "h-16 max-w-[12rem] object-contain" : "h-24 w-full rounded-lg object-cover"} />}
+      <div className="flex flex-wrap gap-2">
+        <label className={`inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm ${disabled ? "pointer-events-none opacity-50" : ""}`}>
+          <ImagePlus className="h-4 w-4" aria-hidden /> {uploading ? "Enviando..." : value ? "Trocar" : "Enviar imagem"}
+          <input type="file" accept={TYPES.join(",")} className="sr-only" disabled={disabled}
+            onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ""; }} />
+        </label>
+        {value && <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={onRemove}><Trash2 className="h-4 w-4" /> Remover</Button>}
+      </div>
+    </div>
+  );
+}
+
+const IMAGE_KEYS: ImageKey[] = ["logo_url", "background_url"];
+
 /**
  * Marca da loja: logo, imagem de fundo e cores. Vale SOMENTE para o cardápio do
  * cliente (/pedir/:unidade); o layout das páginas não muda e o painel interno não é afetado.
@@ -46,10 +70,21 @@ export default function BrandTab() {
   const [busy, setBusy] = useState<string | null>(null);
   // O dono digita "@loja" ou o link; o valor salvo é sempre o link https padronizado.
   const [socialRaw, setSocialRaw] = useState<Record<SocialKey, string>>(socialInputs(EMPTY_BRAND));
+  // Unidade ativa agora: respostas que chegam depois de trocar de unidade são ignoradas.
+  const activeUnit = useRef(unit);
+  activeUnit.current = unit;
+  // Imagens enviadas nesta edição e ainda não salvas (apagadas se forem descartadas).
+  const pendingUploads = useRef<Set<string>>(new Set());
+  const bucketPrefix = `${base.replace(/\/+$/, "")}/storage/v1/object/public/brand-assets/`;
+  const removeAssets = (urls: (string | null | undefined)[]) => {
+    const paths = urls.filter((u): u is string => Boolean(u && u.startsWith(bucketPrefix))).map((u) => u.slice(bucketPrefix.length));
+    if (paths.length) void supabase.storage.from("brand-assets").remove(paths).then(({ error }) => { if (error) console.error("brand cleanup", error); });
+  };
 
   useEffect(() => {
     if (!unit) return;
     let cancelled = false;
+    pendingUploads.current.clear();
     setLoaded(null);
     void db.from("brand_settings").select(FIELDS).eq("business_unit_id", unit).maybeSingle()
       .then(({ data, error }: { data: Brand | null; error: { message: string } | null }) => {
@@ -71,53 +106,85 @@ export default function BrandTab() {
   const disabled = !canEdit || !ready || busy !== null;
   const warnings = brandWarnings(draft);
 
-  const upload = async (key: "logo_url" | "background_url", file: File | undefined) => {
+  const upload = async (key: ImageKey, file: File | undefined) => {
     if (!file) return;
     if (!TYPES.includes(file.type)) return toast.error("Use PNG, JPG ou WEBP.");
     if (file.size > MAX_BYTES) return toast.error("A imagem deve ter no máximo 3 MB.");
+    const startedFor = unit;
     setBusy(key);
     try {
       const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
-      const path = `${unit}/${key === "logo_url" ? "logo" : "fundo"}-${Date.now()}.${ext}`;
+      const path = `${startedFor}/${key === "logo_url" ? "logo" : "fundo"}-${Date.now()}.${ext}`;
       const { error } = await supabase.storage.from("brand-assets").upload(path, file, { contentType: file.type });
       if (error) throw error;
       const url = supabase.storage.from("brand-assets").getPublicUrl(path).data.publicUrl;
+      if (activeUnit.current !== startedFor) { removeAssets([url]); return; }
+      const previous = draft[key];
+      if (previous && pendingUploads.current.delete(previous)) removeAssets([previous]);
+      pendingUploads.current.add(url);
       setDraft((d) => ({ ...d, [key]: sanitizeBrand({ [key]: url }, prefix)[key] }));
     } catch (error) {
       console.error("brand upload", error);
-      toast.error("Não foi possível enviar a imagem.");
-    } finally { setBusy(null); }
+      if (activeUnit.current === startedFor) toast.error("Não foi possível enviar a imagem.");
+    } finally { if (activeUnit.current === startedFor) setBusy(null); }
+  };
+
+  const removeImage = (key: ImageKey) => {
+    const previous = draft[key];
+    if (previous && pendingUploads.current.delete(previous)) removeAssets([previous]);
+    setDraft((d) => ({ ...d, [key]: null }));
+  };
+
+  const discard = () => {
+    if (!loaded) return;
+    removeAssets([...pendingUploads.current]);
+    pendingUploads.current.clear();
+    setDraft(loaded.brand);
+    setSocialRaw(socialInputs(loaded.brand));
   };
 
   const save = async () => {
+    const startedFor = unit;
+    const before = loaded?.brand ?? EMPTY_BRAND;
     setBusy("save");
     try {
       const clean = sanitizeBrand(current, prefix);
-      const { error } = await db.from("brand_settings").upsert({ business_unit_id: unit, ...clean, updated_at: new Date().toISOString() });
+      // updated_by/updated_at são preenchidos pelo banco.
+      const { error } = await db.from("brand_settings").upsert({ business_unit_id: startedFor, ...clean });
       if (error) throw error;
-      setLoaded({ unit, brand: clean, error: "" });
+      // Imagens trocadas ou removidas deixam de ser usadas: apaga do Storage.
+      const kept = new Set(IMAGE_KEYS.map((k) => clean[k]));
+      removeAssets([...IMAGE_KEYS.map((k) => before[k]), ...pendingUploads.current].filter((u) => !kept.has(u)));
+      pendingUploads.current.clear();
+      if (activeUnit.current !== startedFor) return;
+      setLoaded({ unit: startedFor, brand: clean, error: "" });
       setDraft(clean);
       setSocialRaw(socialInputs(clean));
       toast.success("Marca salva. O cardápio do cliente já mostra o novo visual.");
     } catch (error) {
       console.error("brand save", error);
-      toast.error("Não foi possível salvar a marca.");
-    } finally { setBusy(null); }
+      if (activeUnit.current === startedFor) toast.error("Não foi possível salvar a marca.");
+    } finally { if (activeUnit.current === startedFor) setBusy(null); }
   };
 
   const reset = async () => {
+    const startedFor = unit;
+    const before = loaded?.brand ?? EMPTY_BRAND;
     setBusy("reset");
     try {
-      const { error } = await db.from("brand_settings").delete().eq("business_unit_id", unit);
+      const { error } = await db.from("brand_settings").delete().eq("business_unit_id", startedFor);
       if (error) throw error;
-      setLoaded({ unit, brand: EMPTY_BRAND, error: "" });
+      removeAssets([...IMAGE_KEYS.map((k) => before[k]), ...pendingUploads.current]);
+      pendingUploads.current.clear();
+      if (activeUnit.current !== startedFor) return;
+      setLoaded({ unit: startedFor, brand: EMPTY_BRAND, error: "" });
       setDraft(EMPTY_BRAND);
       setSocialRaw(socialInputs(EMPTY_BRAND));
       toast.success("Visual padrão restaurado.");
     } catch (error) {
       console.error("brand reset", error);
-      toast.error("Não foi possível restaurar o padrão.");
-    } finally { setBusy(null); }
+      if (activeUnit.current === startedFor) toast.error("Não foi possível restaurar o padrão.");
+    } finally { if (activeUnit.current === startedFor) setBusy(null); }
   };
 
   const preview = {
@@ -125,21 +192,6 @@ export default function BrandTab() {
     ...(draft.background_url ? { backgroundImage: `url("${draft.background_url}")`, backgroundSize: "cover", backgroundPosition: "center" } : {}),
   } as CSSProperties;
 
-  const ImageField = ({ k, label, hint }: { k: "logo_url" | "background_url"; label: string; hint: string }) => (
-    <div className="space-y-2 rounded-xl border border-border bg-card p-4">
-      <p className="font-medium">{label}</p>
-      <p className="text-xs text-muted-foreground">{hint}</p>
-      {draft[k] && <img src={draft[k]!} alt="" className={k === "logo_url" ? "h-16 max-w-[12rem] object-contain" : "h-24 w-full rounded-lg object-cover"} />}
-      <div className="flex flex-wrap gap-2">
-        <label className={`inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm ${disabled ? "pointer-events-none opacity-50" : ""}`}>
-          <ImagePlus className="h-4 w-4" aria-hidden /> {busy === k ? "Enviando..." : draft[k] ? "Trocar" : "Enviar imagem"}
-          <input type="file" accept={TYPES.join(",")} className="sr-only" disabled={disabled}
-            onChange={(e) => { void upload(k, e.target.files?.[0]); e.target.value = ""; }} />
-        </label>
-        {draft[k] && <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => setDraft((d) => ({ ...d, [k]: null }))}><Trash2 className="h-4 w-4" /> Remover</Button>}
-      </div>
-    </div>
-  );
 
   return (
     <section className="space-y-6">
@@ -154,8 +206,8 @@ export default function BrandTab() {
       <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
-            <ImageField k="logo_url" label="Logo" hint="PNG com fundo transparente fica melhor. Até 3 MB." />
-            <ImageField k="background_url" label="Imagem de fundo" hint="Opcional. Fica atrás do cardápio. Até 3 MB." />
+            <ImageField k="logo_url" label="Logo" hint="PNG com fundo transparente fica melhor. Até 3 MB." value={draft.logo_url} disabled={disabled} uploading={busy === "logo_url"} onFile={(f) => void upload("logo_url", f)} onRemove={() => removeImage("logo_url")} />
+            <ImageField k="background_url" label="Imagem de fundo" hint="Opcional. Fica atrás do cardápio. Até 3 MB." value={draft.background_url} disabled={disabled} uploading={busy === "background_url"} onFile={(f) => void upload("background_url", f)} onRemove={() => removeImage("background_url")} />
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             {COLORS.map(({ key, label, hint, fallback }) => (
@@ -208,7 +260,7 @@ export default function BrandTab() {
           {warnings.map((w) => <p key={w} className="text-sm text-amber-500">{w}</p>)}
           <div className="flex flex-wrap gap-2">
             <Button disabled={disabled || !dirty || socialInvalid.length > 0} onClick={() => void save()}>{busy === "save" ? "Salvando..." : "Salvar marca"}</Button>
-            <Button variant="outline" disabled={disabled || !dirty} onClick={() => { if (loaded) { setDraft(loaded.brand); setSocialRaw(socialInputs(loaded.brand)); } }}>Descartar alterações</Button>
+            <Button variant="outline" disabled={disabled || !dirty} onClick={discard}>Descartar alterações</Button>
             <Button variant="ghost" disabled={disabled} onClick={() => void reset()}>Restaurar visual padrão</Button>
             <a href={`/pedir/${unit}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 px-2 text-sm text-primary underline-offset-4 hover:underline">Abrir cardápio do cliente <ExternalLink className="h-3.5 w-3.5" /></a>
           </div>

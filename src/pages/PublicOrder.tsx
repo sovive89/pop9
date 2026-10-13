@@ -4,7 +4,7 @@ import {Button} from "@/components/ui/button";
 import {formatCurrency} from "@/utils/orders";
 import {whatsappLink} from "@/utils/operationalLinks";
 import {SOCIALS} from "@/lib/brandSocial";
-import {sanitizeBrand,brandAssetPrefix,brandCssVars,type Brand} from "../../supabase/functions/_shared/brand";
+import {brandCssVars,type Brand} from "../../supabase/functions/_shared/brand";
 type Item={id:string;name:string;description:string|null;price:number;image_url:string|null;category:string};
 type Store={name:string;items:Item[];businessPhone:string;brand?:Brand};
 type Confirmation={orderId:string;pickupNumber:number;total:number};
@@ -45,8 +45,9 @@ export default function PublicOrder(){
   };
   const whatsapp=whatsappLink(store?.businessPhone ?? "");
   // Marca da loja: só cores e imagens validadas, aplicadas apenas neste contêiner.
-  const base=import.meta.env.VITE_SUPABASE_URL ?? "";
-  const brand=base && store?.brand ? sanitizeBrand(store.brand,brandAssetPrefix(base,scope)) : null;
+  // A função public-order já validou cada campo com a URL do Storage do servidor
+  // (que pode ser um domínio próprio diferente de VITE_SUPABASE_URL).
+  const brand=store?.brand ?? null;
   const style={...(brand ? brandCssVars(brand) : {}),...(brand?.background_url ? {backgroundImage:`url("${brand.background_url}")`,backgroundSize:"cover",backgroundPosition:"center",backgroundAttachment:"fixed"} : {})} as CSSProperties;
   return <div style={style} className="min-h-screen bg-background text-foreground"><main className="mx-auto min-h-screen max-w-3xl space-y-5 p-4 pb-12">
     <header className="space-y-2 py-4">{brand?.logo_url && <img src={brand.logo_url} alt={store?.name ?? "Logo"} referrerPolicy="no-referrer" className="h-16 max-w-[12rem] object-contain"/>}<h1 className={`text-2xl font-bold ${brand?.background_url ? "inline-block rounded-lg bg-card/90 px-3 py-1" : ""}`}>{store?.name ?? "Pedidos próprios"}</h1>{brand && SOCIALS.some(({key})=>brand[key]) && <nav aria-label="Redes sociais" className="flex flex-wrap gap-2">{SOCIALS.filter(({key})=>brand[key]).map(({key,label,icon:Icon})=><a key={key} href={brand[key]!} target="_blank" rel="noopener noreferrer" aria-label={label} title={label} className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-card text-primary"><Icon className="h-4 w-4" aria-hidden/></a>)}</nav>}<p className="text-sm text-muted-foreground">Escolha seus itens para retirada. Pagamento no estabelecimento.</p></header>
