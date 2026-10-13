@@ -55,46 +55,34 @@ describe("menu-first recipe building", () => {
     expect(mocks.createMaterial).not.toHaveBeenCalled();
     expect(mocks.upsert).toHaveBeenCalledWith([expect.objectContaining({ raw_material_id: 'tomato', quantity: 150 })], { onConflict: 'id' });
   });
-  it("opens usable base ingredient fields and creates theoretical ingredients without stock movements", async () => {
+  it("marks a produced component without creating its production recipe", async () => {
     const ref = createRef<RecipeBuilderHandle>();
     render(<RecipeBuilder ref={ref} />);
     createProducedIngredient();
-    expect(screen.getByLabelText("Nome do novo insumo-base")).toBeVisible();
-    fill("Nome do novo insumo-base", "Tomate novo");
-    fill("Unidade de medida do insumo-base", "g");
-    fill("Quantidade do insumo-base", "800");
-    fill("Quantidade de referência da receita", "2");
     let result: boolean;
     await act(async () => { result = await ref.current!.commit("menu-item"); });
     expect(result!).toBe(true);
     expect(mocks.createMaterial).toHaveBeenCalledWith({ name: "Molho", unit: "kg", itemType: "semiacabado", minStock: 0 });
-    expect(mocks.createMaterial).toHaveBeenCalledWith({ name: "Tomate novo", unit: "g", itemType: "insumo", minStock: 0 });
-    expect(mocks.createRecipe).toHaveBeenCalledWith(expect.objectContaining({
-      outputRawMaterialId: "id-Molho", outputQuantity: 2, inputs: [{ rawMaterialId: "id-Tomate novo", quantity: 800 }],
-    }));
+    expect(mocks.createRecipe).not.toHaveBeenCalled();
     expect(mocks.upsert).toHaveBeenCalledWith([expect.objectContaining({ menu_item_id: "menu-item", raw_material_id: "id-Molho", quantity: 0.05 })], { onConflict: "id" });
     expect(mocks.from.mock.calls.every(([table]) => table === "recipe_items")).toBe(true);
   });
 
-  it("reuses an existing base ingredient and shows its registered unit", async () => {
+  it("does not create a production recipe from the menu", async () => {
     const ref = createRef<RecipeBuilderHandle>();
     render(<RecipeBuilder ref={ref} />);
     createProducedIngredient();
-    fill("Insumo-base", "tomato");
-    expect(screen.getByLabelText("Unidade de medida do insumo-base")).toHaveValue("g");
-    expect(screen.getByLabelText("Unidade de medida do insumo-base")).toHaveAttribute("readonly");
-    fill("Quantidade do insumo-base", "250");
+    expect(screen.getByText(/Estoque → Produção/)).toBeVisible();
     await act(async () => { await ref.current!.commit("menu-item"); });
     expect(mocks.createMaterial).toHaveBeenCalledTimes(1);
-    expect(mocks.createRecipe).toHaveBeenCalledWith(expect.objectContaining({ inputs: [{ rawMaterialId: "tomato", quantity: 250 }] }));
+    expect(mocks.createRecipe).not.toHaveBeenCalled();
   });
 
   it("rejects missing or non-positive quantities before saving any data", async () => {
     const ref = createRef<RecipeBuilderHandle>();
     render(<RecipeBuilder ref={ref} />);
     createProducedIngredient();
-    fill("Nome do novo insumo-base", "Tomate");
-    fill("Quantidade do insumo-base", "0");
+    fill("Quantidade do insumo por item", "0");
     expect(ref.current!.validate()).toBe(false);
     await act(async () => { expect(await ref.current!.commit("menu-item")).toBe(false); });
     expect(mocks.error).toHaveBeenCalled();
