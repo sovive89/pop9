@@ -353,14 +353,39 @@ const StockTab = () => {
 
   const openProduce = (recipeId: string) => {
     const recipe = recipes.find((r) => r.id === recipeId);
+    if (!recipe || !recipe.active) return;
     setProdRecipeId(recipeId);
     setProdQuantity(recipe ? String(recipe.outputQuantity) : "");
     setProdInputs(recipe ? recipe.inputs.map((i) => ({ rawMaterialId: i.rawMaterialId, quantityUsed: i.quantity })) : []);
     setProduceOpen(true);
   };
 
+  const selectedProductionRecipe = recipes.find((recipe) => recipe.id === prodRecipeId);
+  const outputUnit = selectedProductionRecipe ? materialsById[selectedProductionRecipe.outputRawMaterialId]?.unit : "";
+  const outputQuantity = Number(prodQuantity);
+  const invalidProductionQuantity = !Number.isFinite(outputQuantity) || outputQuantity <= 0;
+  const insufficientInputs = prodInputs.filter((input) => {
+    const material = materialsById[input.rawMaterialId];
+    return !material || !Number.isFinite(input.quantityUsed) || input.quantityUsed <= 0 ||
+      input.quantityUsed > material.currentStock;
+  });
+  const handleProductionQuantityChange = (value: string) => {
+    setProdQuantity(value);
+    const recipe = selectedProductionRecipe;
+    const quantity = Number(value);
+    if (!recipe || !Number.isFinite(quantity) || quantity <= 0 || recipe.outputQuantity <= 0) {
+      setProdInputs([]);
+      return;
+    }
+    const factor = quantity / recipe.outputQuantity;
+    setProdInputs(recipe.inputs.map((input) => ({
+      rawMaterialId: input.rawMaterialId,
+      quantityUsed: Number((input.quantity * factor).toFixed(6)),
+    })));
+  };
+
   const handleProduceBatch = async () => {
-    if (!prodRecipeId || !prodQuantity) return;
+    if (!prodRecipeId || invalidProductionQuantity || !prodInputs.length || insufficientInputs.length) return;
     setSaving(true);
     const ok = await produceBatch({
       recipeId: prodRecipeId,
@@ -490,7 +515,7 @@ const StockTab = () => {
         <div className="space-y-5">
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-foreground">Receitas de produção</h3>
+              <div className="flex items-center gap-2"><h3 className="text-sm font-semibold text-foreground">Receitas de produção</h3><Button size="sm" onClick={() => openProduce(recipes.find(r => r.active)?.id ?? "")} disabled={!recipes.some(r => r.active)}><Factory className="h-3.5 w-3.5 mr-1" /> Produzir</Button></div>
               <Button data-tooltip="Cadastre uma receita de produção e os insumos necessários, sem produzir um lote." size="sm" variant="outline" onClick={() => setNewRecipeOpen(true)}>
                 <Plus className="h-3.5 w-3.5 mr-1" /> Nova receita
               </Button>
@@ -910,6 +935,7 @@ const StockTab = () => {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Produzir Lote</DialogTitle>
+            <div className="space-y-1"><Label htmlFor="production-recipe-select">Ficha técnica do item produzido</Label><select id="production-recipe-select" className="w-full rounded-md border bg-background p-2 text-sm" value={prodRecipeId} onChange={event => openProduce(event.target.value)}>{recipes.filter(r => r.active).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select></div>
             <DialogDescription>
               Ao confirmar, gera etiqueta automaticamente (código + validade) e credita o item produzido no estoque.
             </DialogDescription>
@@ -917,17 +943,19 @@ const StockTab = () => {
           <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Quantidade produzida (real)</Label>
-              <Input type="number" value={prodQuantity} onChange={(e) => setProdQuantity(e.target.value)} />
+              <div className="flex items-center gap-2"><Input type="number" min="0" step="any" value={prodQuantity} onChange={(e) => handleProductionQuantityChange(e.target.value)} /><span className="text-sm text-muted-foreground">{outputUnit}</span></div>
+              <p className="text-xs text-muted-foreground">Receita: {selectedProductionRecipe?.name ?? "Não selecionada"} · rendimento padrão: {selectedProductionRecipe?.outputQuantity} {outputUnit}. Insumos calculados proporcionalmente.</p>
             </div>
             <div className="space-y-2">
-              <Label className="text-sm text-muted-foreground">Insumos consumidos (ajuste se necessário)</Label>
+              <Label className="text-sm text-muted-foreground">Insumos necessários (ajuste o consumo real se necessário)</Label>
+              {insufficientInputs.length > 0 && <p role="alert" className="text-sm text-destructive">Estoque insuficiente, insumo ausente ou quantidade inválida. Regularize os insumos antes de produzir.</p>}
               {prodInputs.map((inp, idx) => {
                 const alocacao = fefoPreview[inp.rawMaterialId];
                 return (
                   <div key={idx} className="space-y-1">
                     <div className="flex gap-2 items-center">
                       <span className="flex-1 text-sm text-foreground">
-                        {materialsById[inp.rawMaterialId]?.name ?? "?"}
+                        {materialsById[inp.rawMaterialId]?.name ?? "?"} — disponível: {materialsById[inp.rawMaterialId]?.currentStock ?? 0} {materialsById[inp.rawMaterialId]?.unit ?? ""}
                       </span>
                       <Input
                         type="number"
@@ -967,7 +995,7 @@ const StockTab = () => {
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setProduceOpen(false)} disabled={saving}>Cancelar</Button>
-            <Button data-tooltip="Confirme a produção: registre o lote e o consumo dos insumos." onClick={handleProduceBatch} disabled={saving || !prodQuantity}>
+            <Button data-tooltip="Confirme a produção: registre o lote e o consumo dos insumos." onClick={handleProduceBatch} disabled={saving || invalidProductionQuantity || !prodInputs.length || insufficientInputs.length > 0}>
               {saving ? "Aguarde..." : "Confirmar produção"}
             </Button>
           </DialogFooter>
