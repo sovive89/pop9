@@ -426,6 +426,17 @@ export const useStockData = () => {
     return data.id;
   };
 
+  const updateRawMaterialCategory = async (rawMaterialId: string, category: string) => {
+    if (!businessUnitId) { toast.error("Nenhuma unidade ativa encontrada"); return false; }
+    const { error } = await supabase.from("raw_materials")
+      .update({ categoria: category })
+      .eq("id", rawMaterialId)
+      .eq("business_unit_id", businessUnitId);
+    if (error) { toast.error("Erro ao organizar insumo: " + error.message); return false; }
+    await loadRawMaterials();
+    return true;
+  };
+
   // Stock forms keep their boolean API; recipe builders need the inserted ID.
   const createRawMaterial = async (input: Parameters<typeof createRawMaterialRecord>[0]) =>
     Boolean(await createRawMaterialRecord(input));
@@ -712,6 +723,7 @@ export const useStockData = () => {
     refreshAll,
     createRawMaterial,
     createRawMaterialRecord,
+    updateRawMaterialCategory,
     registerPurchase,
     managePurchaseLot,
     createSupplier,
