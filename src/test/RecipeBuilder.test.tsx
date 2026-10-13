@@ -40,6 +40,15 @@ function createProducedIngredient() {
 }
 
 describe("menu-first recipe building", () => {
+  it("shows just the ingredient name above the quantity used in the recipe", () => {
+    render(<RecipeBuilder />);
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar insumo" }));
+    const ingredientSelect = screen.getByLabelText("Insumo");
+    expect(ingredientSelect.querySelector('option[value="tomato"]')).toHaveTextContent(/^Tomate$/);
+    expect(screen.getByText("Quantidade usada na receita")).toBeInTheDocument();
+    expect(screen.getByText("Unidade de medida")).toBeInTheDocument();
+    expect(screen.queryByText(/saldo disponível/i)).not.toBeInTheDocument();
+  });
   it("autocomplete selects the existing ingredient and uses its unit without creating a duplicate", async () => {
     const ref = createRef<RecipeBuilderHandle>(); render(<RecipeBuilder ref={ref} />);
     fireEvent.click(screen.getByRole('button', { name: 'Adicionar insumo' }));
