@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.99.2';
 import * as XLSX from 'https://esm.sh/xlsx@0.18.5';
 import * as mammoth from 'https://esm.sh/mammoth@1.10.0';
 import { json, cors, uuid } from '../_shared/operational.ts';
-import { CHAT_MODELS } from '../_shared/assistant-help.ts';
+import { DOCUMENT_MODELS } from '../_shared/document-models.ts';
 import { decryptAIKey, documentCompletion, parseModelJson } from '../_shared/ai-text.ts';
 import { sanitizeDraft, findUnitConflicts, toCatalogDraft, CATALOG_EXTRACTION_SYSTEM, EXTRACTION_SYSTEM, CREATION_SYSTEM } from '../_shared/menu-import-schema.ts';
 
@@ -50,6 +50,12 @@ Deno.serve(async (req) => {
     if (!roles?.some((r: { business_unit_id: string | null }) => r.business_unit_id === null || r.business_unit_id === unit)) return json({ error: 'Importação disponível somente ao administrador desta unidade' }, 403);
     const { data: business, error: businessError } = await admin.from('business_units').select('id,name').eq('id', unit).eq('active', true).maybeSingle();
     if (businessError) throw Error('Não foi possível consultar a unidade.'); if (!business) return json({ error: 'Unidade indisponível' }, 404);
+    if (body.action === 'models') {
+      const { data: credentials, error: credentialsError } = await admin.from('ai_provider_credentials').select('provider').eq('business_unit_id', unit).eq('status', 'connected');
+      if (credentialsError) throw Error('Não foi possível consultar os modelos.');
+      const providers = new Set((credentials ?? []).map(c => c.provider));
+      return json({ models: DOCUMENT_MODELS.filter(m => providers.has(m.provider)).map(m => ({ id: m.id, label: m.label, provider: m.provider })), warnings: providers.size ? [] : ['Conecte a IA em Conexões desta unidade.'] });
+    }
     if (body.action !== 'extract') return json({ error: 'Ação inválida' }, 400);
 
     const files = Array.isArray(body.files) ? body.files : [];
@@ -66,7 +72,7 @@ Deno.serve(async (req) => {
     const catalog = body.mode === 'catalog';
     if (create && !pastedText.trim()) return json({ error: 'Descreva o item ou preparo para criar a ficha.' }, 400);
 
-    const model = CHAT_MODELS.find(m => m.id === body.model); if (!model) return json({ error: 'Selecione um modelo de IA disponível' }, 400);
+    const model = DOCUMENT_MODELS.find(m => m.id === body.model); if (!model) return json({ error: 'Selecione um modelo de IA disponível' }, 400);
     const { data: credential, error: credentialError } = await admin.from('ai_provider_credentials').select('provider,encrypted_key,iv').eq('business_unit_id', unit).eq('provider', model.provider).eq('status', 'connected').maybeSingle();
     if (credentialError) throw Error('Não foi possível verificar a configuração da IA.');
     if (!credential) return json({ error: 'Conecte a IA em Conexões desta unidade' }, 409);

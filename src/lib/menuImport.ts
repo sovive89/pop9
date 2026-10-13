@@ -39,7 +39,7 @@ async function errorMessage(error: unknown, fallback: string) {
 }
 
 export async function listImportModels(businessUnitId: string): Promise<{ models: ImportModel[]; warning: string }> {
-  const { data, error } = await supabase.functions.invoke("admin-assistant", { body: { action: "models", businessUnitId } });
+  const { data, error } = await supabase.functions.invoke("menu-import", { body: { action: "models", businessUnitId } });
   if (error) throw Error(await errorMessage(error, "Não foi possível consultar os modelos de IA."));
   if (data?.error) throw Error(data.error);
   return { models: Array.isArray(data?.models) ? data.models : [], warning: (data?.warnings ?? []).join(" ") };

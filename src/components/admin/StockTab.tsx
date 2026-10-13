@@ -38,6 +38,8 @@ import { useStockData, ProductionRecipeInput, ItemType, FichaTipo, alocarFefo } 
 import { STOCK_UNITS } from "@/lib/stockUnits";
 import { STOCK_CATEGORIES, stockCategory, type StockCategory } from "@/lib/stockCategories";
 
+import StockOCRDialog, { type StockOCRItem } from "./StockOCRDialog";
+
 type SubView = StockCategory | "produzidos" | "producao" | "fornecedores";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -125,6 +127,7 @@ const UnitStockTab = () => {
 
   const [newMaterialOpen, setNewMaterialOpen] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [ocrOpen, setOCROpen] = useState(false);
   const [purchaseTarget, setPurchaseTarget] = useState<string | null>(null);
   const [editingLotId, setEditingLotId] = useState<string | null>(null);
   const [newSupplierOpen, setNewSupplierOpen] = useState(false);
@@ -222,6 +225,24 @@ const UnitStockTab = () => {
     setPNumeroLote("");
     setPurchaseTarget(null);
     setEditingLotId(null);
+  };
+
+  const reviewOCRItem = (item: StockOCRItem, materialId: string, mode: "documento" | "produtos") => {
+    resetPurchaseForm();
+    setPurchaseTarget(materialId);
+    const unit = materialsById[materialId]?.unit ?? "";
+    setPPurchaseUnit(unit);
+    // Foto de geladeira não distingue mercadoria nova: quantidade sempre digitada na conferência.
+    const detectedUnit = item.unidade.trim().toLowerCase();
+    const sameUnit = detectedUnit === unit.toLowerCase();
+    if (mode === "documento" && sameUnit) {
+      setPQuantity(item.quantidade && item.quantidade > 0 ? String(item.quantidade) : "");
+      setPUnitCost(item.valorUnitario != null ? String(item.valorUnitario) : "");
+    }
+    setPNumeroLote(item.lote ?? "");
+    setPValidade(item.validade ?? "");
+    setOCROpen(false);
+    setPurchaseOpen(true);
   };
 
   const resetSupplierForm = () => {
@@ -460,6 +481,8 @@ const UnitStockTab = () => {
 
   return (
     <div className="space-y-4">
+      <Button variant="outline" onClick={() => setOCROpen(true)}>Entrada por foto ou nota</Button>
+      {businessUnitId && <StockOCRDialog open={ocrOpen} onOpenChange={setOCROpen} businessUnitId={businessUnitId} materials={rawMaterials} onReview={reviewOCRItem} />}
       {alerts.length > 0 && (
         <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3">
           <div className="flex items-center gap-2 text-destructive text-sm font-medium mb-2">

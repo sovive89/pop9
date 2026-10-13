@@ -1,3 +1,4 @@
+import { openAIDocumentCompletion } from './openai-document.ts';
 import type { ChatMessage } from './assistant-help.ts';
 export async function decryptAIKey(encrypted:string,iv:string){
  const master=Deno.env.get('AI_CREDENTIALS_ENCRYPTION_KEY');
@@ -45,12 +46,7 @@ export async function documentCompletion(provider:string,model:string,key:string
   if(!text)throw Error('O provedor não retornou o rascunho do cardápio.');
   return {text,inputTokens:body.usageMetadata?.promptTokenCount??null,outputTokens:body.usageMetadata?.candidatesTokenCount??null};
  }
- if(provider==='openai'){
-  const content=[...attachments.map(a=>a.kind==='image'?{type:'image_url',image_url:{url:`data:${a.mime};base64,${a.data}`}}:{type:'file',file:{filename:a.name,file_data:`data:${a.mime};base64,${a.data}`}}),{type:'text',text:userText}];
-  const body=await providerJson('https://api.openai.com/v1/chat/completions',{Authorization:'Bearer '+key},{model,messages:[{role:'system',content:system},{role:'user',content}],max_completion_tokens:16384,temperature:0.1,store:false,response_format:{type:'json_object'}},timeout);
-  const text=body.choices?.[0]?.message?.content;if(typeof text!=='string'||!text)throw Error('O provedor não retornou o rascunho do cardápio.');
-  return {text,inputTokens:body.usage?.prompt_tokens??null,outputTokens:body.usage?.completion_tokens??null};
- }
+ if(provider==='openai') return openAIDocumentCompletion(model,key,system,userText,attachments);
  if(provider==='anthropic'){
   const content=[...attachments.map(a=>a.kind==='image'?{type:'image',source:{type:'base64',media_type:a.mime,data:a.data}}:{type:'document',source:{type:'base64',media_type:'application/pdf',data:a.data}}),{type:'text',text:userText}];
   const body=await providerJson('https://api.anthropic.com/v1/messages',{'x-api-key':key,'anthropic-version':'2023-06-01'},{model,system,messages:[{role:'user',content}],max_tokens:16000,temperature:0.1},timeout);
