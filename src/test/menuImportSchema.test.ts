@@ -1,6 +1,24 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { sanitizeDraft, findUnitConflicts, normalizeUnit, slug } from "../../supabase/functions/_shared/menu-import-schema";
+import { sanitizeDraft, findUnitConflicts, normalizeUnit, slug, toCatalogDraft } from "../../supabase/functions/_shared/menu-import-schema";
+
+describe("menu import catalog-only drafts", () => {
+  it("retains ingredient names and strips any recipe quantity/production from extraction", () => {
+    const { draft } = sanitizeDraft({ items: [{
+      name: "Sanduíche", description: "Queijo e molho da casa", category: "lanches", price: 25,
+      ingredients: [{ name: "Queijo", removable: true, extraPrice: 0 }],
+      recipe: [{ material: "Queijo", unit: "g", quantity: 40 },
+        { material: "Molho da casa", unit: "ml", quantity: 20,
+          preparation: { outputQuantity: 1000, inputs: [{ material: "Tomate", unit: "g", quantity: 500 }] } }],
+    }] });
+    const catalog = toCatalogDraft(draft);
+    expect(catalog.items[0].recipe).toEqual([]);
+    expect(catalog.items[0].ingredients.map(i => i.name)).toEqual(["Queijo", "Molho da casa"]);
+    expect(catalog.items[0].price).toBe(25);
+    expect(catalog.items[0].description).toBe("Queijo e molho da casa");
+    expect(draft.items[0].recipe).toHaveLength(2);
+  });
+});
 
 describe("menu import draft sanitization", () => {
   it("normalizes units, categories and numbers coming from the model", () => {
