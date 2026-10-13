@@ -27,6 +27,7 @@ export default function MenuImportDialog({ open, onOpenChange, onImported }: { o
   const [warnings, setWarnings] = useState<string[]>([]);
   const [conflicts, setConflicts] = useState<string[]>([]);
   const [publish, setPublish] = useState(false);
+  const [catalogOnly, setCatalogOnly] = useState(true);
   const [result, setResult] = useState<ApplyResult | null>(null);
   const [knownUnits, setKnownUnits] = useState<Record<string, string>>({});
   const [guided, setGuided] = useState(true);
@@ -46,7 +47,7 @@ export default function MenuImportDialog({ open, onOpenChange, onImported }: { o
 
   const reset = () => {
     setStep("upload"); setFiles([]); setPasted(""); setError(""); setDraft(null); setWarnings([]); setConflicts([]);
-    setPublish(false); setResult(null); setKnownUnits({}); setGuided(true); setCursor(0); requestId.current = crypto.randomUUID();
+    setPublish(false); setCatalogOnly(true); setResult(null); setKnownUnits({}); setGuided(true); setCursor(0); requestId.current = crypto.randomUUID();
   };
   const close = (value: boolean) => {
     if (step === "reading" || step === "saving") return;
@@ -67,7 +68,7 @@ export default function MenuImportDialog({ open, onOpenChange, onImported }: { o
     setStep("reading"); setError("");
     try {
       const paths = await uploadImportFiles(businessUnitId, files);
-      const extracted = await extractMenuDraft({ businessUnitId, model, files: paths, text: pasted });
+      const extracted = await extractMenuDraft({ businessUnitId, model, files: paths, text: pasted, mode: catalogOnly ? "catalog" : undefined });
       setDraft(extracted.draft); setWarnings(extracted.warnings); setConflicts(extracted.conflicts); setKnownUnits(extracted.knownUnits); setCursor(0);
       requestId.current = crypto.randomUUID();
       setStep("review");
@@ -80,7 +81,7 @@ export default function MenuImportDialog({ open, onOpenChange, onImported }: { o
     if (!businessUnitId || !draft?.items.length) return;
     setStep("saving"); setError("");
     try {
-      const applied = await applyMenuImport({ businessUnitId, requestId: requestId.current, draft, publish });
+      const applied = await applyMenuImport({ businessUnitId, requestId: requestId.current, draft, publish: catalogOnly ? false : publish });
       setResult(applied); setStep("done"); onImported();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao gravar o cardápio."); setStep("review");
@@ -111,7 +112,7 @@ export default function MenuImportDialog({ open, onOpenChange, onImported }: { o
     <Input aria-label="Descrição" className={cell} value={item.description} placeholder="Descrição" onChange={e => editItem(index, { description: e.target.value })} />
     {item.ingredients.length > 0 && <p className="text-xs text-muted-foreground">Ingredientes do cardápio: {item.ingredients.map(i => i.name).join(", ")}</p>}
     <div className="space-y-2">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Ficha técnica (por unidade vendida)</p>
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Ficha técnica (por unidade vendida){catalogOnly ? " — preencher depois no Cardápio" : ""}</p>
       {item.recipe.map((line, j) => <div key={j} className="space-y-1">
         <div className="grid grid-cols-[2fr_1fr_1fr_auto] gap-2">
           <Input aria-label="Insumo" className={cell} value={line.material} onChange={e => editLine(index, j, { material: e.target.value })} />
@@ -133,17 +134,17 @@ export default function MenuImportDialog({ open, onOpenChange, onImported }: { o
       <DialogContent className="flex max-h-[92dvh] w-[calc(100%-1rem)] max-w-4xl flex-col gap-4 overflow-hidden p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" /> Montar cardápio a partir de arquivos</DialogTitle>
-          <DialogDescription>A IA lê cardápios e fichas técnicas e prepara um rascunho. Você revisa e só então grava. Nada é lançado no estoque real.</DialogDescription>
+          <DialogDescription>Importe vários itens a partir de PDF, imagem, planilha ou texto. Os rascunhos podem receber quantidades, unidades e transformações depois, no Cardápio. Sem movimentar estoque.</DialogDescription>
         </DialogHeader>
 
         {error && <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
 
         {(step === "upload" || step === "reading") && <div className="min-h-0 space-y-4 overflow-y-auto">
           <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-border p-6 text-center text-sm hover:bg-muted/40"
-            data-tooltip="PDF, fotos (JPG, PNG, WebP), planilhas (XLSX, CSV) ou TXT. Até 5 arquivos de 10 MB.">
+            data-tooltip="PDF, fotos (JPG, PNG, WebP), Word (DOCX), planilhas (XLSX, XLS, ODS, CSV), TXT e MD. Até 5 arquivos de 10 MB.">
             <FileUp className="h-8 w-8 text-primary" />
             <span className="font-medium">Escolher arquivos do cardápio e das fichas técnicas</span>
-            <span className="text-xs text-muted-foreground">PDF, foto, planilha ou texto · até {MAX_FILES} arquivos de 10 MB</span>
+            <span className="text-xs text-muted-foreground">PDF, JPG, PNG, WebP, DOCX, XLSX, XLS, ODS, CSV, TXT e MD · até {MAX_FILES} arquivos de 10 MB</span>
             <input type="file" multiple accept={ACCEPTED_FILES} className="sr-only" aria-label="Arquivos do cardápio" disabled={step === "reading"}
               onChange={e => { pickFiles(e.target.files); e.target.value = ""; }} />
           </label>
@@ -154,6 +155,7 @@ export default function MenuImportDialog({ open, onOpenChange, onImported }: { o
           <label className="block space-y-1 text-sm">Ou cole o texto do cardápio / ficha técnica
             <Textarea value={pasted} maxLength={60000} disabled={step === "reading"} onChange={e => setPasted(e.target.value)} className="min-h-24" placeholder="Ex.: X-Burger R$ 29,90 — pão brioche 1 un, blend 150 g, molho da casa 30 g..." />
           </label>
+          <label className="flex items-start gap-2 rounded-lg border p-3 text-sm"><input type="checkbox" checked={catalogOnly} disabled={step === "reading"} onChange={e => { setCatalogOnly(e.target.checked); setPublish(false); }} /><span><strong>Importação rápida de rascunhos</strong><span className="block text-xs text-muted-foreground">Extrai os nomes, categorias, descrições, preços e ingredientes citados. Não inventa quantidades ou prepara fichas técnicas; você edita depois.</span></span></label>
           <label className="block space-y-1 text-sm">Modelo de IA
             <select aria-label="Modelo de IA" className="w-full rounded-md border bg-background p-2" value={model} disabled={models.loading || step === "reading"} onChange={e => setModel(e.target.value)}>
               {!models.list.length && <option value="">{models.loading ? "Carregando..." : "Nenhum modelo disponível"}</option>}
@@ -212,13 +214,13 @@ export default function MenuImportDialog({ open, onOpenChange, onImported }: { o
 
           {!guided && draft.items.map((item, index) => renderItem(item, index))}
 
-          <label className="flex items-start gap-2 text-sm">
+          {!catalogOnly && <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" checked={publish} disabled={unpriced > 0} onChange={e => setPublish(e.target.checked)} aria-label="Publicar os itens agora" />
             <span>Publicar os itens agora (visíveis para o cliente). {unpriced > 0 ? `Indisponível: ${unpriced} item(ns) sem preço.` : "Sem marcar, ficam como rascunho."}</span>
-          </label>
+          </label>}
           <div className="flex flex-wrap gap-2">
             <Button className="gap-2" disabled={step === "saving" || invalid || !draft.items.length} onClick={() => void save()}>
-              {step === "saving" ? <><Loader2 className="h-4 w-4 animate-spin" /> Gravando...</> : "Criar cardápio"}
+              {step === "saving" ? <><Loader2 className="h-4 w-4 animate-spin" /> Gravando...</> : catalogOnly ? "Criar rascunhos" : "Criar cardápio"}
             </Button>
             <Button variant="outline" disabled={step === "saving"} onClick={reset}>Recomeçar</Button>
           </div>
