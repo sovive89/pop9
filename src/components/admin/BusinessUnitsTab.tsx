@@ -1,4 +1,3 @@
-import { useUnitKds, setUnitKds } from "@/hooks/useUnitKds";
 import { PAGE_HELP } from "@/lib/page-help";
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -215,12 +214,9 @@ const BusinessUnitsTab = () => {
                 {u.table_count ? ` · ${u.table_count} mesas` : ""}
               </p>
             </div>
-<div className="flex items-center gap-3">
-              <KdsToggle unitId={u.id} />
             <span className={`text-xs font-medium px-2 py-1 rounded-full ${u.active ? "bg-green-500/10 text-green-500" : "bg-muted text-muted-foreground"}`}>
               {u.active ? "Ativa" : "Inativa"}
             </span>
-            </div>
           </div>
         ))}
         {units.length === 0 && (
@@ -230,23 +226,5 @@ const BusinessUnitsTab = () => {
     </div>
   );
 };
-
-function KdsToggle({ unitId }: { unitId: string }) {
-  const kds = useUnitKds(unitId);
-  const [saving, setSaving] = useState(false);
-  return (
-    <label className="flex items-center gap-2 text-xs text-muted-foreground" data-tooltip="Ligado: pedidos aparecem na tela da cozinha (KDS). Desligado: a cozinha usa só a comanda impressa e o atendimento confirma a entrega direto.">
-      <input type="checkbox" aria-label="KDS da cozinha" disabled={!kds.loaded || saving} checked={kds.enabled}
-        onChange={async (event) => {
-          const next = event.target.checked;
-          setSaving(true);
-          try { await setUnitKds(unitId, next); await kds.reload(); toast.success(next ? "KDS ativado na unidade" : "KDS desativado: cozinha só pela comanda impressa"); }
-          catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível alterar o KDS"); }
-          finally { setSaving(false); }
-        }} />
-      KDS
-    </label>
-  );
-}
 
 export default BusinessUnitsTab;

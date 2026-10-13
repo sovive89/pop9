@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import type { ClientInfo, TableSession } from "@/components/TableSessionPanel";
 import type { ClientOrder, PlacedOrder, OrderItem } from "@/utils/orders";
 import { buildKitchenReceipts, printReceipt } from "@/utils/thermal-print";
+import { useUnitPrintMode } from "@/hooks/useUnitPrintMode";
 import { fetchActiveSessionsWithOriginFallback } from "@/hooks/sessionQueries";
 import type { SessionsQueryClient } from "@/hooks/sessionQueries";
 import {
@@ -33,6 +34,7 @@ interface SessionData {
 export const useSessionStore = () => {
   const { user, loading: authLoading } = useAuth();
   const { businessUnitId } = useCurrentBusinessUnit();
+  const printMode = useUnitPrintMode();
   const scope = `${user?.id ?? ""}:${businessUnitId ?? ""}`;
   const currentScope = useRef(scope);
   currentScope.current = scope;
@@ -464,8 +466,12 @@ export const useSessionStore = () => {
     // Comandas = só neste gatilho. Conta da mesa / conta individual = só por comando (botão Imprimir).
     const clientInfo = sessions[tableNumber]?.session.clients.find((c) => c.id === clientId);
     const clientName = clientInfo?.name ?? "Cliente";
-    const kitchenReceipts = buildKitchenReceipts(tableNumber, clientName, cartItems, order.id);
-    kitchenReceipts.forEach((html) => printReceipt(html));
+    // Com a Estação de impressão ativa, a comanda sai pela fila central (gatilho no banco);
+    // imprimir aqui também duplicaria o papel.
+    if (printMode.mode !== "station") {
+      const kitchenReceipts = buildKitchenReceipts(tableNumber, clientName, cartItems, order.id);
+      kitchenReceipts.forEach((html) => printReceipt(html));
+    }
 
     toast.success("Pedido enviado!");
   };

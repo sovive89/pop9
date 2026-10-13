@@ -2,10 +2,11 @@ import { PAGE_HELP } from "@/lib/page-help";
 import { useState, useEffect, useMemo } from "react";
 import { useUnitRoles } from "@/hooks/useUnitRoles";
 import { useUnitKds } from "@/hooks/useUnitKds";
+import { useUnitPrintMode } from "@/hooks/useUnitPrintMode";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import { useAuth } from "@/hooks/useAuth";
 import { Navigate, useNavigate } from "react-router-dom";
-import { Flame, LogOut, Settings, Map, ClipboardList, ChefHat, Bell, Package, Wallet } from "lucide-react";
+import { Flame, LogOut, Settings, Map, ClipboardList, ChefHat, Bell, Package, Wallet, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import TableMap from "@/components/TableMap";
@@ -20,6 +21,7 @@ const Index = () => {
   const { sessions } = useSessionStore();
   const { roles: unitRoles, loading: rolesLoading, error: rolesError } = useUnitRoles();
   const kds = useUnitKds();
+  const printMode = useUnitPrintMode();
   const { businessUnitId } = useCurrentBusinessUnit();
   const roles = { admin: unitRoles.includes("admin"), attendant: unitRoles.includes("attendant"), kitchen: unitRoles.includes("kitchen"), cashier: unitRoles.includes("cashier") };
   const [profileName, setProfileName] = useState("");
@@ -155,6 +157,7 @@ const Index = () => {
                     <span className="hidden sm:inline">Cozinha</span>
                   </Button>
                 )}
+                {printMode.mode === "station" && <Button variant="outline" size="sm" data-tooltip="Abra a Estação de impressão no aparelho ligado à impressora." onClick={() => navigate("/impressao")}><Printer className="mr-1.5 h-4 w-4" />Impressão</Button>}
                 {(roles.cashier || roles.admin) && <Button variant="outline" size="sm" onClick={() => navigate("/caixa")}><Wallet className="mr-1.5 h-4 w-4" />Caixa</Button>}
                 {roles.admin && (
                   <Button data-tooltip="Abra a administração do estabelecimento."
