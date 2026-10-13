@@ -8,6 +8,7 @@ import { useStockData, type RawMaterial, type ItemType } from "@/hooks/useStockD
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import { toast } from "sonner";
 import MenuPrefixField from '@/components/admin/MenuPrefixField';
+import { STOCK_UNITS } from '@/lib/stockUnits';
 
 interface MaterialInput {
   key: string;
@@ -16,13 +17,11 @@ interface MaterialInput {
   newUnit: string;
   quantity: string;
 }
-type Transformation = "desconto_direto" | "producao" | "porcionamento" | "item_acabado" | "semiacabado";
+type Transformation = "desconto_direto" | "producao" | "porcionamento";
 const TRANSFORMATIONS: { value: Transformation; label: string }[] = [
   { value: "desconto_direto", label: "Desconto direto" },
   { value: "producao", label: "Produção" },
   { value: "porcionamento", label: "Porcionamento" },
-  { value: "semiacabado", label: "Semiacabado" },
-  { value: "item_acabado", label: "Item acabado" },
 ];
 interface RecipeRow extends MaterialInput {
   isProduced: boolean;
@@ -78,10 +77,12 @@ function MaterialFields({ input, materials, disabled, base = false, onChange, on
       </label>}
       <label className={labelClass} htmlFor={`${input.key}-unit`}>
         <span>Unidade de medida</span>
-        <Input id={`${input.key}-unit`} aria-label={`Unidade de medida do ${name.toLowerCase()}`}
-          data-tooltip={input.rawMaterialId ? "Use a unidade já cadastrada para este insumo. Converta a quantidade antes de preencher a ficha." : "Defina a unidade usada nesta ficha e no estoque: g, kg, ml, L ou un. Não é um lançamento de compra."}
-          disabled={disabled} readOnly={Boolean(input.rawMaterialId)} value={unit}
-          onChange={event => onChange({ newUnit: event.target.value })} placeholder="g, kg, ml, L, un" className="h-9 min-w-0 text-xs" />
+        <select id={`${input.key}-unit`} aria-label={`Unidade de medida do ${name.toLowerCase()}`}
+          data-tooltip={input.rawMaterialId ? "A unidade do insumo já cadastrado é fixa. A quantidade da ficha será descontada nessa unidade." : "Selecione uma unidade pré-definida para o novo insumo."}
+          disabled={disabled || Boolean(input.rawMaterialId)} value={unit}
+          onChange={event => onChange({ newUnit: event.target.value })} className="h-9 min-w-0 rounded-md border border-border bg-muted px-2 text-xs text-foreground">
+          {STOCK_UNITS.map(option => <option key={option} value={option}>{option}</option>)}
+        </select>
       </label>
       <label className={labelClass} htmlFor={`${input.key}-quantity`}>
         <span>{base ? "Quantidade na receita" : "Quantidade por item"}{unit ? ` (${unit})` : ""}</span>
@@ -123,7 +124,7 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
         if (cancelled) return;
         const error = recipeResult.error ?? ingredientResult.error;
         if (error) { setLoadError("Não foi possível carregar a ficha técnica: " + error.message); return; }
-        const recipeRows = (recipeResult.data ?? []).map(item => { const transformation = ((item as { transformacao?: string }).transformacao ?? "desconto_direto") as Transformation; return { ...emptyRow(), key: item.id, rawMaterialId: item.raw_material_id, quantity: String(item.quantity), transformation, isProduced: transformation !== "desconto_direto" }; });
+        const recipeRows = (recipeResult.data ?? []).map(item => { const transformation = ((item as { transformacao?: string }).transformacao ?? "desconto_direto") as Transformation; return { ...emptyRow(), key: item.id, rawMaterialId: item.raw_material_id, quantity: String(item.quantity), transformation, isProduced: transformation === "producao" }; });
         const linkedIds = new Set(recipeRows.map(row => row.rawMaterialId));
         const ingredientRows = (ingredientResult.data ?? [])
           .filter(ingredient => !rawMaterials.some(material => linkedIds.has(material.id) && material.name.trim().toLowerCase() === ingredient.name.trim().toLowerCase()))
@@ -185,11 +186,12 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
       const payload: { id: string; menu_item_id: string; raw_material_id: string; quantity: number; transformacao: Transformation }[] = [];
       const producedDocuments: { id: string; row: RecipeRow; inputs: { id: string; quantity: number }[] }[] = [];
       for (const row of rows) {
-        const outputType: ItemType = row.transformation === "item_acabado" ? "produto_acabado" : "semiacabado";
-        const id = await resolve(row, row.isProduced ? outputType : "insumo", id => updateRow(row.key, { rawMaterialId: id }));
+        const createsOutput = row.transformation !== "desconto_direto";
+        const outputItemType: ItemType = "semiacabado";
+        const id = await resolve(row, createsOutput ? outputItemType : "insumo", id => updateRow(row.key, { rawMaterialId: id }));
         if (!id) return false;
         if (row.isProduced && row.rawMaterialId) {
-          await supabase.from("raw_materials").update({ tipo: outputType })
+          await supabase.from("raw_materials").update({ tipo: outputItemType })
             .eq("id", id).eq("business_unit_id", businessUnitId);
         }
         if (row.isProduced && !row.recipeCreated) {
@@ -202,7 +204,7 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
           producedDocuments.push({ id, row, inputs: inputs.map(input => ({ id: input.rawMaterialId, quantity: input.quantity })) });
           const outputName = row.newName.trim() || rawMaterials.find(material => material.id === id)?.name || "Componente produzido";
           if (!await createRecipe({ name: `Receita — ${outputName}`, outputRawMaterialId: id,
-            outputQuantity: Number(row.outputQuantity), shelfLifeDays: null,
+          outputQuantity: Number(row.outputQuantity), shelfLifeDays: null,
             tipo: row.transformation === "porcionamento" ? "porcionamento" : "producao", inputs })) return false;
           updateRow(row.key, { recipeCreated: true });
         }
@@ -237,7 +239,7 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
           quantity: Number(row.quantity),
           unit: materialUnit(row.rawMaterialId, row.newUnit),
           process: row.transformation,
-          output_type: row.transformation === "item_acabado" ? "item_acabado" : row.isProduced ? "semiacabado" : undefined,
+          output_type: row.transformation !== "desconto_direto" ? "semiacabado" : undefined,
           theoretical: true,
           recipe: produced ? {
             yield: { quantity: Number(produced.row.outputQuantity), unit: materialUnit(produced.id, produced.row.newUnit) },
@@ -294,7 +296,7 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
           <span>Transformação</span>
           <select id={`${row.key}-transformacao`} aria-label="Transformação" disabled={disabled}
             value={row.transformation}
-            onChange={event => { const transformation = event.target.value as Transformation; updateRow(row.key, { transformation, isProduced: transformation !== "desconto_direto", subInputs: transformation !== "desconto_direto" && !row.subInputs.length ? [emptyInput()] : row.subInputs }); }}
+            onChange={event => { const transformation = event.target.value as Transformation; const isProduced = transformation === "producao"; updateRow(row.key, { transformation, isProduced, subInputs: isProduced && !row.subInputs.length ? [emptyInput()] : row.subInputs }); }}
             className="h-9 w-full rounded-md border border-border bg-muted px-2 text-xs text-foreground">
             {TRANSFORMATIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>

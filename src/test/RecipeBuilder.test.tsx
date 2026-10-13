@@ -48,7 +48,7 @@ describe("menu-first recipe building", () => {
     fireEvent.keyDown(name, { key: 'ArrowDown' }); fireEvent.keyDown(name, { key: 'Enter' });
     expect(screen.getByLabelText('Insumo')).toHaveValue('tomato');
     expect(screen.getByLabelText('Unidade de medida do insumo')).toHaveValue('g');
-    expect(screen.getByLabelText('Unidade de medida do insumo')).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('Unidade de medida do insumo')).toBeDisabled();
     fill('Quantidade do insumo por item', '150');
     expect(mocks.createMaterial).not.toHaveBeenCalled();
     await act(async () => { expect(await ref.current!.commit('menu-item')).toBe(true); });
@@ -82,7 +82,7 @@ describe("menu-first recipe building", () => {
     createProducedIngredient();
     fill("Insumo-base", "tomato");
     expect(screen.getByLabelText("Unidade de medida do insumo-base")).toHaveValue("g");
-    expect(screen.getByLabelText("Unidade de medida do insumo-base")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("Unidade de medida do insumo-base")).toBeDisabled();
     fill("Quantidade do insumo-base", "250");
     await act(async () => { await ref.current!.commit("menu-item"); });
     expect(mocks.createMaterial).toHaveBeenCalledTimes(1);
