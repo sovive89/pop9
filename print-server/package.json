@@ -1,0 +1,19 @@
+{
+  "name": "pop9-print-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Agente local do POP9 que imprime as comandas direto na térmica de rede (ESC/POS).",
+  "scripts": {
+    "start": "node --env-file=.env src/index.mjs",
+    "test-print": "node --env-file=.env src/index.mjs --test",
+    "check": "node --check src/index.mjs && node --check src/escpos.mjs && node --check src/routing.mjs"
+  },
+  "engines": {
+    "node": ">=20.6"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.57.0",
+    "ws": "^8.18.0"
+  }
+}
