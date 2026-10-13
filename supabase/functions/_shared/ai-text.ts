@@ -1,5 +1,7 @@
 import { openAIDocumentCompletion } from './openai-document.ts';
 import type { ChatMessage } from './assistant-help.ts';
+import type { ModelAttachment } from './document-attachment.ts';
+export type { ModelAttachment } from './document-attachment.ts';
 export async function decryptAIKey(encrypted:string,iv:string){
  const master=Deno.env.get('AI_CREDENTIALS_ENCRYPTION_KEY');
  if(!master)throw Error('Cofre de IA indisponível. Verifique a configuração com o administrador.');
@@ -35,7 +37,6 @@ export async function textCompletion(provider:string,model:string,key:string,sys
 }
 
 /** Arquivo enviado ao modelo: PDF ou imagem em base64 (planilhas e texto vão como texto). */
-export type ModelAttachment={kind:'pdf'|'image';mime:string;data:string;name:string};
 /** Extração de documentos: envia PDFs/imagens no formato nativo de cada provedor e pede JSON. */
 export async function documentCompletion(provider:string,model:string,key:string,system:string,userText:string,attachments:ModelAttachment[]){
  const timeout=150000;

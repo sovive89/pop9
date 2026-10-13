@@ -144,4 +144,90 @@ describe('menu → recipes → stock → lots',()=>{
     await purchase(L1,raw.id,100);await expect(call('save_menu_item_with_recipe','burger',menu([{...recipeLine(raw.id,20),newUnit:'ml'}]))).rejects.toThrow('incompatível');
     expect(await remaining(L1)).toBe(100);
   });
+  it('produces counted units from grams and only deducts those units at sale',async()=>{
+    const line={rawMaterialId:'',newName:'Hambúrguer 200g',newUnit:'un',stockUnit:'un',quantity:1,transformation:'producao',
+      preparation:{requestId:PR,outputQuantity:1,outputUnit:'un',inputs:[{rawMaterialId:B,newUnit:'g',quantity:200}]}};
+    await call('save_menu_item_with_recipe','burger',menu([line]));await call('save_menu_item_with_recipe','burger',menu([line]));
+    const output=(await db.query<{raw_material_id:string}>('select raw_material_id from recipe_items')).rows[0].raw_material_id;
+    await purchase(L1,B,3000);await call('produce_stock_batch',PB,{recipeId:PR,quantityProduced:10,inputsUsed:[{rawMaterialId:B,quantityUsed:2000}]});
+    expect(await n(`select current_stock from raw_materials where id='${output}'`)).toBe(10);
+    expect(await remaining(L1)).toBe(1000);await sell();
+    expect(await n(`select current_stock from raw_materials where id='${output}'`)).toBe(9);expect(await remaining(L1)).toBe(1000);
+    await db.query("update orders set status='cancelled' where id=$1",[O]);
+    expect(await n(`select current_stock from raw_materials where id='${output}'`)).toBe(10);
+    expect(await n("select sum(quantity) from stock_movements where reason='producao_consumo'")).toBe(2000);
+  });
+  it('separates preparation output unit from the parent recipe consumption unit',async()=>{
+    const line={rawMaterialId:'',newName:'Porção',newUnit:'g',quantity:200,
+      preparation:{requestId:PR,outputQuantity:1,outputUnit:'un',inputs:[{rawMaterialId:B,newUnit:'g',quantity:200}]}};
+    await db.query('select save_stock_preparation($1,$2::jsonb)',[U,JSON.stringify(line)]);
+    expect((await db.query<{unit:string}>("select unit from raw_materials where name='Porção'")).rows[0].unit).toBe('un');
+    expect(await n('select output_quantity from production_recipes')).toBe(1);
+    await expect(call('save_menu_item_with_recipe','burger',menu([line]))).rejects.toThrow('g → un');
+    expect(await n('select count(*) from menu_items')).toBe(0);
+  });
+  it('saves an explicit initial base measure independently of consumption',async()=>{
+    const line={rawMaterialId:'',newName:'Queijo novo',stockUnit:'kg',newUnit:'g',quantity:30,preparation:null};
+    await call('save_menu_item_with_recipe','burger',menu([line]));
+    expect((await db.query<{unit:string}>("select unit from raw_materials where name='Queijo novo'")).rows[0].unit).toBe('kg');
+    expect(await n('select quantity from recipe_items')).toBeCloseTo(0.03);expect(await n('select display_quantity from recipe_items')).toBe(30);
+    await expect(call('save_menu_item_with_recipe','burger',menu([{...line,stockUnit:'g'}]))).rejects.toThrow('antes do uso');
+    expect(await n('select quantity from recipe_items')).toBeCloseTo(0.03);
+  });
+  it('can define an unused theoretical initial measure but cannot relabel purchased stock',async()=>{
+    await db.query("update raw_materials set is_theoretical=true where id=$1",[B]);
+    await call('save_menu_item_with_recipe','burger',menu([{...recipeLine(B,30),stockUnit:'kg',newUnit:'g'}]));
+    expect(await n('select quantity from recipe_items')).toBeCloseTo(0.03);
+    await db.exec('delete from recipe_items');await purchase(L1);
+    await expect(call('save_menu_item_with_recipe','burger',menu([{...recipeLine(B,30),stockUnit:'g',newUnit:'g'}]))).rejects.toThrow('antes do uso');
+    expect(await remaining(L1)).toBe(100);
+  });
+  it('repairs cheese from active kilogram purchases without changing quantities or costs',async()=>{
+    await db.query("update raw_materials set unit='un' where id=$1",[B]);
+    await call('register_stock_purchase',L2,{rawMaterialId:B,quantity:2,purchaseQuantity:2,conversionFactor:1,purchaseUnit:'kg',totalCost:60});
+    await db.query("select manage_purchase_lot($1,'cancel')",[L2]);
+    await call('register_stock_purchase',L1,{rawMaterialId:B,quantity:2000,purchaseQuantity:2,conversionFactor:1000,purchaseUnit:'kg',totalCost:60});
+    await call('save_menu_item_with_recipe','burger',menu([{...recipeLine(B,30),newUnit:'g'}]));
+    expect((await db.query<{unit:string}>('select unit from raw_materials where id=$1',[B])).rows[0].unit).toBe('g');
+    expect(await remaining(L1)).toBe(2000);expect(await n('select average_cost from raw_materials where id=\''+B+'\'')).toBeCloseTo(0.03);
+    await sell();expect(await remaining(L1)).toBe(1970);expect(await n("select sum(quantity) from stock_movements where reason='venda'")).toBe(30);
+  });
+  it('repairs sauce to liters and converts menu milliliters without inventing volume',async()=>{
+    await db.query("update raw_materials set unit='un' where id=$1",[B]);
+    await call('register_stock_purchase',L1,{rawMaterialId:B,quantity:2,purchaseQuantity:2,conversionFactor:1,purchaseUnit:'L',totalCost:20});
+    await call('save_menu_item_with_recipe','burger',menu([{...recipeLine(B,40),newUnit:'ml'}]));await sell();
+    expect((await db.query<{unit:string}>('select unit from raw_materials where id=$1',[B])).rows[0].unit).toBe('L');
+    expect(await n('select quantity from recipe_items')).toBeCloseTo(0.04);expect(await remaining(L1)).toBeCloseTo(1.96);
+    expect(await n('select average_cost from raw_materials where id=\''+B+'\'')).toBe(10);
+  });
+  it('rejects inferred dimensions, conflicting lots and packaging without reinterpreting units',async()=>{
+    await db.query("update raw_materials set unit='un' where id=$1",[B]);
+    await call('register_stock_purchase',L1,{rawMaterialId:B,quantity:2,purchaseQuantity:2,conversionFactor:1,purchaseUnit:'L',totalCost:20});
+    await expect(call('save_menu_item_with_recipe','burger',menu([{...recipeLine(B,30),newUnit:'g'}]))).rejects.toThrow('g → un');
+    await call('register_stock_purchase',L2,{rawMaterialId:B,quantity:1000,purchaseQuantity:1,conversionFactor:1000,purchaseUnit:'L',totalCost:10});
+    await expect(call('save_menu_item_with_recipe','burger',menu([{...recipeLine(B,40),newUnit:'ml'}]))).rejects.toThrow('ml → un');
+    await db.query("update lotes set unidade_compra='pacote' where id=$1",[L1]);
+    await expect(call('save_menu_item_with_recipe','burger',menu([{...recipeLine(B,40),newUnit:'ml'}]))).rejects.toThrow('ml → un');
+    expect(await remaining(L1)).toBe(2);expect(await remaining(L2)).toBe(1000);
+  });
+  it('does not convert produced counted output to grams from a purchase guess',async()=>{
+    await db.query("update raw_materials set unit='un' where id=$1",[R]);await purchase(L1,R,100);
+    await expect(call('save_menu_item_with_recipe','burger',menu([{...recipeLine(R,30),newUnit:'g'}]))).rejects.toThrow('g → un');
+    expect((await db.query<{unit:string}>('select unit from raw_materials where id=$1',[R])).rows[0].unit).toBe('un');
+  });
+  it('scopes purchase-unit repair to an authenticated administrator of the same unit',async()=>{
+    await db.query("update raw_materials set unit='un' where id=$1",[B]);await purchase(L1);
+    await db.query('update raw_materials set business_unit_id=$1 where id=$2',[V,B]);
+    await expect(db.query("select repair_material_purchase_unit($1,'g')",[B])).rejects.toThrow('Sem permissão');
+    await db.query('update raw_materials set business_unit_id=$1 where id=$2',[U,B]);await db.exec("update user_roles set role='caixa'");
+    await expect(db.query("select repair_material_purchase_unit($1,'g')",[B])).rejects.toThrow('Sem permissão');
+  });
+  it('rejects reuse of a preparation request with a changed composition',async()=>{
+    const line={rawMaterialId:'',newName:'Blend novo',newUnit:'un',quantity:1,
+      preparation:{requestId:PR,outputQuantity:1,outputUnit:'un',inputs:[{rawMaterialId:B,newUnit:'g',quantity:200}]}};
+    await db.query('select save_stock_preparation($1,$2::jsonb)',[U,JSON.stringify(line)]);
+    line.preparation.inputs[0].quantity=300;
+    await expect(db.query('select save_stock_preparation($1,$2::jsonb)',[U,JSON.stringify(line)])).rejects.toThrow('outro rendimento ou composição');
+    expect(await n('select quantity from production_recipe_inputs')).toBe(200);
+  });
 });
