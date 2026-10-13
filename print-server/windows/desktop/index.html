@@ -1,0 +1,22 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>PØP9 Print Server</title>
+<style>body{font:14px system-ui,Segoe UI,sans-serif;margin:0;background:#111318;color:#f4f4f4}main{max-width:600px;margin:auto;padding:28px}h1{font-size:24px;margin:0}p{color:#bbb;line-height:1.5}label{display:block;margin:16px 0 5px;font-weight:600}input:not([type=checkbox]){width:100%;box-sizing:border-box;border:1px solid #444;background:#242832;border-radius:7px;color:white;padding:11px}button{padding:11px 16px;border:0;border-radius:7px;background:#ededed;color:#111;cursor:pointer;margin:8px 5px 8px 0;font-weight:600}button.secondary{background:#444;color:#fff}#log{white-space:pre-wrap;background:#090a0e;border:1px solid #353535;max-height:140px;overflow:auto;padding:12px;font:12px Consolas,monospace}#status{color:#9cd1ff}.row{display:flex;align-items:center;gap:8px;margin:18px 0}</style></head><body><main><h1>PØP9 Print Server</h1><p>Configure uma conta exclusiva para impressao, criada no ERP com acesso somente a unidade correta. Use impressoras de rede (TCP/9100).</p>
+<form id="form"><label for="SUPABASE_URL">Supabase URL (HTTPS)</label><input id="SUPABASE_URL" required autocomplete="off">
+<label for="SUPABASE_ANON_KEY">Chave publica do Supabase (anon/publishable)</label><input id="SUPABASE_ANON_KEY" required autocomplete="off">
+<label for="POP9_AGENT_EMAIL">Email do usuario de impressao</label><input id="POP9_AGENT_EMAIL" type="email" required autocomplete="off">
+<label for="POP9_AGENT_PASSWORD">Senha do usuario de impressao</label><input id="POP9_AGENT_PASSWORD" type="password" required autocomplete="new-password">
+<label for="POP9_UNIT_ID">ID da unidade (UUID)</label><input id="POP9_UNIT_ID" required autocomplete="off">
+<button type="submit">Salvar configuracao</button></form>
+<div class="row"><input id="autostart" type="checkbox"><label for="autostart" style="margin:0">Abrir junto com o login do Windows</label></div>
+<div><button id="start">Iniciar impressao</button><button class="secondary" id="test">Imprimir teste</button><button class="secondary" id="stop">Parar</button></div>
+<p role="status" id="status"></p><div id="log" aria-label="Registro de atividade"></div></main>
+<script>
+const ids=["SUPABASE_URL","SUPABASE_ANON_KEY","POP9_AGENT_EMAIL","POP9_AGENT_PASSWORD","POP9_UNIT_ID"];
+const status=document.getElementById("status");
+const msg=s=>status.textContent=s;
+window.pop9.read().then(v=>ids.forEach(k=>document.getElementById(k).value=v[k]||""));
+window.pop9.autostartStatus().then(v=>document.getElementById("autostart").checked=v);
+document.getElementById("form").addEventListener("submit",async e=>{e.preventDefault();try{await window.pop9.save(Object.fromEntries(ids.map(k=>[k,document.getElementById(k).value])));msg("Configuracao salva.");}catch(err){msg("Erro: "+err.message)}});
+document.getElementById("autostart").addEventListener("change",async e=>{try{await window.pop9.autostart(e.target.checked)}catch(err){msg(err.message)}});
+for(const k of ["start","stop","test"])document.getElementById(k).onclick=async()=>{try{await window.pop9[k]();msg(k==="start"?"Agente iniciado":k==="stop"?"Agente parado":"Teste solicitado");}catch(err){msg("Erro: "+err.message)}};
+window.pop9.log(data=>{const el=document.getElementById("log");el.textContent=(el.textContent+"\n"+data.text).slice(-8000);el.scrollTop=el.scrollHeight});
+</script></body></html>
