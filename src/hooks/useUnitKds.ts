@@ -19,7 +19,8 @@ export function useUnitKds(unitId?: string | null) {
       if (request !== latest.current) return;
       const row = data as unknown as { kds_enabled?: boolean } | null;
       setState({ unit, enabled: Boolean(error) || row?.kds_enabled !== false, loaded: true });
-    } catch {
+    } catch (err) {
+      console.error("Erro ao ler kds_enabled da unidade:", err);
       // Falha de rede ou cliente indisponível: mantém o comportamento padrão.
       if (request === latest.current) setState({ unit, enabled: true, loaded: true });
     }

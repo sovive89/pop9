@@ -6,6 +6,7 @@ import { beforeAll, beforeEach, afterAll, describe, expect, it } from "vitest";
 const migration = readFileSync("supabase/migrations/20261013030000_print_queue.sql", "utf8");
 const kdsMigration = readFileSync("supabase/migrations/20261013020000_unit_kds_toggle.sql", "utf8");
 const guard = readFileSync("supabase/migrations/20261013040000_unit_module_guard.sql", "utf8");
+const guardV2 = readFileSync("supabase/migrations/20261013050000_unit_module_guard_v2.sql", "utf8");
 const UNIT_A = "00000000-0000-0000-0000-000000000001";
 const UNIT_B = "00000000-0000-0000-0000-000000000002";
 const KITCHEN_A = "00000000-0000-0000-0000-000000000011";
@@ -45,6 +46,7 @@ beforeAll(async () => {
   await db.exec(kdsMigration);
   await db.exec(migration);
   await db.exec(guard);
+  await db.exec(guardV2);
 }, 30000);
 
 beforeEach(async () => {
@@ -59,17 +61,21 @@ beforeEach(async () => {
 afterAll(async () => { await db?.close(); });
 
 describe("unit modules guard", () => {
-  it("blocks direct updates of module columns by a logged user but allows the unit-admin functions", async () => {
-    await as(ADMIN_A);
-    await expect(db.query("update public.business_units set kds_enabled = false where id = $1", [UNIT_A])).rejects.toThrow("Configurações");
-    await expect(db.query("update public.business_units set print_mode = 'device' where id = $1", [UNIT_A])).rejects.toThrow("Configurações");
-    await db.query("select public.set_unit_kds($1, false)", [UNIT_A]);
-    const row = (await db.query<{ kds_enabled: boolean }>("select kds_enabled from public.business_units where id = $1", [UNIT_A])).rows[0];
-    expect(row.kds_enabled).toBe(false);
-    await expect(db.query("insert into public.business_units (id, print_mode) values ('00000000-0000-0000-0000-0000000000aa', 'station')")).rejects.toThrow("Configurações");
+  it("only an admin of that unit changes module columns, even with the old session marker", async () => {
+    await as(ADMIN_B);
+    await expect(db.query("update public.business_units set kds_enabled = false where id = $1", [UNIT_A])).rejects.toThrow("Só um administrador");
+    // O marcador antigo não abre mais a trava.
+    await db.query("select set_config('pop9.unit_settings', 'on', false)");
+    await expect(db.query("update public.business_units set print_mode = 'device' where id = $1", [UNIT_A])).rejects.toThrow("Só um administrador");
+    await db.query("select set_config('pop9.unit_settings', '', false)");
+    await expect(db.query("insert into public.business_units (id, print_mode) values ('00000000-0000-0000-0000-0000000000aa', 'station')")).rejects.toThrow("padrão");
     await db.query("insert into public.business_units (id) values ('00000000-0000-0000-0000-0000000000ab')");
+    await as(ADMIN_A);
+    await db.query("select public.set_unit_kds($1, false)", [UNIT_A]);
+    expect((await db.query<{ kds_enabled: boolean }>("select kds_enabled from public.business_units where id = $1", [UNIT_A])).rows[0].kds_enabled).toBe(false);
     // Outras colunas continuam editáveis pela policy existente.
-    await db.query("update public.business_units set active = true where id = $1", [UNIT_A]);
+    await db.query("update public.business_units set active = false where id = $1", [UNIT_A]);
+    expect((await db.query<{ active: boolean }>("select active from public.business_units where id = $1", [UNIT_A])).rows[0].active).toBe(false);
   });
 });
 

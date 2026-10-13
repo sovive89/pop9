@@ -15,20 +15,25 @@ type ModuleProps = {
 
 function ModuleRow({ icon: Icon, title, on, off, checked, disabled, onChange }: ModuleProps) {
   const [saving, setSaving] = useState(false);
+  // Mantém o valor escolhido (e a chave travada) até a leitura nova confirmar a mudança.
+  const [pending, setPending] = useState<boolean | null>(null);
+  const shown = pending ?? checked;
+  if (pending !== null && pending === checked) setPending(null);
   return (
     <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-card p-4">
       <div className="flex gap-3">
         <Icon className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden />
         <div className="space-y-1">
           <p className="font-medium">{title}</p>
-          <p className="text-sm text-muted-foreground">{checked ? on : off}</p>
+          <p className="text-sm text-muted-foreground">{shown ? on : off}</p>
         </div>
       </div>
-      <Switch aria-label={title} checked={checked} disabled={disabled || saving}
+      <Switch aria-label={title} checked={shown} disabled={disabled || saving || pending !== null}
         onCheckedChange={async (value) => {
           setSaving(true);
+          setPending(value);
           try { await onChange(value); toast.success(`${title}: ${value ? "ativado" : "desativado"}`); }
-          catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível salvar"); }
+          catch (error) { setPending(null); toast.error(error instanceof Error ? error.message : "Não foi possível salvar"); }
           finally { setSaving(false); }
         }} />
     </div>
