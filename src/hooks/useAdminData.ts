@@ -268,6 +268,43 @@ export const useAdminData = () => {
     ingredients: Omit<DbIngredient, "id">[];
     variants: Omit<DbVariant, "id">[];
   };
+
+  const ensureTheoreticalMaterials = async (ingredients: Omit<DbIngredient, "id">[]) => {
+    if (!businessUnitId || !ingredients.length) return;
+    for (const ingredient of ingredients) {
+      const name = ingredient.name.trim();
+      if (!name) continue;
+      const { data: existing, error: lookupError } = await supabase
+        .from("raw_materials")
+        .select("id")
+        .eq("business_unit_id", businessUnitId)
+        .ilike("name", name)
+        .limit(1);
+      if (lookupError) {
+        toast.error(`Cardápio salvo, mas não foi possível consultar o insumo “${name}”`);
+        continue;
+      }
+      if (existing?.length) continue;
+
+      const payload = {
+        name,
+        unit: "un",
+        tipo: "insumo" as const,
+        min_stock: 0,
+        current_stock: 0,
+        categoria: "Cardápio",
+        is_theoretical: true,
+        business_unit_id: businessUnitId,
+      } satisfies Database["public"]["Tables"]["raw_materials"]["Insert"];
+      let { error } = await supabase.from("raw_materials").insert(payload);
+      if (error && /is_theoretical|column .* does not exist|schema cache/i.test(error.message)) {
+        const { is_theoretical: _ignored, ...legacyPayload } = payload;
+        ({ error } = await supabase.from("raw_materials").insert(legacyPayload));
+      }
+      if (error) toast.error(`Cardápio salvo, mas o insumo “${name}” não foi criado no Estoque`);
+    }
+  };
+
   const saveMenuItem = async (input: MenuItemInput, isNew: boolean): Promise<MenuItemSaveResult> => {
     const { ingredients, variants, ...itemData } = input;
     let itemId = itemData.id;
@@ -324,6 +361,9 @@ export const useAdminData = () => {
       );
       if (error) { toast.error("Erro ao salvar ingredientes"); return rollbackNew(); }
     }
+    // O cardápio é a primeira etapa: seus ingredientes já entram no Estoque
+    // como cadastros teóricos, sem criar lote, compra ou receita de produção.
+    await ensureTheoreticalMaterials(ingredients);
 
     // Replace variants
     await supabase.from("menu_item_variants").delete().eq("menu_item_id", itemId);

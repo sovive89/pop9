@@ -817,7 +817,7 @@ const StockTab = () => {
                   <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                   <SelectContent>
                     {rawMaterials
-                      .filter((m) => m.itemType === "semiacabado" || m.itemType === "produto_acabado")
+                      .filter((m) => m.itemType !== "revenda")
                       .map((m) => (
                         <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
                       ))}

@@ -100,15 +100,26 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, disa
     let cancelled = false;
     setLoaded(false);
     setLoadError("");
-    void supabase.from("recipe_items").select("id, raw_material_id, quantity").eq("menu_item_id", menuItemId)
-      .then(({ data, error }) => {
+    void Promise.all([
+      supabase.from("recipe_items").select("id, raw_material_id, quantity").eq("menu_item_id", menuItemId),
+      supabase.from("menu_item_ingredients").select("id, name").eq("menu_item_id", menuItemId),
+    ]).then(([recipeResult, ingredientResult]) => {
         if (cancelled) return;
+        const error = recipeResult.error ?? ingredientResult.error;
         if (error) { setLoadError("Não foi possível carregar a ficha técnica: " + error.message); return; }
-        setRows((data ?? []).map(item => ({ ...emptyRow(), key: item.id, rawMaterialId: item.raw_material_id, quantity: String(item.quantity) })));
+        const recipeRows = (recipeResult.data ?? []).map(item => ({ ...emptyRow(), key: item.id, rawMaterialId: item.raw_material_id, quantity: String(item.quantity) }));
+        const linkedIds = new Set(recipeRows.map(row => row.rawMaterialId));
+        const ingredientRows = (ingredientResult.data ?? [])
+          .filter(ingredient => !rawMaterials.some(material => linkedIds.has(material.id) && material.name.trim().toLowerCase() === ingredient.name.trim().toLowerCase()))
+          .map(ingredient => {
+            const material = rawMaterials.find(item => item.name.trim().toLowerCase() === ingredient.name.trim().toLowerCase());
+            return { ...emptyRow(), key: `ingredient-${ingredient.id}`, rawMaterialId: material?.id ?? "", newName: material ? "" : ingredient.name, newUnit: material?.unit ?? "un" };
+          });
+        setRows([...recipeRows, ...ingredientRows]);
         setLoaded(true);
       });
     return () => { cancelled = true; };
-  }, [menuItemId, retry]);
+  }, [menuItemId, retry, rawMaterials]);
 
   const updateRow = (key: string, patch: Partial<RecipeRow>) =>
     setRows(previous => previous.map(row => row.key === key ? { ...row, ...patch } : row));
@@ -142,6 +153,10 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, disa
       for (const row of rows) {
         const id = await resolve(row, row.isProduced ? "semiacabado" : "insumo", id => updateRow(row.key, { rawMaterialId: id }));
         if (!id) return false;
+        if (row.isProduced && row.rawMaterialId) {
+          await supabase.from("raw_materials").update({ tipo: "semiacabado" })
+            .eq("id", id).eq("business_unit_id", businessUnitId);
+        }
         if (row.isProduced && !row.recipeCreated) {
           const inputs: { rawMaterialId: string; quantity: number }[] = [];
           for (const input of row.subInputs) {
@@ -149,7 +164,8 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, disa
             if (!baseId) return false;
             inputs.push({ rawMaterialId: baseId, quantity: Number(input.quantity) });
           }
-          if (!await createRecipe({ name: `Receita — ${row.newName.trim()}`, outputRawMaterialId: id,
+          const outputName = row.newName.trim() || rawMaterials.find(material => material.id === id)?.name || "Componente produzido";
+          if (!await createRecipe({ name: `Receita — ${outputName}`, outputRawMaterialId: id,
             outputQuantity: Number(row.outputQuantity), shelfLifeDays: null, inputs })) return false;
           updateRow(row.key, { recipeCreated: true });
         }
@@ -196,13 +212,13 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, disa
         <MaterialFields input={row} materials={rawMaterials} disabled={disabled}
           onChange={patch => updateRow(row.key, { ...patch, ...(patch.rawMaterialId !== undefined ? { isProduced: false, recipeCreated: false, subInputs: [] } : {}) })}
           onRemove={() => setRows(previous => previous.filter(item => item.key !== row.key))} />
-        {!row.rawMaterialId && <label className="flex items-start gap-2 text-xs text-muted-foreground">
+        <label className="flex items-start gap-2 text-xs text-muted-foreground">
           <input type="checkbox" disabled={disabled} checked={row.isProduced} aria-label="É produzido: tem receita própria"
             data-tooltip="Ative para um insumo preparado na casa, como molho ou massa. Cadastre abaixo os insumos-base e as quantidades da receita."
             onChange={event => updateRow(row.key, { isProduced: event.target.checked,
               subInputs: event.target.checked && !row.subInputs.length ? [emptyInput()] : row.subInputs })} />
           É produzido: tem receita própria
-        </label>}
+        </label>
         {row.isProduced && <fieldset className="min-w-0 space-y-3 border-l-2 border-primary/30 pl-3" disabled={disabled || row.recipeCreated}>
           <legend className="mb-2 text-xs font-medium text-foreground">Receita de {row.newName.trim() || "novo insumo"}</legend>
           <label className={labelClass} htmlFor={`${row.key}-output`}>
