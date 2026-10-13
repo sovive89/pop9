@@ -33,6 +33,7 @@ interface RecipeRow extends MaterialInput {
 }
 export interface RecipeBuilderHandle {
   validate: () => boolean;
+  importFromMenuItem: (sourceMenuItemId: string) => Promise<boolean>;
   commit: (menuItemId: string) => Promise<boolean>;
 }
 interface Props { menuItemId?: string; menuItemName?: string; disabled?: boolean }
@@ -232,6 +233,32 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
 
   useImperativeHandle(ref, () => ({
     validate,
+    importFromMenuItem: async sourceMenuItemId => {
+      if (!businessUnitId || !loaded) return false;
+      const [source, lines] = await Promise.all([
+        supabase.from("menu_items").select("id").eq("id", sourceMenuItemId).eq("business_unit_id", businessUnitId).single(),
+        supabase.from("recipe_items").select("raw_material_id,quantity,display_quantity,display_unit,transformacao").eq("menu_item_id", sourceMenuItemId),
+      ]);
+      if (source.error || lines.error) {
+        toast.error("Não foi possível carregar a ficha de Documentos.");
+        return false;
+      }
+      if (!lines.data?.length) {
+        toast.error("Esta ficha ainda não tem ingredientes e quantidades gravados.");
+        return false;
+      }
+      const imported = lines.data.map(line => {
+        const material = rawMaterials.find(m => m.id === line.raw_material_id);
+        const transformation = (line.transformacao ?? "desconto_direto") as Transformation;
+        return { ...emptyRow(), rawMaterialId: line.raw_material_id,
+          newUnit: line.display_unit || material?.unit || "un",
+          quantity: String(line.display_quantity ?? line.quantity),
+          transformation, isProduced: transformation !== "desconto_direto", recipeCreated: true };
+      });
+      setRows(imported);
+      toast.success("Ficha carregada. Revise e salve para vincular ao item.");
+      return true;
+    },
     commit: async targetMenuItemId => {
       if (!validate()) return false;
       const resolve = async (input: MaterialInput, itemType: ItemType, onCreated: (id: string) => void) => {
