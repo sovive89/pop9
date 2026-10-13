@@ -39,8 +39,8 @@ export interface PrinterConfig {
   destinos: PrinterDestino[];
 }
 
-export type PrinterDestino = "kitchen" | "bar";
-export const DESTINO_LABELS: Record<PrinterDestino, string> = { kitchen: "Cozinha", bar: "Bar" };
+export type PrinterDestino = string;
+export const DESTINO_LABELS: Record<string, string> = { kitchen: "Cozinha", bar: "Bar" };
 
 /** IP ou nome de rede simples (sem protocolo, porta ou caminho). */
 export const isValidHost = (v: string) => /^[A-Za-z0-9.-]{1,253}$/.test(v);

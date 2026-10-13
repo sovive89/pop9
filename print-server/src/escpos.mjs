@@ -63,8 +63,8 @@ export function buildKitchenTickets({ label, clientName, orderId, channel, items
     ];
     for (let i = 0; i < quantity; i++) {
       tickets.push({
-        destination: item.destination === "bar" ? "bar" : "kitchen",
-        title: item.destination === "bar" ? "BAR" : "COMANDA",
+        destination: item.destination || "kitchen",
+        title: item.destination === "bar" ? "BAR" : (item.destination && item.destination !== "kitchen" ? String(item.destination).replace(/_/g, " ").toUpperCase() : "COMANDA"),
         label, clientName, time,
         orderRef: String(orderId).slice(0, 8),
         channel: channel ?? null,
