@@ -2,7 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { PAGE_HELP } from "@/lib/page-help";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Printer, Plus, Trash2, Pencil, Tag as TagIcon } from "lucide-react";
+import { Printer, Plus, Trash2, Pencil, Download, Tag as TagIcon } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -40,7 +40,11 @@ import {
   SECTOR_LABELS,
   type PrinterSector,
 } from "@/hooks/usePrinterConfigs";
+import { printSectorsTable } from "@/hooks/usePrintSectors";
 
+
+// Publicado pelo workflow "Build Windows Print Server EXE" a cada atualização do main.
+const PRINT_SERVER_DOWNLOAD_URL = "https://github.com/sovive89/pop9/releases/download/print-server-latest/POP9-Print-Server-Windows.exe";
 const TIPO_OPTIONS: { value: PrinterTipo; label: string }[] = [
   { value: "termica", label: "Térmica (comanda/conta)" },
   { value: "etiqueta", label: "Etiqueta adesiva" },
@@ -81,10 +85,10 @@ const PrintersTab = () => {
   const [sectorBusy, setSectorBusy] = useState(false);
   const loadSectors = useCallback(async () => {
     if (!businessUnitId) { setSectors([]); return; }
-    const { data, error } = await (supabase as any).from("print_sectors")
+    const { data, error } = await printSectorsTable()
       .select("slug,name,active").eq("business_unit_id", businessUnitId).order("name");
     if (error) { toast.error("Erro ao carregar setores: " + error.message); return; }
-    setSectors(data ?? []);
+    setSectors((data as { slug: string; name: string; active: boolean }[] | null) ?? []);
   }, [businessUnitId]);
   useEffect(() => { void loadSectors(); }, [loadSectors]);
   const addSector = async () => {
@@ -95,7 +99,7 @@ const PrintersTab = () => {
     if (!slug || sectors.some(s => s.slug === slug)) { toast.error("Setor duplicado ou inválido"); return; }
     setSectorBusy(true);
     try {
-      const { error } = await (supabase as any).from("print_sectors")
+      const { error } = await printSectorsTable()
         .insert({ business_unit_id: businessUnitId, slug, name });
       if (error) { toast.error(error.message); return; }
       setNewSector(""); await loadSectors();
@@ -208,6 +212,22 @@ const PrintersTab = () => {
           num computador da loja e o IP da térmica preenchido abaixo, a comanda da cozinha/bar sai
           sozinha, direto na impressora (ative também a Estação de impressão em Módulos).
         </p>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
+        <div className="space-y-1">
+          <p className="text-sm font-semibold text-foreground">POP9 Print Server para Windows</p>
+          <p className="text-xs text-muted-foreground">
+            Instale no computador ligado às impressoras. Na primeira vez, informe o endereço e a chave pública do
+            Supabase, o e-mail e a senha de uma conta só para impressão (papel Cozinha) e o ID desta unidade.
+          </p>
+          {businessUnitId && <p className="text-xs text-muted-foreground">ID desta unidade: <code className="select-all">{businessUnitId}</code></p>}
+        </div>
+        <Button asChild size="sm" variant="outline">
+          <a href={PRINT_SERVER_DOWNLOAD_URL} rel="noopener noreferrer" download>
+            <Download className="mr-1 h-4 w-4" /> Baixar (.exe)
+          </a>
+        </Button>
       </div>
 
       <div className="flex items-center justify-between">

@@ -14,7 +14,7 @@ jobs:
   windows:
     runs-on: windows-latest
     permissions:
-      contents: read
+      contents: write
     defaults:
       run:
         working-directory: print-server
@@ -32,3 +32,17 @@ jobs:
           name: POP9-Print-Server-Windows
           path: print-server/dist/*.exe
           if-no-files-found: error
+      # Publica o .exe numa versão pública fixa do GitHub, baixada pelo botão em Admin → Impressoras.
+      - name: Publicar para download no POP9
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $exe = Get-ChildItem dist/*.exe | Select-Object -First 1
+          Copy-Item $exe.FullName dist/POP9-Print-Server-Windows.exe
+          gh release view print-server-latest --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create print-server-latest --repo $env:GITHUB_REPOSITORY --title "POP9 Print Server (Windows)" --notes "Versão mais recente do POP9 Print Server para Windows. Baixe pelo POP9 em Admin → Impressoras." --latest=false
+          }
+          gh release upload print-server-latest dist/POP9-Print-Server-Windows.exe --repo $env:GITHUB_REPOSITORY --clobber
