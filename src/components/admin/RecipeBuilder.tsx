@@ -103,6 +103,8 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
   const [retry, setRetry] = useState(0);
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpExpanded, setHelpExpanded] = useState(false);
+  const [savingRecipe, setSavingRecipe] = useState<string | null>(null);
+  const [collapsedRecipes, setCollapsedRecipes] = useState<string[]>([]);
 
   useEffect(() => {
     if (!menuItemId) { setLoaded(true); return; }
@@ -156,6 +158,62 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
       if (error) toast.error("Ficha salva, mas o documento JSON não foi atualizado: " + error.message);
     } catch (error) {
       toast.error("Ficha salva, mas o documento JSON ainda não está disponível neste ambiente: " + (error instanceof Error ? error.message : String(error)));
+    }
+  };
+
+  const saveProducedRecipe = async (row: RecipeRow) => {
+    if (savingRecipe || row.recipeCreated || !businessUnitId || !loaded) return;
+    const valid = (input: MaterialInput) => (input.rawMaterialId || input.newName.trim()) && positive(input.quantity) && STOCK_UNITS.includes(input.newUnit as typeof STOCK_UNITS[number]);
+    if (!valid(row) || !positive(row.outputQuantity) || !row.subInputs.length || row.subInputs.some(input => !valid(input))) {
+      toast.error("Informe nome, quantidade, unidade, rendimento e todos os insumos-base da receita.");
+      return;
+    }
+    setSavingRecipe(row.key);
+    try {
+      const resolve = async (input: MaterialInput, itemType: ItemType): Promise<string | null> =>
+        input.rawMaterialId || await createRawMaterialRecord({
+          name: input.newName.trim(), unit: input.newUnit, itemType, minStock: 0,
+        });
+      // O cadastro de saída é teórico. Nenhum lote ou saldo é criado aqui.
+      const outputId = await resolve(row, "semiacabado");
+      if (!outputId) return;
+      updateRow(row.key, { rawMaterialId: outputId });
+      const inputs: { rawMaterialId: string; quantity: number }[] = [];
+      for (const input of row.subInputs) {
+        const id = await resolve(input, "insumo");
+        if (!id) return;
+        const stockUnit = rawMaterials.find(m => m.id === id)?.unit ?? input.newUnit;
+        const quantity = toStockQuantity(Number(input.quantity), input.newUnit, stockUnit);
+        if (quantity === null) {
+          toast.error(`Unidade incompatível para o insumo-base: ${input.newName || rawMaterials.find(m => m.id === id)?.name || id}.`);
+          return;
+        }
+        inputs.push({ rawMaterialId: id, quantity });
+        updateSubInput(row.key, input.key, { rawMaterialId: id });
+      }
+      const outputName = row.newName.trim() || rawMaterials.find(m => m.id === outputId)?.name || "Item produzido";
+      const created = await createRecipe({
+        name: `Receita — ${outputName}`, outputRawMaterialId: outputId,
+        outputQuantity: Number(row.outputQuantity), shelfLifeDays: null,
+        tipo: row.transformation === "porcionamento" ? "porcionamento" : "producao", inputs,
+      });
+      if (!created) return;
+      updateRow(row.key, { recipeCreated: true });
+      setCollapsedRecipes(previous => [...previous, row.key]);
+      await saveTechnicalDocument("raw_material", outputId, {
+        schema_version: 1, document_type: "ficha_tecnica", status: "draft", revision: 1,
+        output: { type: "raw_material", id: outputId, name: outputName, unit: row.newUnit, quantity: Number(row.outputQuantity) },
+        ingredients: inputs.map(input => ({
+          raw_material_id: input.rawMaterialId,
+          name: rawMaterials.find(m => m.id === input.rawMaterialId)?.name || row.subInputs.find(m => m.rawMaterialId === input.rawMaterialId)?.newName || "",
+          quantity: input.quantity,
+          unit: rawMaterials.find(m => m.id === input.rawMaterialId)?.unit || row.subInputs.find(m => m.rawMaterialId === input.rawMaterialId)?.newUnit || "un",
+          process: "desconto_direto",
+        })),
+      });
+      toast.success("Ficha técnica de produção salva. O estoque só será movimentado após produzir.");
+    } finally {
+      setSavingRecipe(null);
     }
   };
 
@@ -306,7 +364,12 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
             {TRANSFORMATIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
-        {row.isProduced && <fieldset className="min-w-0 space-y-3 border-l-2 border-primary/30 pl-3" disabled={disabled || row.recipeCreated}>
+        {row.isProduced && row.recipeCreated && collapsedRecipes.includes(row.key) && (
+          <Button type="button" variant="outline" size="sm" onClick={() => setCollapsedRecipes(previous => previous.filter(key => key !== row.key))}>
+            <ChefHat className="h-3.5 w-3.5" /> Ficha técnica de produção salva — visualizar
+          </Button>
+        )}
+        {row.isProduced && !collapsedRecipes.includes(row.key) && <fieldset className="min-w-0 space-y-3 border-l-2 border-primary/30 pl-3" disabled={disabled || row.recipeCreated}>
           <legend className="mb-2 text-xs font-medium text-foreground">Receita de {row.newName.trim() || "novo insumo"}</legend>
           <label className={labelClass} htmlFor={`${row.key}-output`}>
             <span>Quantidade de referência da receita ({unit})</span>
@@ -321,7 +384,11 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
           <Button type="button" variant="outline" size="sm" disabled={disabled || row.recipeCreated}
             data-tooltip="Adicione um insumo-base à receita. Preencha nome, unidade de medida e quantidade; o novo insumo será cadastrado com saldo zero."
             onClick={() => updateRow(row.key, { subInputs: [...row.subInputs, emptyInput()] })}><Plus className="h-3 w-3" /> Adicionar insumo-base</Button>
-          {row.recipeCreated && <p className="text-xs text-muted-foreground">Receita já cadastrada. Tente salvar o item novamente para concluir o vínculo.</p>}
+          {!row.recipeCreated && <Button type="button" size="sm" disabled={disabled || savingRecipe !== null}
+            aria-label="Salvar receita de produção" onClick={() => void saveProducedRecipe(row)}>
+            {savingRecipe === row.key ? "Salvando receita…" : "Salvar receita"}
+          </Button>}
+          {row.recipeCreated && <p className="text-xs text-muted-foreground">Ficha técnica de produção salva. O item produzido só entra no estoque após confirmar a produção.</p>}
         </fieldset>}
       </div>;
     })}
