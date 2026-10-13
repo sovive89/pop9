@@ -441,31 +441,33 @@ const StockTab = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-1 rounded-xl border border-border bg-muted/30 p-1 sm:grid-cols-4">
-        {[
-          { key: "insumos" as const, label: "Insumos", icon: Package },
-          { key: "unitarios" as const, label: "Itens unitários", icon: Boxes },
-          { key: "bar" as const, label: "Bar", icon: Package },
-          { key: "limpeza" as const, label: "Limpeza e higiene", icon: Package },
-          { key: "operacionais" as const, label: "Consumíveis operacionais", icon: Package },
-          { key: "produzidos" as const, label: "Produzidos", icon: Boxes },
+      <div className="grid grid-cols-3 gap-1 rounded-xl border border-border bg-muted/30 p-1" role="tablist" aria-label="Áreas operacionais">
+        {([
+          { key: "insumos" as const, label: "Estoque", icon: Package },
           { key: "producao" as const, label: "Produção", icon: Factory },
           { key: "fornecedores" as const, label: "Fornecedores", icon: Truck },
-        ].map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
+        ]).map(({ key, label, icon: Icon }) => {
+          const selected = key === "insumos" ? isCategoryView(view) || view === "produzidos" : view === key;
+          return <button key={key} type="button" role="tab" aria-selected={selected}
             onClick={() => setView(key)}
-            className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs sm:text-sm font-medium transition-colors ${
-              view === key
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted"
-            }`}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </button>
-        ))}
+            className={`flex min-w-0 items-center justify-center gap-1 rounded-lg px-2 py-2.5 text-xs font-medium sm:text-sm ${selected
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:bg-muted"}`}>
+            <Icon className="h-4 w-4 shrink-0" /><span className="truncate">{label}</span>
+          </button>;
+        })}
       </div>
+
+      {(isCategoryView(view) || view === "produzidos") && (
+        <div className="space-y-2">
+          <label className="block text-xs font-medium text-muted-foreground" htmlFor="stock-category-filter">Categoria</label>
+          <select id="stock-category-filter" value={view} onChange={event => setView(event.target.value as SubView)}
+            className="h-10 w-full rounded-lg border border-border bg-card px-3 text-sm text-foreground">
+            {STOCK_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            <option value="produzidos">Itens produzidos</option>
+          </select>
+        </div>
+      )}
 
       {(isCategoryView(view) || view === "produzidos") && (
         <div className="space-y-3">
