@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node --env-file=.env src/index.mjs",
     "test-print": "node --env-file=.env src/index.mjs --test",
-    "check": "node --check src/index.mjs && node --check src/escpos.mjs && node --check src/routing.mjs"
+    "check": "node --check src/index.mjs && node --check src/escpos.mjs && node --check src/routing.mjs",
+    "build:windows": "electron-builder --win portable --x64 --publish never"
   },
   "engines": {
     "node": ">=20.6"
@@ -15,5 +16,25 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",
     "ws": "^8.18.0"
+  },
+  "main": "windows/desktop/main.cjs",
+  "build": {
+    "appId": "com.pop9.printserver",
+    "productName": "POP9 Print Server",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "windows/desktop/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "artifactName": "POP9-Print-Server-${version}-Windows.exe"
+    }
   }
 }
