@@ -108,8 +108,9 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">Chave (slug)</label>
-          <Input value={key} onChange={(e) => setKey(e.target.value)} disabled={!isNew} placeholder="ex: salads" className="h-8 text-sm" />
+          <label className="text-xs font-medium text-muted-foreground" data-tooltip="Identificador interno, sem acentos nem espaços. O cliente vê só o Nome.">Chave (identificador interno)</label>
+          <Input value={key} onChange={(e) => setKey(e.target.value)} disabled={!isNew} placeholder="ex: saladas" className="h-8 text-sm" />
+          <p className="text-[10px] text-muted-foreground">Código interno, sem acento ou espaço (ex.: saladas). Não muda depois de criada; o cliente vê só o Nome.</p>
         </div>
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Nome</label>
@@ -126,6 +127,7 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Ordem</label>
           <Input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-8 text-sm" />
+          <p className="text-[10px] text-muted-foreground">Posição na lista: menor aparece primeiro (0 antes de 1).</p>
         </div>
       </div>
       <div className="space-y-2">
@@ -424,7 +426,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
 
       {item && (
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          <span>SKU: <span className="font-mono text-foreground">{item.sku ?? "—"}</span></span>
+          <span data-tooltip="Código interno único do produto, gerado automaticamente. Usado em relatórios, importação e integrações; não precisa preencher.">SKU (código interno): <span className="font-mono text-foreground">{item.sku ?? "—"}</span></span>
           <span>Status: <span className="text-foreground">{isPublished ? "Publicado" : "Rascunho"}</span></span>
         </div>
       )}
@@ -452,8 +454,9 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
         </div>
         {item && (
           <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Ordem</label>
+            <label className="text-xs font-medium text-muted-foreground" data-tooltip="Posição do item na categoria: menor aparece primeiro.">Ordem</label>
             <Input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-9" />
+            <p className="text-[10px] text-muted-foreground">Menor aparece primeiro.</p>
           </div>
         )}
         <div className="flex items-end">
