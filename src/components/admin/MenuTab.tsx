@@ -410,11 +410,15 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       toast.error("Nome e preço são obrigatórios");
       return;
     }
+    if (status === "published" && !recipeBuilderRef.current) {
+      toast.error("Aguarde a ficha técnica carregar antes de publicar.");
+      return;
+    }
     setSaving(true);
     // Primeiro o item do cardápio é salvo sem exigir a ficha técnica. A ficha
     // é montada depois, ao reabrir o item já criado, quando a lista de
     // ingredientes/necessidades estiver definida.
-    if (item?.id && recipeBuilderRef.current && !recipeBuilderRef.current.validate()) { setSaving(false); return; }
+    if (recipeBuilderRef.current && !recipeBuilderRef.current.validate()) { setSaving(false); return; }
     const finalImage = imageUrl.trim() || null;
     const listedIngredients = ingredientsFromDescription(description, ingredients);
     const savedId = await onSave(
@@ -428,7 +432,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
         description: description.trim() || null,
         image_url: finalImage,
         active,
-        status,
+        status: status === "published" ? "draft" : status,
         ingredients: listedIngredients,
         variants,
       },
