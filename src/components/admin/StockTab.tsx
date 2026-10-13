@@ -353,6 +353,7 @@ const StockTab = () => {
 
   const openProduce = (recipeId: string) => {
     const recipe = recipes.find((r) => r.id === recipeId);
+    if (!recipe || !recipe.active) return;
     setProdRecipeId(recipeId);
     setProdQuantity(recipe ? String(recipe.outputQuantity) : "");
     setProdInputs(recipe ? recipe.inputs.map((i) => ({ rawMaterialId: i.rawMaterialId, quantityUsed: i.quantity })) : []);
@@ -514,7 +515,7 @@ const StockTab = () => {
         <div className="space-y-5">
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-foreground">Receitas de produção</h3>
+              <div className="flex items-center gap-2"><h3 className="text-sm font-semibold text-foreground">Receitas de produção</h3><Button size="sm" onClick={() => openProduce(recipes.find(r => r.active)?.id ?? "")} disabled={!recipes.some(r => r.active)}><Factory className="h-3.5 w-3.5 mr-1" /> Produzir</Button></div>
               <Button data-tooltip="Cadastre uma receita de produção e os insumos necessários, sem produzir um lote." size="sm" variant="outline" onClick={() => setNewRecipeOpen(true)}>
                 <Plus className="h-3.5 w-3.5 mr-1" /> Nova receita
               </Button>
@@ -934,6 +935,7 @@ const StockTab = () => {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Produzir Lote</DialogTitle>
+            <div className="space-y-1"><Label htmlFor="production-recipe-select">Ficha técnica do item produzido</Label><select id="production-recipe-select" className="w-full rounded-md border bg-background p-2 text-sm" value={prodRecipeId} onChange={event => openProduce(event.target.value)}>{recipes.filter(r => r.active).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select></div>
             <DialogDescription>
               Ao confirmar, gera etiqueta automaticamente (código + validade) e credita o item produzido no estoque.
             </DialogDescription>
