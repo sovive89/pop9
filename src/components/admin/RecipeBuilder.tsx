@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useStockData, type RawMaterial, type ItemType } from "@/hooks/useStockData";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import { toast } from "sonner";
+import MenuPrefixField from '@/components/admin/MenuPrefixField';
 
 interface MaterialInput {
   key: string;
@@ -59,8 +60,10 @@ function MaterialFields({ input, materials, disabled, base = false, onChange, on
     <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3">
       {!input.rawMaterialId && <label className={`${labelClass} col-span-2 sm:col-span-1`} htmlFor={`${input.key}-name`}>
         <span>Nome do novo {name.toLowerCase()}</span>
-        <Input id={`${input.key}-name`} aria-label={`Nome do novo ${name.toLowerCase()}`} disabled={disabled}
-          value={input.newName} onChange={event => onChange({ newName: event.target.value })}
+        <MenuPrefixField id={`${input.key}-name`} label={`Nome do novo ${name.toLowerCase()}`} disabled={disabled}
+          value={input.newName} onChange={value => onChange({ newName: value })} mode="whole"
+          suggestions={materials.map(row => ({ id: row.id, label: row.name, value: row.name, kind: 'material', unit: row.unit }))}
+          onPick={suggestion => onChange({ rawMaterialId: suggestion.id, newName: '', newUnit: suggestion.unit ?? '' })}
           placeholder={base ? "Ex.: tomate" : "Ex.: molho da casa"} className="h-9 min-w-0 text-xs" />
       </label>}
       <label className={labelClass} htmlFor={`${input.key}-unit`}>

@@ -70,13 +70,14 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <div className="sticky top-0 z-10">
       {/* Header */}
       <motion.header
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="sticky top-0 z-10 border-b border-border bg-card/80 backdrop-blur-md px-4 py-3"
+        className="border-b border-border bg-card/80 backdrop-blur-md px-4 py-3"
       >
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
               <Flame className="h-5 w-5 text-primary-foreground" />
@@ -116,7 +117,7 @@ const Index = () => {
               )}
             </AnimatePresence>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
             {profileName && (
               <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={()=>navigate("/pedidos-online")}>Pedidos online</Button>
@@ -180,7 +181,7 @@ const Index = () => {
       </motion.header>
 
       {/* Tab bar */}
-      <div className="sticky top-[65px] z-10 border-b border-border bg-card/80 backdrop-blur-md">
+      <div className="border-b border-border bg-card/80 backdrop-blur-md">
         <div className="mx-auto max-w-7xl flex">
           {([
             { key: "mesas" as const, label: "Mesas", icon: Map },
@@ -200,6 +201,8 @@ const Index = () => {
             </button>
           ))}
         </div>
+      </div>
+
       </div>
 
       {/* Content */}

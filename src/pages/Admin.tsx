@@ -23,7 +23,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { useUnitRoles } from "@/hooks/useUnitRoles";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import MenuTab from "@/components/admin/MenuTab";
 import UsersTab from "@/components/admin/UsersTab";
 import ResetPasswordTab from "@/components/admin/ResetPasswordTab";
@@ -109,35 +110,21 @@ function SectionMenuButton({
 const Admin = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [navRoles, setNavRoles] = useState<{ attendant: boolean; kitchen: boolean; admin: boolean }>({
-    attendant: false,
-    kitchen: false,
-    admin: false,
-  });
+  const { roles, loading: rolesLoading, error: rolesError } = useUnitRoles();
+  const { businessUnitId } = useCurrentBusinessUnit();
+  const isAdmin = roles.includes("admin");
+  const navRoles = { attendant: isAdmin || roles.includes("attendant"), kitchen: isAdmin || roles.includes("kitchen"), admin: isAdmin };
+  const [showSettings, setShowSettings] = useState(false);
   const [searchParams,setSearchParams] = useSearchParams();
   const requestedSection=searchParams.get("sec");
   const activeSection:SectionKey = SECTIONS.some(s=>s.key===requestedSection) ? requestedSection as SectionKey : "menu";
   const setActiveSection=(section:SectionKey)=>setSearchParams({sec:section});
 
   useEffect(() => {
-    if (!user) return;
-    supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .then(({ data: rolesList }) => {
-        const r = (rolesList ?? []).map((x) => x.role);
-        setIsAdmin(r.includes("admin"));
-        setNavRoles({
-          attendant: r.includes("attendant"),
-          kitchen: r.includes("kitchen"),
-          admin: r.includes("admin"),
-        });
-      });
-  }, [user]);
+    if (["users", "password", "connections", "printers", "qrcodes", "units"].includes(activeSection)) setShowSettings(true);
+  }, [activeSection]);
 
-  if (loading) {
+  if (loading || rolesLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <Flame className="h-10 w-10 animate-pulse text-primary" />
@@ -146,14 +133,9 @@ const Admin = () => {
   }
 
   if (!user) return <Navigate to="/login" replace />;
-  if (isAdmin === false) return <Navigate to="/" replace />;
-  if (isAdmin === null) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <Flame className="h-10 w-10 animate-pulse text-primary" />
-      </div>
-    );
-  }
+  if (rolesError) return <p role="alert" className="p-6">Não foi possível verificar suas permissões. Recarregue a página.</p>;
+  if (!businessUnitId) return <p className="p-6">Selecione uma unidade para acessar a administração.</p>;
+  if (!isAdmin) return <Navigate to="/" replace />;
 
   const activeLabel = SECTIONS.find((s) => s.key === activeSection)?.label ?? "";
 
@@ -174,10 +156,10 @@ const Admin = () => {
 
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel>Módulos</SidebarGroupLabel>
+            <SidebarGroupLabel>Operação</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {SECTIONS.map((section) => (
+                {SECTIONS.filter(section => ["menu", "stock", "crm", "documents"].includes(section.key)).map((section) => (
                   <SectionMenuButton
                     key={section.key}
                     section={section}
@@ -187,6 +169,13 @@ const Admin = () => {
                 ))}
               </SidebarMenu>
             </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarGroup>
+            <SidebarMenu><SidebarMenuItem><SidebarMenuButton tooltip="Configurações" aria-expanded={showSettings} aria-controls="admin-settings" onClick={() => setShowSettings(value => !value)}><Settings /><span>Configurações</span></SidebarMenuButton></SidebarMenuItem></SidebarMenu>
+            {showSettings && <SidebarGroupContent id="admin-settings"><SidebarMenu>
+              {SECTIONS.filter(section => ["users", "password", "connections", "printers", "qrcodes", "units"].includes(section.key)).map(section => <SectionMenuButton key={section.key} section={section} isActive={activeSection === section.key} onSelect={() => setActiveSection(section.key)} />)}
+            </SidebarMenu></SidebarGroupContent>}
           </SidebarGroup>
 
           {(navRoles.attendant || navRoles.kitchen || navRoles.admin) && (

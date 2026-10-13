@@ -40,6 +40,21 @@ function createProducedIngredient() {
 }
 
 describe("menu-first recipe building", () => {
+  it("autocomplete selects the existing ingredient and uses its unit without creating a duplicate", async () => {
+    const ref = createRef<RecipeBuilderHandle>(); render(<RecipeBuilder ref={ref} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar insumo' }));
+    const name = screen.getByLabelText('Nome do novo insumo');
+    fireEvent.focus(name); fireEvent.change(name, { target: { value: 'tom' } });
+    fireEvent.keyDown(name, { key: 'ArrowDown' }); fireEvent.keyDown(name, { key: 'Enter' });
+    expect(screen.getByLabelText('Insumo')).toHaveValue('tomato');
+    expect(screen.getByLabelText('Unidade de medida do insumo')).toHaveValue('g');
+    expect(screen.getByLabelText('Unidade de medida do insumo')).toHaveAttribute('readonly');
+    fill('Quantidade do insumo por item', '150');
+    expect(mocks.createMaterial).not.toHaveBeenCalled();
+    await act(async () => { expect(await ref.current!.commit('menu-item')).toBe(true); });
+    expect(mocks.createMaterial).not.toHaveBeenCalled();
+    expect(mocks.upsert).toHaveBeenCalledWith([expect.objectContaining({ raw_material_id: 'tomato', quantity: 150 })], { onConflict: 'id' });
+  });
   it("opens usable base ingredient fields and creates theoretical ingredients without stock movements", async () => {
     const ref = createRef<RecipeBuilderHandle>();
     render(<RecipeBuilder ref={ref} />);

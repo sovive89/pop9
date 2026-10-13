@@ -7,7 +7,6 @@ import { toast } from "sonner";
 const PROVIDERS = [
   ["openai","OpenAI — GPT Image"],["google","Google — Gemini / Nano Banana / Imagen"],
   ["xai","xAI — Grok Imagine"],["anthropic","Anthropic — Claude (texto)"],
-  ["bfl","Black Forest Labs — FLUX"],["ideogram","Ideogram — imagens"],
 ] as const;
 type Connection = { provider:string;status:string;validated_at:string|null };
 export function AIConnectionsPanel() {
@@ -91,6 +90,6 @@ export function AIConnectionsPanel() {
       {connections.some(c=>c.provider===provider)&&<Button data-tooltip="Desconecte esta integração da unidade selecionada." variant="destructive" disabled={busy} onClick={()=>void disconnect()}>Desconectar</Button>}
     </div>
     <p className="text-sm">Status: {connections.find(c=>c.provider===provider)?.status==="connected"?"Conectado":"Não conectado"}</p>
-    <p className="text-xs text-muted-foreground">FLUX e Ideogram permanecem sem ativação até existir teste seguro de credenciais. A geração de imagem usa as credenciais Google ou OpenAI desta unidade.</p>
+    <p className="text-xs text-muted-foreground">A geração de imagem usa as credenciais Google ou OpenAI desta unidade.</p>
   </section>;
 }
