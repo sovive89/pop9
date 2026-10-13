@@ -1,6 +1,10 @@
 name: Windows Print Agent
 
 on:
+  pull_request:
+    paths:
+      - 'print-agent/**'
+      - '.github/workflows/build-print-agent.yml'
   workflow_dispatch:
   push:
     branches: [main]
