@@ -88,7 +88,12 @@ export default function PrintStation() {
             order.session_id ? supabase.from("sessions").select("table_number").eq("id", order.session_id).maybeSingle() : Promise.resolve({ data: null }),
             order.client_id ? supabase.from("session_clients").select("name").eq("id", order.client_id).maybeSingle() : Promise.resolve({ data: null }),
           ]);
-          const items = (order.order_items ?? []) as unknown as StationItem[];
+          // O banco devolve ingredient_mods; a comanda espera ingredientMods (antes as modificações sumiam).
+          const items: StationItem[] = (order.order_items ?? []).map((i: { name: string; quantity: number; observation?: string | null; ingredient_mods?: unknown; destination: string }) => ({
+            name: i.name, quantity: i.quantity, observation: i.observation,
+            ingredientMods: Array.isArray(i.ingredient_mods) ? (i.ingredient_mods as StationItem["ingredientMods"]) : null,
+            destination: i.destination,
+          }));
           const channel = channelLabel(order as { origin?: string | null; source?: string | null });
           const label = session ? pickupLabel(session.table_number) : `${channel ?? "Pedido"} #${String(order.external_id ?? order.id).slice(-6).toUpperCase()}`;
           const tickets = buildStationTickets(label, client?.name ?? "Cliente", items, order.id, destinations, channel);

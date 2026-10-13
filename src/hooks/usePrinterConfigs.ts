@@ -25,7 +25,31 @@ export interface PrinterConfig {
   connectionType: PrinterConnectionType;
   deviceIdentifier: string | null;
   active: boolean;
+  /** IP/nome da térmica de rede usada pelo print server (porta 9100). */
+  host: string | null;
+  port: number;
+  paperWidth: number;
+  copies: number;
+  autoCut: boolean;
+  /** Setores da comanda que esta impressora recebe no print server. */
+  destinos: PrinterDestino[];
 }
+
+export type PrinterDestino = "kitchen" | "bar";
+export const DESTINO_LABELS: Record<PrinterDestino, string> = { kitchen: "Cozinha", bar: "Bar" };
+
+/** IP ou nome de rede simples (sem protocolo, porta ou caminho). */
+export const isValidHost = (v: string) => /^[A-Za-z0-9.-]{1,253}$/.test(v);
+
+export type PrinterNetworkInput = { host: string | null; port: number; paperWidth: number; copies: number; autoCut: boolean; destinos: PrinterDestino[] };
+const networkColumns = (n: Partial<PrinterNetworkInput>) => ({
+  ...(n.host !== undefined && { host: n.host }),
+  ...(n.port !== undefined && { port: n.port }),
+  ...(n.paperWidth !== undefined && { paper_width: n.paperWidth }),
+  ...(n.copies !== undefined && { copies: n.copies }),
+  ...(n.autoCut !== undefined && { auto_cut: n.autoCut }),
+  ...(n.destinos !== undefined && { destinos: n.destinos }),
+});
 
 /** Sem repetidos e só valores conhecidos, na ordem em que aparecem em GATILHO_LABELS. */
 export function normalizeGatilhos(values: readonly string[]): PrinterGatilho[] {
@@ -74,6 +98,12 @@ export const usePrinterConfigs = () => {
         connectionType: p.connection_type as PrinterConnectionType,
         deviceIdentifier: p.device_identifier,
         active: p.active,
+        host: p.host ?? null,
+        port: p.port ?? 9100,
+        paperWidth: p.paper_width ?? 80,
+        copies: p.copies ?? 1,
+        autoCut: p.auto_cut ?? true,
+        destinos: ((p.destinos?.length ? p.destinos : ["kitchen", "bar"]) as PrinterDestino[]),
       }))
     );
   }, []);
@@ -89,7 +119,7 @@ export const usePrinterConfigs = () => {
     gatilhos: PrinterGatilho[];
     connectionType: PrinterConnectionType;
     deviceIdentifier?: string | null;
-  }) => {
+  } & Partial<PrinterNetworkInput>) => {
     const gatilhos = normalizeGatilhos(input.gatilhos);
     if (!gatilhos.length) {
       toast.error("Escolha pelo menos um gatilho");
@@ -103,6 +133,7 @@ export const usePrinterConfigs = () => {
       connection_type: input.connectionType,
       device_identifier: input.deviceIdentifier || null,
       business_unit_id: businessUnitId,
+      ...networkColumns(input),
     });
     if (error) {
       toast.error("Erro ao criar impressora: " + error.message);
@@ -122,7 +153,7 @@ export const usePrinterConfigs = () => {
       connectionType: PrinterConnectionType;
       deviceIdentifier: string | null;
       active: boolean;
-    }>
+    } & PrinterNetworkInput>
   ) => {
     const gatilhos = input.gatilhos !== undefined ? normalizeGatilhos(input.gatilhos) : undefined;
     if (gatilhos && !gatilhos.length) {
@@ -138,6 +169,7 @@ export const usePrinterConfigs = () => {
         ...(input.connectionType !== undefined && { connection_type: input.connectionType }),
         ...(input.deviceIdentifier !== undefined && { device_identifier: input.deviceIdentifier }),
         ...(input.active !== undefined && { active: input.active }),
+        ...networkColumns(input),
       })
       .eq("id", id);
     if (error) {

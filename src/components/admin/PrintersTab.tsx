@@ -29,6 +29,9 @@ import {
   type PrinterGatilho,
   type PrinterConnectionType,
   type PrinterConfig,
+  type PrinterDestino,
+  DESTINO_LABELS,
+  isValidHost,
 } from "@/hooks/usePrinterConfigs";
 
 const TIPO_OPTIONS: { value: PrinterTipo; label: string }[] = [
@@ -51,6 +54,13 @@ const PrintersTab = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [connectionType, setConnectionType] = useState<PrinterConnectionType>("browser");
   const [deviceIdentifier, setDeviceIdentifier] = useState("");
+  // Impressão direta pelo print server (térmica de rede, porta 9100).
+  const [host, setHost] = useState("");
+  const [port, setPort] = useState("9100");
+  const [paperWidth, setPaperWidth] = useState(80);
+  const [copies, setCopies] = useState(1);
+  const [autoCut, setAutoCut] = useState(true);
+  const [destinos, setDestinos] = useState<PrinterDestino[]>(["kitchen", "bar"]);
 
   const resetForm = () => {
     setName("");
@@ -59,6 +69,12 @@ const PrintersTab = () => {
     setEditingId(null);
     setConnectionType("browser");
     setDeviceIdentifier("");
+    setHost("");
+    setPort("9100");
+    setPaperWidth(80);
+    setCopies(1);
+    setAutoCut(true);
+    setDestinos(["kitchen", "bar"]);
   };
 
   const openNew = () => {
@@ -73,14 +89,31 @@ const PrintersTab = () => {
     setGatilhos(p.gatilhos);
     setConnectionType(p.connectionType);
     setDeviceIdentifier(p.deviceIdentifier ?? "");
+    setHost(p.host ?? "");
+    setPort(String(p.port));
+    setPaperWidth(p.paperWidth);
+    setCopies(p.copies);
+    setAutoCut(p.autoCut);
+    setDestinos(p.destinos);
     setDialogOpen(true);
   };
 
   const toggleGatilho = (value: PrinterGatilho, checked: boolean) =>
     setGatilhos((prev) => (checked ? [...prev.filter((g) => g !== value), value] : prev.filter((g) => g !== value)));
 
+  const portNumber = Number(port);
+  const hostValue = host.trim();
+  const networkError = hostValue && !isValidHost(hostValue)
+    ? "IP ou nome inválido (ex.: 192.168.0.50, sem http:// nem porta)."
+    : !Number.isInteger(portNumber) || portNumber < 1 || portNumber > 65535
+      ? "Porta inválida (padrão 9100)."
+      : !destinos.length ? "Escolha pelo menos um setor." : "";
+
+  const toggleDestino = (value: PrinterDestino, checked: boolean) =>
+    setDestinos((prev) => (checked ? [...prev.filter((d) => d !== value), value] : prev.filter((d) => d !== value)));
+
   const handleSave = async () => {
-    if (!name.trim() || !gatilhos.length) return;
+    if (!name.trim() || !gatilhos.length || networkError) return;
     setSaving(true);
     const data = {
       name: name.trim(),
@@ -88,6 +121,12 @@ const PrintersTab = () => {
       gatilhos,
       connectionType,
       deviceIdentifier: deviceIdentifier.trim() || null,
+      host: hostValue || null,
+      port: portNumber,
+      paperWidth,
+      copies,
+      autoCut,
+      destinos,
     };
     const ok = editingId ? await updatePrinter(editingId, data) : await createPrinter(data);
     setSaving(false);
@@ -106,11 +145,10 @@ const PrintersTab = () => {
       <div className="rounded-xl border border-border bg-card p-4">
         <p className="text-xs text-muted-foreground leading-relaxed">
           Cada impressora pode ter um ou mais gatilhos (ex.: a mesma térmica imprime a comanda
-          da cozinha e a conta da mesa), e um gatilho pode sair em mais de uma impressora. Hoje a
-          execução real da impressão continua sendo o diálogo do navegador — o navegador não
-          permite selecionar/lembrar uma impressora específica nem imprimir silenciosamente sem
-          uma camada extra (QZ Tray ou WebUSB). O campo "Conexão" já existe pra quando isso for
-          implementado; por enquanto ele é só informativo.
+          da cozinha e a conta da mesa), e um gatilho pode sair em mais de uma impressora. Sem
+          o print server, a impressão usa o diálogo do navegador. Com o POP9 Print Server instalado
+          num computador da loja e o IP da térmica preenchido abaixo, a comanda da cozinha/bar sai
+          sozinha, direto na impressora (ative também a Estação de impressão em Módulos).
         </p>
       </div>
 
@@ -142,6 +180,7 @@ const PrintersTab = () => {
                 <p className="text-xs text-muted-foreground mt-1">
                   {p.gatilhos.map((g) => GATILHO_LABELS[g]).join(", ")} · {CONNECTION_TYPE_LABELS[p.connectionType]}
                   {p.deviceIdentifier && ` · ${p.deviceIdentifier}`}
+                  {p.host && ` · Rede ${p.host}:${p.port} (${p.destinos.map((d) => DESTINO_LABELS[d]).join(" + ")})`}
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -170,7 +209,7 @@ const PrintersTab = () => {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId ? "Editar impressora" : "Nova impressora"}</DialogTitle>
             <DialogDescription>
@@ -224,12 +263,64 @@ const PrintersTab = () => {
                 placeholder="Ex: nome/IP da impressora, quando aplicável"
               />
             </div>
+            <div className="space-y-3 rounded-lg border border-border p-3">
+              <p className="text-sm font-medium">Impressão direta (print server)</p>
+              <p className="text-xs text-muted-foreground">
+                Para a comanda sair sozinha, sem diálogo do navegador: informe o IP da térmica de rede.
+                O POP9 Print Server (pasta print-server do sistema) envia a comanda para cá.
+              </p>
+              <div className="grid grid-cols-[1fr_6rem] gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">IP da impressora</Label>
+                  <Input value={host} onChange={(e) => setHost(e.target.value)} placeholder="192.168.0.50" inputMode="decimal" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Porta</Label>
+                  <Input value={port} onChange={(e) => setPort(e.target.value.replace(/\D/g, ""))} inputMode="numeric" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Papel</Label>
+                  <Select value={String(paperWidth)} onValueChange={(v) => setPaperWidth(Number(v))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="80">80 mm</SelectItem>
+                      <SelectItem value="58">58 mm</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Cópias</Label>
+                  <Select value={String(copies)} onValueChange={(v) => setCopies(Number(v))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {[1, 2, 3].map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox checked={autoCut} onCheckedChange={(c) => setAutoCut(c === true)} /> Cortar o papel no fim
+              </label>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Setores que esta impressora recebe</Label>
+                <div className="flex gap-4">
+                  {(Object.keys(DESTINO_LABELS) as PrinterDestino[]).map((d) => (
+                    <label key={d} className="flex items-center gap-2 text-sm">
+                      <Checkbox checked={destinos.includes(d)} onCheckedChange={(c) => toggleDestino(d, c === true)} /> {DESTINO_LABELS[d]}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              {networkError && <p className="text-xs text-destructive">{networkError}</p>}
+            </div>
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
               Cancelar
             </Button>
-            <Button onClick={handleSave} disabled={saving || !name.trim() || !gatilhos.length}>
+            <Button onClick={handleSave} disabled={saving || !name.trim() || !gatilhos.length || Boolean(networkError)}>
               {saving ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>
