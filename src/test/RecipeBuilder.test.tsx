@@ -73,7 +73,7 @@ describe("menu-first recipe building", () => {
       outputRawMaterialId: "id-Molho", outputQuantity: 2, inputs: [{ rawMaterialId: "id-Tomate novo", quantity: 800 }],
     }));
     expect(mocks.upsert).toHaveBeenCalledWith([expect.objectContaining({ menu_item_id: "menu-item", raw_material_id: "id-Molho", quantity: 0.05 })], { onConflict: "id" });
-    expect(mocks.from.mock.calls.every(([table]) => table === "recipe_items")).toBe(true);
+    expect(mocks.from.mock.calls.every(([table]) => ["recipe_items", "raw_materials", "technical_documents"].includes(table))).toBe(true);
   });
 
   it("reuses an existing base ingredient and shows its registered unit", async () => {

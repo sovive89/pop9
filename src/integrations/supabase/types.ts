@@ -1265,18 +1265,21 @@ export type Database = {
           menu_item_id: string
           quantity: number
           raw_material_id: string
+          transformacao: string
         }
         Insert: {
           id?: string
           menu_item_id: string
           quantity: number
           raw_material_id: string
+          transformacao?: string
         }
         Update: {
           id?: string
           menu_item_id?: string
           quantity?: number
           raw_material_id?: string
+          transformacao?: string
         }
         Relationships: [
           {
@@ -1305,6 +1308,53 @@ export type Database = {
             columns: ["raw_material_id"]
             isOneToOne: false
             referencedRelation: "raw_materials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      technical_documents: {
+        Row: {
+          business_unit_id: string
+          created_at: string
+          document: Json
+          document_type: string
+          entity_id: string
+          entity_type: string
+          id: string
+          revision: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          business_unit_id: string
+          created_at?: string
+          document?: Json
+          document_type: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          revision?: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          business_unit_id?: string
+          created_at?: string
+          document?: Json
+          document_type?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          revision?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "technical_documents_business_unit_id_fkey"
+            columns: ["business_unit_id"]
+            isOneToOne: false
+            referencedRelation: "business_units"
             referencedColumns: ["id"]
           },
         ]
