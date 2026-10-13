@@ -429,10 +429,11 @@ export const useSessionStore = () => {
       quantity: item.quantity,
       observation: item.observation ?? null,
       ingredient_mods: item.ingredientMods ? JSON.parse(JSON.stringify(item.ingredientMods)) : [],
+      // Provisório: o banco define o setor pela categoria do item (set_order_item_destination).
       destination: isKitchenItem(item.menuItemId) ? "kitchen" : "bar",
     }));
 
-    const { error: iErr } = await supabase.from("order_items").insert(itemsToInsert);
+    const { data: savedItems, error: iErr } = await supabase.from("order_items").insert(itemsToInsert).select("destination");
 
     if (iErr) {
       toast.error("Erro ao salvar itens do pedido");
@@ -469,7 +470,9 @@ export const useSessionStore = () => {
     // Com a Estação de impressão ativa, a comanda sai pela fila central (gatilho no banco);
     // imprimir aqui também duplicaria o papel.
     if (printMode.mode !== "station") {
-      const kitchenReceipts = buildKitchenReceipts(tableNumber, clientName, cartItems, order.id);
+      // Setor que o banco gravou (mesma ordem do insert); sem retorno, vale o cálculo antigo.
+      const withSectors = cartItems.map((item, i) => ({ ...item, destination: savedItems?.[i]?.destination ?? undefined }));
+      const kitchenReceipts = buildKitchenReceipts(tableNumber, clientName, withSectors, order.id);
       kitchenReceipts.forEach((html) => printReceipt(html));
     }
 

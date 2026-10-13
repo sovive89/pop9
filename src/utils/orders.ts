@@ -11,6 +11,8 @@ export interface OrderItem {
   quantity: number;
   observation?: string;
   ingredientMods?: IngredientMod[];
+  /** Setor gravado no pedido (slug de print_sectors). */
+  destination?: string;
 }
 
 export type OrderStatus = "pending" | "preparing" | "ready" | "delivered";
