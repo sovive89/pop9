@@ -1,3 +1,6 @@
+import { supabase } from "@/integrations/supabase/client";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
+import { toast } from "sonner";
 import { useState, useMemo } from "react";
 import {
   Flame,
@@ -72,6 +75,8 @@ const FICHA_TIPO_OPTIONS: { value: FichaTipo; label: string }[] = [
 ];
 
 const StockTab = () => {
+  const { businessUnitId } = useCurrentBusinessUnit();
+  const [removingMaterial,setRemovingMaterial] = useState<string | null>(null);
   const {
     rawMaterials,
     suppliers,
@@ -81,6 +86,7 @@ const StockTab = () => {
     lotes,
     loading,
     createRawMaterial,
+    refreshAll,
     updateRawMaterialCategory,
     registerPurchase,
     managePurchaseLot,
@@ -89,6 +95,30 @@ const StockTab = () => {
     produceBatch,
   } = useStockData();
 
+  const removeMaterialCard = async (id:string,name:string) => {
+    if(!businessUnitId || removingMaterial || !window.confirm(`Remover o card de "${name}" do estoque? O histórico será preservado.`)) return;
+    setRemovingMaterial(id);
+    try {
+      const checks = await Promise.all([
+        supabase.from("recipe_items").select("id").eq("raw_material_id",id).limit(1),
+        supabase.from("production_recipe_inputs").select("id").eq("raw_material_id",id).limit(1),
+        supabase.from("production_recipes").select("id").eq("output_raw_material_id",id).limit(1),
+        supabase.from("lotes").select("id").eq("raw_material_id",id).limit(1),
+        supabase.from("stock_movements").select("id").eq("raw_material_id",id).limit(1),
+      ]);
+      if(checks.some(result=>result.error)) throw new Error("Não foi possível verificar os vínculos do insumo.");
+      if(checks.some(result=>(result.data?.length??0)>0)) {
+        toast.error("Insumo vinculado a fichas, lotes ou movimentações. Remova os vínculos ativos antes de arquivar; o histórico não será apagado.");
+        return;
+      }
+      const {error} = await supabase.from("raw_materials").update({active:false})
+        .eq("id",id).eq("business_unit_id",businessUnitId);
+      if(error) throw error;
+      toast.success("Card de insumo removido. Cadastro arquivado sem excluir o histórico.");
+      await refreshAll();
+    }catch(error){toast.error(error instanceof Error?error.message:"Não foi possível remover o card.");}
+    finally{setRemovingMaterial(null);}
+  };
   const [view, setView] = useState<SubView>("insumos");
   const [search, setSearch] = useState("");
 
@@ -513,6 +543,12 @@ const StockTab = () => {
                       {m.categoria ? `${m.categoria} · ` : ""}Custo médio: R$ {m.averageCost.toFixed(2)} / {m.unit}
                     </p>
                   </div>
+                  {isCategoryView(view) && <Button type="button" size="icon" variant="ghost"
+                    aria-label={`Remover card de ${m.name}`} title="Remover card do estoque"
+                    disabled={removingMaterial!==null}
+                    onClick={()=>void removeMaterialCard(m.id,m.name)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>}
                   {isCategoryView(view) && <Button data-tooltip="Registrar entrada deste insumo, com quantidade, unidade, custo e dados do lote." size="sm" variant="outline" onClick={() => openPurchase(m.id)}>
                     <Plus className="h-3.5 w-3.5 mr-1" /> Entrada
                   </Button>}
