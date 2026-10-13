@@ -9,10 +9,63 @@ export type Brand = {
   background_color: string | null;
   card_color: string | null;
   text_color: string | null;
+  instagram_url: string | null;
+  facebook_url: string | null;
+  tiktok_url: string | null;
+  youtube_url: string | null;
+  website_url: string | null;
+  about_text: string | null;
+  address: string | null;
+  opening_hours: string | null;
 };
+
+export type InfoKey = "about_text" | "address" | "opening_hours";
+export const INFO_LIMITS: Record<InfoKey, number> = { about_text: 500, address: 200, opening_hours: 300 };
+
+/** Texto simples: tira caracteres de controle, limita linhas em branco e tamanho. */
+export function cleanInfo(key: InfoKey, v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  // eslint-disable-next-line no-control-regex
+  const t = v.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").replace(/\n{3,}/g, "\n\n").trim();
+  return t ? t.slice(0, INFO_LIMITS[key]) : null;
+}
+
+export type SocialKey = "instagram_url" | "facebook_url" | "tiktok_url" | "youtube_url" | "website_url";
+
+/** Mesmas regras dos CHECKs da migration 20261013060000_brand_social_links.sql. */
+export const SOCIAL_PATTERNS: Record<SocialKey, RegExp> = {
+  instagram_url: /^https:\/\/(www\.)?instagram\.com\/[A-Za-z0-9._]+\/?$/,
+  facebook_url: /^https:\/\/(www\.|m\.)?facebook\.com\/[A-Za-z0-9.\-/?=_]+$/,
+  tiktok_url: /^https:\/\/(www\.)?tiktok\.com\/@[A-Za-z0-9._]+\/?$/,
+  youtube_url: /^https:\/\/(www\.)?youtube\.com\/[A-Za-z0-9@._\-/]+$/,
+  website_url: /^https:\/\/[A-Za-z0-9.-]+\.[A-Za-z]{2,}(\/[^\s"'<>]*)?$/,
+};
+
+/**
+ * Aceita o que o dono costuma colar ("@loja", "instagram.com/loja", link completo)
+ * e devolve o link https padronizado, ou null se não for um perfil válido.
+ */
+export function normalizeSocial(key: SocialKey, input: string): string | null {
+  let v = input.trim();
+  if (!v) return null;
+  const handle = v.replace(/^@/, "");
+  if (key !== "website_url" && /^[A-Za-z0-9._]+$/.test(handle)) {
+    const base = { instagram_url: "https://instagram.com/", facebook_url: "https://facebook.com/", tiktok_url: "https://tiktok.com/@", youtube_url: "https://youtube.com/@" }[key];
+    v = base + handle;
+  } else {
+    v = v.replace(/^http:\/\//i, "https://");
+    if (!/^https:\/\//i.test(v)) v = `https://${v}`;
+    v = v.replace(/^https:\/\/[^/]+/, (h) => h.toLowerCase());
+  }
+  v = v.split("#")[0];
+  if (key !== "facebook_url" && key !== "website_url") v = v.split("?")[0];
+  return v.length <= 200 && SOCIAL_PATTERNS[key].test(v) ? v : null;
+}
 
 export const EMPTY_BRAND: Brand = {
   logo_url: null, background_url: null, primary_color: null, background_color: null, card_color: null, text_color: null,
+  instagram_url: null, facebook_url: null, tiktok_url: null, youtube_url: null, website_url: null,
+  about_text: null, address: null, opening_hours: null,
 };
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -26,9 +79,12 @@ export function brandAssetPrefix(supabaseUrl: string, unit: string) {
 export function sanitizeBrand(row: Partial<Record<keyof Brand, unknown>> | null | undefined, assetPrefix: string): Brand {
   // Sem prefixo válido (ambiente sem URL do Supabase) nenhuma imagem é aceita.
   if (!/^https:\/\//.test(assetPrefix)) assetPrefix = "\u0000";
+  const social = (k: SocialKey, v: unknown) => (typeof v === "string" && v.length <= 200 && SOCIAL_PATTERNS[k].test(v) ? v : null);
   const color = (v: unknown) => (typeof v === "string" && HEX.test(v) ? v.toLowerCase() : null);
+  // Depois do prefixo só um nome de arquivo simples (ex.: logo-123.png): sem subpastas,
+  // "..", "%2e%2e" ou aspas — nada que leve a outra unidade ou quebre o CSS.
   const image = (v: unknown) =>
-    typeof v === "string" && v.length <= 500 && v.startsWith(assetPrefix) && !/[\s"'()<>\\]/.test(v) && !v.slice(assetPrefix.length).includes("..")
+    typeof v === "string" && v.length <= 500 && v.startsWith(assetPrefix) && /^[A-Za-z0-9_-]+\.(png|jpe?g|webp)$/.test(v.slice(assetPrefix.length))
       ? v : null;
   return {
     logo_url: image(row?.logo_url),
@@ -37,6 +93,14 @@ export function sanitizeBrand(row: Partial<Record<keyof Brand, unknown>> | null 
     background_color: color(row?.background_color),
     card_color: color(row?.card_color),
     text_color: color(row?.text_color),
+    instagram_url: social("instagram_url", row?.instagram_url),
+    facebook_url: social("facebook_url", row?.facebook_url),
+    tiktok_url: social("tiktok_url", row?.tiktok_url),
+    youtube_url: social("youtube_url", row?.youtube_url),
+    website_url: social("website_url", row?.website_url),
+    about_text: cleanInfo("about_text", row?.about_text),
+    address: cleanInfo("address", row?.address),
+    opening_hours: cleanInfo("opening_hours", row?.opening_hours),
   };
 }
 
@@ -67,12 +131,33 @@ export function hexToHslVar(hex: string) {
   return `${Math.round(h)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
 }
 
+// Cores do tema padrão (src/index.css), usadas quando a marca não define a sua.
+const THEME = { background: "#161412", card: "#211f1c", text: "#eeeae4" };
+const readableOn = (bg: string) => (contrast(bg, "#000000") >= contrast(bg, "#ffffff") ? "#000000" : "#ffffff");
+function mix(a: string, b: string, t: number) {
+  const ch = (h: string, i: number) => parseInt(h.slice(1 + i * 2, 3 + i * 2), 16);
+  return "#" + [0, 1, 2].map((i) => Math.round(ch(a, i) * (1 - t) + ch(b, i) * t).toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Cores efetivas do cardápio. Sem cor de texto definida, o texto vira preto ou
+ * branco conforme cada superfície (fundo e cartões), para nunca ficar ilegível.
+ */
+export function brandColors(b: Brand) {
+  const background = b.background_color ?? THEME.background;
+  const card = b.card_color ?? THEME.card;
+  const custom = Boolean(b.background_color || b.card_color);
+  const pageText = b.text_color ?? (custom ? readableOn(background) : THEME.text);
+  const cardText = b.text_color ?? (custom ? readableOn(card) : THEME.text);
+  return { background, card, pageText, cardText, mutedText: mix(pageText, background, 0.35), mutedCardText: mix(cardText, card, 0.35) };
+}
+
 /** Avisos de legibilidade para o admin (não bloqueiam o salvamento). */
 export function brandWarnings(b: Brand) {
   const out: string[] = [];
-  const text = b.text_color, bg = b.card_color ?? b.background_color;
-  if (text && bg && contrast(text, bg) < 4.5) out.push("O texto pode ficar difícil de ler sobre os cartões/fundo (contraste baixo).");
-  if (b.primary_color && b.background_color && contrast(b.primary_color, b.background_color) < 1.5) out.push("A cor principal quase some no fundo; os botões podem ficar pouco visíveis.");
+  const c = brandColors(b);
+  if (contrast(c.pageText, c.background) < 4.5 || contrast(c.cardText, c.card) < 4.5) out.push("O texto pode ficar difícil de ler sobre o fundo ou os cartões (contraste baixo).");
+  if (b.primary_color && contrast(b.primary_color, c.background) < 1.5) out.push("A cor principal quase some no fundo; os botões podem ficar pouco visíveis.");
   return out;
 }
 
@@ -84,15 +169,17 @@ export function brandCssVars(b: Brand): Record<string, string> {
   const vars: Record<string, string> = {};
   if (b.primary_color) {
     vars["--primary"] = hexToHslVar(b.primary_color);
-    vars["--primary-foreground"] = contrast(b.primary_color, "#000000") >= contrast(b.primary_color, "#ffffff") ? "0 0% 0%" : "0 0% 100%";
+    vars["--primary-foreground"] = hexToHslVar(readableOn(b.primary_color));
     vars["--ring"] = vars["--primary"];
   }
-  if (b.background_color) vars["--background"] = hexToHslVar(b.background_color);
-  if (b.card_color) vars["--card"] = hexToHslVar(b.card_color);
-  if (b.text_color) {
-    vars["--foreground"] = hexToHslVar(b.text_color);
-    vars["--card-foreground"] = vars["--foreground"];
-    vars["--muted-foreground"] = vars["--foreground"];
+  if (b.background_color || b.card_color || b.text_color) {
+    const c = brandColors(b);
+    vars["--background"] = hexToHslVar(c.background);
+    vars["--card"] = hexToHslVar(c.card);
+    vars["--foreground"] = hexToHslVar(c.pageText);
+    vars["--card-foreground"] = hexToHslVar(c.cardText);
+    // Texto secundário: mesma cor do texto, mais próximo do fundo, mantendo a hierarquia.
+    vars["--muted-foreground"] = hexToHslVar(c.mutedText);
   }
   return vars;
 }

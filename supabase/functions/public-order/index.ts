@@ -24,7 +24,7 @@ Deno.serve(async(req:Request)=>{
       if(error)throw error;
       const {data:whatsapp}=await db.from("integrations").select("config").eq("provider","whatsapp").eq("business_unit_id",unit).maybeSingle();
       // Marca é opcional: sem a tabela ou sem registro, o cardápio segue com o visual padrão.
-      const {data:brandRow,error:brandError}=await db.from("brand_settings").select("logo_url,background_url,primary_color,background_color,card_color,text_color").eq("business_unit_id",unit).maybeSingle();
+      const {data:brandRow,error:brandError}=await db.from("brand_settings").select("*").eq("business_unit_id",unit).maybeSingle();
       const brand=brandError ? EMPTY_BRAND : sanitizeBrand(brandRow,brandAssetPrefix(Deno.env.get("SUPABASE_URL") ?? "",unit));
       return json({name:store.name,items,businessPhone:whatsapp?.config?.businessPhone ?? "",pickupOnly:true,brand});
     }

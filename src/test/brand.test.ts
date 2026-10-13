@@ -14,7 +14,7 @@ describe("brand", () => {
       card_color: "#12345",
       text_color: "#ffffff; background:url(x)",
     }, prefix);
-    expect(b).toEqual({ logo_url: `${prefix}logo-1.png`, background_url: null, primary_color: "#ff0000", background_color: null, card_color: null, text_color: null });
+    expect(b).toMatchObject({ logo_url: `${prefix}logo-1.png`, background_url: null, primary_color: "#ff0000", background_color: null, card_color: null, text_color: null });
   });
 
   it("rejects other units, path traversal and CSS-breaking characters", () => {
@@ -23,6 +23,9 @@ describe("brand", () => {
     expect(sanitizeBrand({ logo_url: `${prefix}../x/a.png` }, prefix).logo_url).toBeNull();
     expect(sanitizeBrand({ logo_url: `${prefix}a.png")` }, prefix).logo_url).toBeNull();
     expect(sanitizeBrand(null, prefix).logo_url).toBeNull();
+    expect(sanitizeBrand({ logo_url: prefix }, prefix).logo_url).toBeNull();
+    expect(sanitizeBrand({ logo_url: `${prefix}%2e%2e/%2e%2e/outra/a.png` }, prefix).logo_url).toBeNull();
+    expect(sanitizeBrand({ logo_url: `${prefix}sub/a.png` }, prefix).logo_url).toBeNull();
   });
 
   it("converts colors and picks readable button text", () => {
@@ -34,6 +37,38 @@ describe("brand", () => {
 
   it("warns about low contrast", () => {
     expect(brandWarnings({ ...sanitizeBrand({}, prefix), text_color: "#777777", card_color: "#888888" })).toHaveLength(1);
-    expect(brandWarnings({ ...sanitizeBrand({}, prefix), text_color: "#000000", card_color: "#ffffff" })).toHaveLength(0);
+    expect(brandWarnings({ ...sanitizeBrand({}, prefix), text_color: "#000000", card_color: "#ffffff", background_color: "#f5f5f5" })).toHaveLength(0);
+    // Texto preto em fundo preto avisa mesmo com cartões brancos.
+    expect(brandWarnings({ ...sanitizeBrand({}, prefix), text_color: "#000000", card_color: "#ffffff", background_color: "#000000" })).toHaveLength(1);
+  });
+
+  it("keeps text readable on a light background when no text color is set", () => {
+    const b = { ...sanitizeBrand({}, prefix), background_color: "#ffffff", card_color: "#f4f4f4" };
+    const vars = brandCssVars(b);
+    expect(vars["--foreground"]).toBe("0 0% 0%");
+    expect(vars["--card-foreground"]).toBe("0 0% 0%");
+    expect(vars["--muted-foreground"]).not.toBe(vars["--foreground"]);
+    expect(brandWarnings(b)).toHaveLength(0);
+  });
+});
+
+import { cleanInfo, normalizeSocial } from "../../supabase/functions/_shared/brand";
+describe("brand social and info", () => {
+  it("normalizes handles and links", () => {
+    expect(normalizeSocial("instagram_url", "@confit.burguer")).toBe("https://instagram.com/confit.burguer");
+    expect(normalizeSocial("instagram_url", "instagram.com/confit?igsh=x")).toBe("https://instagram.com/confit");
+    expect(normalizeSocial("tiktok_url", "@loja")).toBe("https://tiktok.com/@loja");
+    expect(normalizeSocial("website_url", "confit.com.br/cardapio")).toBe("https://confit.com.br/cardapio");
+    expect(normalizeSocial("instagram_url", "https://evil.com/x")).toBeNull();
+    expect(normalizeSocial("website_url", "javascript:alert(1)")).toBeNull();
+    expect(normalizeSocial("facebook_url", "")).toBeNull();
+  });
+  it("keeps only valid social links and plain info text", () => {
+    const b = sanitizeBrand({ instagram_url: "https://instagram.com/x", facebook_url: "javascript:x", about_text: "  Oi\u0007\n\n\n\nTchau ", address: "x".repeat(300) }, prefix);
+    expect(b.instagram_url).toBe("https://instagram.com/x");
+    expect(b.facebook_url).toBeNull();
+    expect(b.about_text).toBe("Oi\n\nTchau");
+    expect(b.address).toHaveLength(200);
+    expect(cleanInfo("opening_hours", "   ")).toBeNull();
   });
 });
