@@ -1,17 +1,26 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { ExternalLink, ImagePlus, Palette, RotateCcw, Trash2 } from "lucide-react";
+import { SOCIALS } from "@/lib/brandSocial";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { PAGE_HELP } from "@/lib/page-help";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import { useUnitRoles } from "@/hooks/useUnitRoles";
-import { EMPTY_BRAND, brandAssetPrefix, brandCssVars, brandWarnings, sanitizeBrand, type Brand } from "../../../supabase/functions/_shared/brand";
+import { EMPTY_BRAND, INFO_LIMITS, brandAssetPrefix, brandCssVars, brandWarnings, cleanInfo, normalizeSocial, sanitizeBrand, type Brand, type InfoKey, type SocialKey } from "../../../supabase/functions/_shared/brand";
 
 // brand_settings ainda não está nos tipos gerados do Supabase.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as unknown as { from: (table: string) => any };
-const FIELDS = "logo_url,background_url,primary_color,background_color,card_color,text_color";
+const FIELDS = "*";
+
+
+const INFOS: { key: InfoKey; label: string; placeholder: string; rows: number }[] = [
+  { key: "about_text", label: "Sobre a loja", placeholder: "Hambúrguer artesanal desde 2015...", rows: 3 },
+  { key: "address", label: "Endereço", placeholder: "Rua Exemplo, 123 - Centro, Cidade/UF", rows: 2 },
+  { key: "opening_hours", label: "Horário de funcionamento", placeholder: "Ter a Dom, 18h às 23h", rows: 2 },
+];
+const socialInputs = (b: Brand) => Object.fromEntries(SOCIALS.map(({ key }) => [key, b[key] ?? ""])) as Record<SocialKey, string>;
 const MAX_BYTES = 3 * 1024 * 1024;
 const TYPES = ["image/png", "image/jpeg", "image/webp"];
 
@@ -35,6 +44,8 @@ export default function BrandTab() {
   const [loaded, setLoaded] = useState<{ unit: string; brand: Brand; error: string } | null>(null);
   const [draft, setDraft] = useState<Brand>(EMPTY_BRAND);
   const [busy, setBusy] = useState<string | null>(null);
+  // O dono digita "@loja" ou o link; o valor salvo é sempre o link https padronizado.
+  const [socialRaw, setSocialRaw] = useState<Record<SocialKey, string>>(socialInputs(EMPTY_BRAND));
 
   useEffect(() => {
     if (!unit) return;
@@ -46,6 +57,7 @@ export default function BrandTab() {
         const brand = sanitizeBrand(data, prefix);
         setLoaded({ unit, brand, error: error ? "A configuração de marca ainda não está disponível no banco desta instalação." : "" });
         setDraft(brand);
+        setSocialRaw(socialInputs(brand));
       });
     return () => { cancelled = true; };
   }, [unit, prefix]);
@@ -53,7 +65,9 @@ export default function BrandTab() {
   if (!unit) return <p className="text-sm text-muted-foreground">Selecione uma unidade para configurar a marca.</p>;
   const unitName = units.find((u) => u.id === unit)?.name;
   const ready = loaded?.unit === unit && !loaded.error;
-  const dirty = ready && JSON.stringify(draft) !== JSON.stringify(loaded.brand);
+  const socialInvalid = SOCIALS.filter(({ key }) => socialRaw[key].trim() && !normalizeSocial(key, socialRaw[key])).map(({ label }) => label);
+  const current: Brand = { ...draft, ...Object.fromEntries(SOCIALS.map(({ key }) => [key, normalizeSocial(key, socialRaw[key])])) };
+  const dirty = ready && JSON.stringify(current) !== JSON.stringify(loaded.brand);
   const disabled = !canEdit || !ready || busy !== null;
   const warnings = brandWarnings(draft);
 
@@ -78,11 +92,12 @@ export default function BrandTab() {
   const save = async () => {
     setBusy("save");
     try {
-      const clean = sanitizeBrand(draft, prefix);
+      const clean = sanitizeBrand(current, prefix);
       const { error } = await db.from("brand_settings").upsert({ business_unit_id: unit, ...clean, updated_at: new Date().toISOString() });
       if (error) throw error;
       setLoaded({ unit, brand: clean, error: "" });
       setDraft(clean);
+      setSocialRaw(socialInputs(clean));
       toast.success("Marca salva. O cardápio do cliente já mostra o novo visual.");
     } catch (error) {
       console.error("brand save", error);
@@ -97,6 +112,7 @@ export default function BrandTab() {
       if (error) throw error;
       setLoaded({ unit, brand: EMPTY_BRAND, error: "" });
       setDraft(EMPTY_BRAND);
+      setSocialRaw(socialInputs(EMPTY_BRAND));
       toast.success("Visual padrão restaurado.");
     } catch (error) {
       console.error("brand reset", error);
@@ -155,10 +171,44 @@ export default function BrandTab() {
               </div>
             ))}
           </div>
+          <div className="space-y-3 rounded-xl border border-border bg-card p-4">
+            <p className="font-medium">Redes sociais</p>
+            <p className="text-xs text-muted-foreground">Pode colar o link ou só o @perfil. Aparecem como ícones no topo do cardápio.</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {SOCIALS.map(({ key, label, placeholder, icon: Icon }) => {
+                const invalid = socialRaw[key].trim() && !normalizeSocial(key, socialRaw[key]);
+                return (
+                  <label key={key} className="space-y-1 text-sm">
+                    <span className="flex items-center gap-1.5"><Icon className="h-4 w-4" aria-hidden /> {label}</span>
+                    <input value={socialRaw[key]} disabled={disabled} placeholder={placeholder} maxLength={200}
+                      aria-invalid={Boolean(invalid)}
+                      onChange={(e) => setSocialRaw((r) => ({ ...r, [key]: e.target.value }))}
+                      onBlur={() => { const n = normalizeSocial(key, socialRaw[key]); if (n) setSocialRaw((r) => ({ ...r, [key]: n })); }}
+                      className={`w-full rounded-md border bg-background px-3 py-2 ${invalid ? "border-destructive" : "border-border"}`} />
+                    {invalid && <span className="text-xs text-destructive">Endereço de {label} inválido.</span>}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+          <div className="space-y-3 rounded-xl border border-border bg-card p-4">
+            <p className="font-medium">Informações adicionais</p>
+            <p className="text-xs text-muted-foreground">Texto simples, mostrado no cardápio do cliente.</p>
+            {INFOS.map(({ key, label, placeholder, rows }) => (
+              <label key={key} className="block space-y-1 text-sm">
+                <span>{label}</span>
+                <textarea rows={rows} value={draft[key] ?? ""} disabled={disabled} placeholder={placeholder} maxLength={INFO_LIMITS[key]}
+                  onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
+                  onBlur={() => setDraft((d) => ({ ...d, [key]: cleanInfo(key, d[key]) }))}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2" />
+                <span className="block text-right text-xs text-muted-foreground">{(draft[key] ?? "").length}/{INFO_LIMITS[key]}</span>
+              </label>
+            ))}
+          </div>
           {warnings.map((w) => <p key={w} className="text-sm text-amber-500">{w}</p>)}
           <div className="flex flex-wrap gap-2">
-            <Button disabled={disabled || !dirty} onClick={() => void save()}>{busy === "save" ? "Salvando..." : "Salvar marca"}</Button>
-            <Button variant="outline" disabled={disabled || !dirty} onClick={() => loaded && setDraft(loaded.brand)}>Descartar alterações</Button>
+            <Button disabled={disabled || !dirty || socialInvalid.length > 0} onClick={() => void save()}>{busy === "save" ? "Salvando..." : "Salvar marca"}</Button>
+            <Button variant="outline" disabled={disabled || !dirty} onClick={() => { if (loaded) { setDraft(loaded.brand); setSocialRaw(socialInputs(loaded.brand)); } }}>Descartar alterações</Button>
             <Button variant="ghost" disabled={disabled} onClick={() => void reset()}>Restaurar visual padrão</Button>
             <a href={`/pedir/${unit}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 px-2 text-sm text-primary underline-offset-4 hover:underline">Abrir cardápio do cliente <ExternalLink className="h-3.5 w-3.5" /></a>
           </div>
