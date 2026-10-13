@@ -387,7 +387,10 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       return;
     }
     setSaving(true);
-    if (recipeBuilderRef.current && !recipeBuilderRef.current.validate()) { setSaving(false); return; }
+    // Primeiro o item do cardápio é salvo sem exigir a ficha técnica. A ficha
+    // é montada depois, ao reabrir o item já criado, quando a lista de
+    // ingredientes/necessidades estiver definida.
+    if (item?.id && recipeBuilderRef.current && !recipeBuilderRef.current.validate()) { setSaving(false); return; }
     const finalImage = imageUrl.trim() || null;
     const listedIngredients = ingredientsFromDescription(description, ingredients);
     const savedId = await onSave(
@@ -421,7 +424,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     if (!item) setCreatedId(savedId);
     persistedImage.current = finalImage;
     setSavedStatus(status);
-    const recipeOk = await recipeBuilderRef.current?.commit(savedId);
+    const recipeOk = item?.id ? await recipeBuilderRef.current?.commit(savedId) : true;
     setSaving(false);
     if (recipeOk === false) return;
 
@@ -603,8 +606,15 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
         </div>
       </div>
 
-      {/* A descrição é informada uma vez; a ficha abaixo cuida apenas do estoque. */}
-      <RecipeBuilder ref={recipeBuilderRef} menuItemId={item?.id} disabled={saving || uploading || generating} />
+      {item?.id ? (
+        /* O item já existe: agora a ficha pode transformar a descrição em
+           necessidades de estoque e cadastrar insumos/receitas teóricos. */
+        <RecipeBuilder ref={recipeBuilderRef} menuItemId={item.id} disabled={saving || uploading || generating} />
+      ) : (
+        <p className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
+          Salve o item do cardápio primeiro. Depois reabra-o para montar a ficha técnica, criar os insumos teóricos e definir as receitas de produção.
+        </p>
+      )}
 
       {/* Variants */}
       <div className="space-y-2">
