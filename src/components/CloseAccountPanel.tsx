@@ -228,9 +228,9 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
 
   const handlePrintGeneral = () => {
     const html = buildTableBillReceipt(tableId, clients, orders, serviceCharge);
-    configuredPrint(html, "conta_mesa");
+    const printedHtml = configuredPrint(html, "conta_mesa");
     setReceiptPreviewTitle("Conta da Mesa");
-    setReceiptPreviewHtml(html);
+    setReceiptPreviewHtml(printedHtml);
     toast.success("Conta da mesa enviada para impressão");
   };
 
@@ -239,9 +239,9 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
     const order = orders.find((o) => o.clientId === clientId);
     if (!client || !order) return;
     const html = buildClientBillReceipt(tableId, client, order, serviceCharge);
-    configuredPrint(html, "conta_individual");
+    const printedHtml = configuredPrint(html, "conta_individual");
     setReceiptPreviewTitle(`Conta — ${client.name.split(" ")[0]}`);
-    setReceiptPreviewHtml(html);
+    setReceiptPreviewHtml(printedHtml);
     toast.success(`Conta de ${client.name.split(" ")[0]} enviada para impressão`);
   };
 
