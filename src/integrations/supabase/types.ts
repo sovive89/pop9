@@ -14,6 +14,12 @@ export type Database = {
   }
   public: {
     Tables: {
+      operation_periods: {
+        Row: { id: string; business_unit_id: string; opened_at: string; opened_by: string | null; closed_at: string | null; closed_by: string | null }
+        Insert: { id?: string; business_unit_id: string; opened_at?: string; opened_by?: string | null; closed_at?: string | null; closed_by?: string | null }
+        Update: { closed_at?: string | null; closed_by?: string | null }
+        Relationships: [{ foreignKeyName: "operation_periods_business_unit_id_fkey"; columns: ["business_unit_id"]; isOneToOne: false; referencedRelation: "business_units"; referencedColumns: ["id"] }]
+      }
       // Verified in public schema; types only, never expose credential rows to UI.
       ai_provider_credentials: {
         Row: { id: string; business_unit_id: string; provider: string; encrypted_key: string; iv: string; status: string; validated_at: string | null; created_at: string; updated_at: string }
@@ -1886,6 +1892,7 @@ export type Database = {
       }
     }
     Functions: {
+      set_unit_operation: { Args: { p_unit: string; p_open: boolean }; Returns: Json }
       // Requires deployment of the versioned purchase-lot migrations.
       manage_purchase_lot: {
         Args: { p_lote_id: string; p_action: string; p_data?: Json }

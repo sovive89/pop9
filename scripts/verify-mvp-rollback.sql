@@ -17,6 +17,7 @@ begin
  perform set_config('request.jwt.claim.role','authenticated',true);
  perform set_config('request.jwt.claims',jsonb_build_object('sub',v_actor,'role','authenticated')::text,true);
  execute 'set local role authenticated';
+ perform public.set_unit_operation(v_unit,true);
  v_payload := jsonb_build_object('categories',jsonb_build_array(jsonb_build_object('key',v_category,'label','QA temporário','destination','kitchen')),
  'items',jsonb_build_array(jsonb_build_object('name','QA rollback '||v_category,'description','Fixture temporária','category',v_category,'price',10,
  'recipe',jsonb_build_array(
@@ -55,6 +56,10 @@ begin
  v_result:=public.approve_session_closure(v_session,v_actor,null);
  if not (v_result->>'closed')::boolean or (v_result->>'unpaidTotal')::numeric<>0 then raise exception 'Encerramento pago não confirmado: %',v_result; end if;
  if (select status from public.sessions where id=v_session)<>'closed' then raise exception 'Mesa não foi liberada'; end if;
+ execute 'set local role authenticated';
+ perform public.set_unit_operation(v_unit,false);
+ if exists(select 1 from public.operation_periods where business_unit_id=v_unit and closed_at is null) then raise exception 'Operação não foi fechada após finalizar a comanda';end if;
+ perform public.set_unit_operation(v_unit,true);
 end;
 $verify$;
 rollback;

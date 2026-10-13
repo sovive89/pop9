@@ -1,4 +1,5 @@
 import { PAGE_HELP } from "@/lib/page-help";
+import OperationControl from "@/components/OperationControl";
 import { useState, useEffect, useMemo } from "react";
 import { useUnitRoles } from "@/hooks/useUnitRoles";
 import { useUnitKds } from "@/hooks/useUnitKds";
@@ -229,6 +230,7 @@ const Index = () => {
 
       {/* Content */}
       <main className="mx-auto max-w-7xl p-4 pb-6">
+        <div className="mb-4"><OperationControl /></div>
         {tab === "mesas" ? <TableMap /> : <ActiveOrdersPanel />}
       </main>
     </div>
