@@ -51,3 +51,11 @@ O programa só faz conexões de saída (para o Supabase e para as impressoras). 
 - Só **impressoras de rede** (TCP/9100). USB pelo spooler do Windows fica para uma próxima etapa.
 - Imprime a **comanda da cozinha/bar**. Conta da mesa e outros gatilhos continuam saindo pelo navegador.
 - Se o print server e a Estação no navegador estiverem abertos juntos, quem pegar primeiro imprime (não duplica).
+
+## Aplicativo Windows (.exe)
+
+Em GitHub Actions > Build Windows Print Server EXE > Run workflow, baixe o artifact POP9-Print-Server-Windows quando a compilacao concluir. Extraia e execute POP9-Print-Server-1.0.0-Windows.exe. Formato portatil, sem MSI. A disponibilidade depende de build Windows bem-sucedido.
+
+Na janela preencha URL HTTPS e chave publica do Supabase, email e senha de uma conta de impressao exclusiva e ID da unidade. Salve, inicie o agente e teste a impressora. A opcao de abertura automatica executa o app quando o usuario entra no Windows; manter a janela aberta e necessario. A senha fica criptografada no perfil do usuario pelo mecanismo do Windows. Nunca utilize service_role nem conta de administrador.
+
+Esta versao atende impressoras de rede TCP/9100. USB, funcionamento sem login e download integrado dentro do ERP ainda nao estao disponiveis.
