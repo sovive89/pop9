@@ -40,6 +40,7 @@ import QrCodesTab from "@/components/admin/QrCodesTab";
 import BusinessUnitsTab from "@/components/admin/BusinessUnitsTab";
 import DocumentsTab from "@/components/admin/DocumentsTab";
 import SettingsTab from "@/components/admin/SettingsTab";
+import CombosTab from "@/components/admin/CombosTab";
 import BrandTab from "@/components/admin/BrandTab";
 import {
   SidebarProvider,
@@ -58,10 +59,11 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-type SectionKey = "menu" | "users" | "password" | "connections" | "hub" | "crm" | "stock" | "printers" | "qrcodes" | "units" | "documents" | "settings" | "brand";
+type SectionKey = "menu" | "combos" | "users" | "password" | "connections" | "hub" | "crm" | "stock" | "printers" | "qrcodes" | "units" | "documents" | "settings" | "brand";
 
 const SECTIONS: { key: SectionKey; label: string; icon: LucideIcon }[] = [
   { key: "menu", label: "Cardápio", icon: UtensilsCrossed },
+  { key: "combos", label: "Combos", icon: Package },
   { key: "users", label: "Usuários", icon: Users },
   { key: "password", label: "Senha", icon: KeyRound },
   { key: "connections", label: "Conexões", icon: Plug },
@@ -94,7 +96,7 @@ function SectionMenuButton({
   const { isMobile, setOpenMobile } = useSidebar();
   const Icon = section.icon;
   const descriptions: Record<SectionKey, string> = {
-    menu: "Gerencie produtos e categorias do cardápio.", users: "Gerencie os acessos dos funcionários.", password: "Altere as credenciais de acesso.", connections: "Configure integrações externas.", hub: "Integração futura com o Pop9 Hub.", crm: "Consulte e organize os clientes.", stock: "Controle insumos e movimentações.", printers: "Cadastre impressoras e configure os gatilhos disponíveis.", documents: "Exporte o cardápio, baixe imagens e consulte os documentos do estabelecimento.", qrcodes: "Gerencie os códigos QR.", units: "Gerencie as unidades do estabelecimento.", settings: "Ative ou desative módulos da unidade, como o KDS da cozinha e a estação de impressão.", brand: "Logo, fundo e cores do cardápio que o cliente vê."
+    menu: "Gerencie produtos e categorias do cardápio.", combos: "Monte combos com itens do cardápio e preço especial.", users: "Gerencie os acessos dos funcionários.", password: "Altere as credenciais de acesso.", connections: "Configure integrações externas.", hub: "Integração futura com o Pop9 Hub.", crm: "Consulte e organize os clientes.", stock: "Controle insumos e movimentações.", printers: "Cadastre impressoras e configure os gatilhos disponíveis.", documents: "Exporte o cardápio, baixe imagens e consulte os documentos do estabelecimento.", qrcodes: "Gerencie os códigos QR.", units: "Gerencie as unidades do estabelecimento.", settings: "Ative ou desative módulos da unidade, como o KDS da cozinha e a estação de impressão.", brand: "Logo, fundo e cores do cardápio que o cliente vê."
   };
 
   return (
@@ -166,7 +168,7 @@ const Admin = () => {
             <SidebarGroupLabel>Operação</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {SECTIONS.filter(section => ["menu", "stock", "crm", "documents"].includes(section.key)).map((section) => (
+                {SECTIONS.filter(section => ["menu", "combos", "stock", "crm", "documents"].includes(section.key)).map((section) => (
                   <SectionMenuButton
                     key={section.key}
                     section={section}
@@ -265,6 +267,7 @@ const Admin = () => {
             {activeSection === "units" && <BusinessUnitsTab />}
             {activeSection === "connections" && <ConnectionsTab />}
             {activeSection === "hub" && <Pop9HubTab />}
+            {activeSection === "combos" && <CombosTab />}
             {activeSection === "settings" && <SettingsTab />}
             {activeSection === "brand" && <BrandTab />}
           </div>
