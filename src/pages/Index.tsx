@@ -146,7 +146,7 @@ const Index = () => {
                     <span className="hidden sm:inline">Atendimento</span>
                   </Button>
                 )}
-                {(roles.kitchen || roles.admin) && kds.enabled && (
+                {(roles.kitchen || roles.admin) && kds.loaded && kds.enabled && (
                   <Button data-tooltip="Abra a cozinha e acompanhe o preparo dos pedidos."
                     variant="outline"
                     size="sm"
