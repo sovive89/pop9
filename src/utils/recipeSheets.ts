@@ -63,6 +63,26 @@ export async function exportFiles(businessUnitId: string): Promise<Record<string
   return { "fichas-tecnicas.csv": buildCsv(sheet), "preparos-da-casa.csv": buildCsv(prep), "LEIA-ME.txt": README };
 }
 
+/**
+ * Ficha gerada pela IA → os mesmos CSVs de "Baixar modelos"/"Exportar fichas" (podem ser
+ * editados e reenviados em Cardápio → Importar com IA).
+ */
+export function draftToSheetFiles(draft: { categories: { key: string; label: string }[]; items: { name: string; description: string; price: number; category: string; recipe: { material: string; unit: string; quantity: number; preparation: { outputQuantity: number; inputs: { material: string; unit: string; quantity: number }[] } | null }[] }[]; notes: string[] }): Record<string, string> {
+  const label = new Map(draft.categories.map((c) => [c.key, c.label]));
+  const sheet: unknown[][] = [SHEET_HEADER];
+  const prep: unknown[][] = [PREP_HEADER];
+  for (const item of draft.items) {
+    const base = [label.get(item.category) ?? item.category, item.name, item.description, Number(item.price || 0).toFixed(2)];
+    if (!item.recipe.length) sheet.push([...base, "", "", ""]);
+    for (const line of item.recipe) {
+      sheet.push([...base, line.material, line.quantity, line.unit]);
+      for (const input of line.preparation?.inputs ?? []) prep.push([line.material, line.preparation!.outputQuantity, line.unit, input.material, input.quantity, input.unit]);
+    }
+  }
+  const notes = draft.notes.length ? `\nObservações da IA:\n- ${draft.notes.join("\n- ")}\n` : "";
+  return { "fichas-tecnicas.csv": buildCsv(sheet), "preparos-da-casa.csv": buildCsv(prep), "LEIA-ME.txt": README + notes };
+}
+
 export async function zipFiles(files: Record<string, string>): Promise<Uint8Array> {
   const { zipSync, strToU8 } = await import("fflate");
   return zipSync(Object.fromEntries(Object.entries(files).map(([name, text]) => [name, strToU8(text)])), { level: 6 });
