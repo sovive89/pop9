@@ -1,7 +1,20 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mock = vi.hoisted(() => ({ create: vi.fn(), update: vi.fn(), scope: "admin:unit" }));
-vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: {
+    from: vi.fn((table: string) => {
+      if (table !== "print_sectors") throw new Error(`Unexpected table in test: ${table}`);
+      return {
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            order: vi.fn().mockResolvedValue({ data: [], error: null }),
+          })),
+        })),
+      };
+    }),
+  },
+}));
 vi.mock("@/hooks/useCurrentBusinessUnit", () => ({ useCurrentBusinessUnit: () => ({ businessUnitId: "unit", units: [{ id: "unit", name: "Loja teste" }] }) }));
 vi.mock("@/hooks/usePrinterConfigs", async () => {
   const actual = await vi.importActual<typeof import("@/hooks/usePrinterConfigs")>("@/hooks/usePrinterConfigs");
