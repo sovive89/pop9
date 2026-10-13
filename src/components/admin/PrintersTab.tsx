@@ -1,3 +1,5 @@
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { PAGE_HELP } from "@/lib/page-help";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Printer, Plus, Trash2, Pencil, Tag as TagIcon } from "lucide-react";
@@ -74,6 +76,32 @@ const PrintersTab = () => {
   const [copies, setCopies] = useState(1);
   const [autoCut, setAutoCut] = useState(true);
   const [destinos, setDestinos] = useState<PrinterDestino[]>(["kitchen"]);
+  const [sectors, setSectors] = useState<{ slug: string; name: string; active: boolean }[]>([]);
+  const [newSector, setNewSector] = useState("");
+  const [sectorBusy, setSectorBusy] = useState(false);
+  const loadSectors = useCallback(async () => {
+    if (!businessUnitId) { setSectors([]); return; }
+    const { data, error } = await (supabase as any).from("print_sectors")
+      .select("slug,name,active").eq("business_unit_id", businessUnitId).order("name");
+    if (error) { toast.error("Erro ao carregar setores: " + error.message); return; }
+    setSectors(data ?? []);
+  }, [businessUnitId]);
+  useEffect(() => { void loadSectors(); }, [loadSectors]);
+  const addSector = async () => {
+    const name = newSector.trim();
+    if (!name || !businessUnitId || sectorBusy) return;
+    const slug = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 48);
+    if (!slug || sectors.some(s => s.slug === slug)) { toast.error("Setor duplicado ou inválido"); return; }
+    setSectorBusy(true);
+    try {
+      const { error } = await (supabase as any).from("print_sectors")
+        .insert({ business_unit_id: businessUnitId, slug, name });
+      if (error) { toast.error(error.message); return; }
+      setNewSector(""); await loadSectors();
+      setDestinos(prev => [...new Set([...prev, slug])]);
+    } finally { setSectorBusy(false); }
+  };
 
   const resetForm = useCallback(() => {
     setName("");
@@ -210,7 +238,7 @@ const PrintersTab = () => {
                 <p className="text-xs text-muted-foreground mt-1">
                   {SECTOR_LABELS[p.setor]} · {p.gatilhos.map((g) => GATILHO_LABELS[g]).join(", ")} · {CONNECTION_TYPE_LABELS[p.connectionType]} · {p.paperWidth} mm · {p.copies} cópia(s)
                   {p.deviceIdentifier && ` · ${p.deviceIdentifier}`}
-                  {p.host && ` · Rede ${p.host}:${p.port} (${p.destinos.map((d) => DESTINO_LABELS[d]).join(" + ")})`}
+                  {p.host && ` · Rede ${p.host}:${p.port} (${p.destinos.map((d) => sectors.find(s => s.slug === d)?.name ?? DESTINO_LABELS[d] ?? d).join(" + ")})`}
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -337,13 +365,17 @@ const PrintersTab = () => {
               </label>
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Setores que esta impressora recebe</Label>
-                <div className="flex gap-4">
-                  {(Object.keys(DESTINO_LABELS) as PrinterDestino[]).map((d) => (
+                <div className="flex flex-wrap gap-4">
+                  {(sectors.length ? sectors.filter(s => s.active || destinos.includes(s.slug)).map(s => s.slug) : Object.keys(DESTINO_LABELS)).map((d) => (
                     <label key={d} className="flex items-center gap-2 text-sm">
-                      <Checkbox checked={destinos.includes(d)} onCheckedChange={(c) => toggleDestino(d, c === true)} /> {DESTINO_LABELS[d]}
+                      <Checkbox checked={destinos.includes(d)} onCheckedChange={(c) => toggleDestino(d, c === true)} /> {sectors.find(s => s.slug === d)?.name ?? DESTINO_LABELS[d] ?? d}
                     </label>
                   ))}
                 </div>
+              </div>
+              <div className="flex gap-2">
+                <Input aria-label="Novo setor" placeholder="Novo setor (ex.: Confeitaria)" value={newSector} onChange={e => setNewSector(e.target.value)} />
+                <Button type="button" variant="outline" disabled={!newSector.trim() || sectorBusy} onClick={() => void addSector()}>Adicionar setor</Button>
               </div>
               {networkError && <p className="text-xs text-destructive">{networkError}</p>}
             </div>
