@@ -63,7 +63,8 @@ export const buildKitchenReceipts = (
   items: OrderItem[],
   orderId?: string
 ): string[] => {
-  const kitchenItems = items.filter((item) => isKitchenItem(item.menuItemId));
+  // Setor gravado pelo banco (pela categoria do item); o cardápio fixo antigo só vale sem ele.
+  const kitchenItems = items.filter((item) => (item.destination ? item.destination === "kitchen" : isKitchenItem(item.menuItemId)));
   if (kitchenItems.length === 0) return [];
 
   const receipts: string[] = [];

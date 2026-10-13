@@ -15,6 +15,7 @@ import MenuPrefixField from '@/components/admin/MenuPrefixField';
 import { useMenuSuggestionCatalog } from '@/hooks/useMenuSuggestionCatalog';
 import { useAuth } from '@/hooks/useAuth';
 import { useUnitRoles } from '@/hooks/useUnitRoles';
+import { usePrintSectors, sectorName } from '@/hooks/usePrintSectors';
 
 // ── Image Upload Helper ──
 // O nome do arquivo é gerado aqui (não depende do ID do item, que só existe
@@ -74,6 +75,9 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
   const [key, setKey] = useState(category?.key ?? "");
   const [label, setLabel] = useState(category?.label ?? "");
   const [destination, setDestination] = useState(category?.destination ?? "kitchen");
+  const { activeSectors } = usePrintSectors();
+  // Mantém o setor atual na lista mesmo se desativado, para não trocar sem querer ao editar.
+  const sectorOptions = activeSectors.some((s) => s.slug === destination) ? activeSectors : [...activeSectors, { slug: destination, name: destination, active: false }];
   const [sortOrder, setSortOrder] = useState(category?.sort_order?.toString() ?? "0");
   const [saving, setSaving] = useState(false);
   const [iconName, setIconName] = useState(category?.icon_name ?? suggestCategoryIcon(category?.label ?? ""));
@@ -114,10 +118,9 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">Destino</label>
-          <select data-tooltip="Defina se os pedidos desta categoria serão encaminhados à cozinha ou ao bar." aria-label="Defina se os pedidos desta categoria serão encaminhados à cozinha ou ao bar." value={destination} onChange={(e) => setDestination(e.target.value)} className="w-full h-8 rounded-md border border-border bg-muted px-3 text-sm text-foreground">
-            <option value="kitchen">Cozinha</option>
-            <option value="bar">Bar</option>
+          <label className="text-xs font-medium text-muted-foreground">Setor</label>
+          <select data-tooltip="Setor que recebe os pedidos desta categoria (crie novos em Impressoras)." aria-label="Setor que recebe os pedidos desta categoria." value={destination} onChange={(e) => setDestination(e.target.value)} className="w-full h-8 rounded-md border border-border bg-muted px-3 text-sm text-foreground">
+            {sectorOptions.map((s) => <option key={s.slug} value={s.slug}>{s.name}</option>)}
           </select>
         </div>
         <div className="space-y-1">
@@ -605,6 +608,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
 
 // ── Menu Tab ──
 const UnitMenuTab = () => {
+  const { sectors } = usePrintSectors();
   const { menuItems, categories, loadingMenu, loadingCategories, saveMenuItem, deleteMenuItem, saveCategory, deleteCategory, refreshMenu, refreshCategories } = useAdminData();
   const [searchParams, setSearchParams] = useSearchParams();
   const importOpen = searchParams.get("import") === "1";
@@ -676,7 +680,7 @@ const UnitMenuTab = () => {
                 <span className="flex-1 min-w-0 text-sm font-medium text-foreground truncate">{cat.label}</span>
                 <span className="hidden sm:inline text-xs text-muted-foreground truncate">{cat.key}</span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
-                  {cat.destination === "kitchen" ? "Cozinha" : "Bar"}
+                  {sectorName(sectors, cat.destination)}
                 </span>
                 <button data-tooltip="Edite o nome, o ícone e a cor desta categoria." aria-label="Edite o nome, o ícone e a cor desta categoria." onClick={() => setEditingCategory(cat)} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground">
                   <Pencil className="h-3.5 w-3.5" />
