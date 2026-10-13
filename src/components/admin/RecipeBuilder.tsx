@@ -131,7 +131,7 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
           .filter(ingredient => !rawMaterials.some(material => linkedIds.has(material.id) && material.name.trim().toLowerCase() === ingredient.name.trim().toLowerCase()))
           .map(ingredient => {
             const material = rawMaterials.find(item => item.name.trim().toLowerCase() === ingredient.name.trim().toLowerCase());
-            return { ...emptyRow(), key: `ingredient-${ingredient.id}`, rawMaterialId: material?.id ?? "", newName: material ? "" : ingredient.name, newUnit: material?.unit ?? "un" };
+            return { ...emptyRow(), key: crypto.randomUUID(), rawMaterialId: material?.id ?? "", newName: material ? "" : ingredient.name, newUnit: material?.unit ?? "un" };
           });
         setRows([...recipeRows, ...ingredientRows]);
         setLoaded(true);
@@ -271,7 +271,7 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
           toast.error(`A receita usa ${row.newUnit}, mas o cadastro de ${row.newName || rawMaterials.find(m => m.id === id)?.name || "insumo"} está em ${stockUnit}. Conclua a definição da unidade-base antes de salvar: não é seguro converter essas medidas automaticamente.`);
           return false;
         }
-        payload.push({ id: row.key, menu_item_id: targetMenuItemId, raw_material_id: id, quantity: normalized, display_quantity: Number(row.quantity), display_unit: row.newUnit, transformacao: row.transformation });
+        payload.push({ id: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(row.key) ? row.key : crypto.randomUUID(), menu_item_id: targetMenuItemId, raw_material_id: id, quantity: normalized, display_quantity: Number(row.quantity), display_unit: row.newUnit, transformacao: row.transformation });
       }
       // Save before removing obsolete rows so a failed write does not erase the
       // existing recipe. Stable row IDs also make a retry update the same rows.
@@ -290,6 +290,21 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
       if (removed.length) {
         const { error } = await supabase.from("recipe_items").delete().eq("menu_item_id", targetMenuItemId).in("id", removed);
         if (error) { toast.error("Erro ao remover insumos da ficha técnica: " + error.message); return false; }
+      }
+      // A confirmação depende de uma leitura real do banco, não apenas do retorno do upsert.
+      const verified = await supabase.from("recipe_items")
+        .select("id,raw_material_id,quantity").eq("menu_item_id", targetMenuItemId);
+      if (verified.error) {
+        toast.error("Ficha enviada, mas não foi possível confirmar a gravação: " + verified.error.message);
+        return false;
+      }
+      const actual = verified.data ?? [];
+      const expected = new Map(payload.map(line => [line.raw_material_id, (payload.filter(p => p.raw_material_id === line.raw_material_id)).reduce((sum,p) => sum + p.quantity, 0)]));
+      const recorded = new Map<string,number>();
+      for (const line of actual) recorded.set(line.raw_material_id, (recorded.get(line.raw_material_id) ?? 0) + Number(line.quantity));
+      if (actual.length !== payload.length || [...expected].some(([id,quantity]) => Math.abs((recorded.get(id) ?? NaN) - quantity) > 0.000001)) {
+        toast.error("A ficha técnica não foi confirmada no banco. Mantenha o editor aberto e tente salvar novamente.");
+        return false;
       }
       const materialName = (id: string, fallback: string) => rawMaterials.find(material => material.id === id)?.name ?? fallback;
       const materialUnit = (id: string, fallback: string) => rawMaterials.find(material => material.id === id)?.unit ?? fallback;
