@@ -23,11 +23,9 @@ const TRANSFORMATIONS: { value: Transformation; label: string }[] = [
   { value: "producao", label: "Produção" },
   { value: "porcionamento", label: "Porcionamento" },
 ];
-type OutputType = "semiacabado" | "item_acabado";
 interface RecipeRow extends MaterialInput {
   isProduced: boolean;
   transformation: Transformation;
-  outputType: OutputType;
   outputQuantity: string;
   recipeCreated: boolean;
   subInputs: MaterialInput[];
@@ -41,7 +39,7 @@ interface Props { menuItemId?: string; menuItemName?: string; disabled?: boolean
 const emptyInput = (): MaterialInput => ({
   key: crypto.randomUUID(), rawMaterialId: "", newName: "", newUnit: "un", quantity: "",
 });
-const emptyRow = (): RecipeRow => ({ ...emptyInput(), isProduced: false, transformation: "desconto_direto", outputType: "semiacabado", outputQuantity: "1", recipeCreated: false, subInputs: [] });
+const emptyRow = (): RecipeRow => ({ ...emptyInput(), isProduced: false, transformation: "desconto_direto", outputQuantity: "1", recipeCreated: false, subInputs: [] });
 const positive = (value: string) => Number.isFinite(Number(value)) && Number(value) > 0;
 const labelClass = "block min-w-0 space-y-1 text-xs text-muted-foreground";
 
@@ -126,7 +124,7 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
         if (cancelled) return;
         const error = recipeResult.error ?? ingredientResult.error;
         if (error) { setLoadError("Não foi possível carregar a ficha técnica: " + error.message); return; }
-        const recipeRows = (recipeResult.data ?? []).map(item => { const transformation = ((item as { transformacao?: string }).transformacao ?? "desconto_direto") as Transformation; const outputType = rawMaterials.find(material => material.id === item.raw_material_id)?.itemType === "produto_acabado" ? "item_acabado" : "semiacabado"; return { ...emptyRow(), key: item.id, rawMaterialId: item.raw_material_id, quantity: String(item.quantity), transformation, outputType: outputType as OutputType, isProduced: transformation !== "desconto_direto" }; });
+        const recipeRows = (recipeResult.data ?? []).map(item => { const transformation = ((item as { transformacao?: string }).transformacao ?? "desconto_direto") as Transformation; return { ...emptyRow(), key: item.id, rawMaterialId: item.raw_material_id, quantity: String(item.quantity), transformation, isProduced: transformation !== "desconto_direto" }; });
         const linkedIds = new Set(recipeRows.map(row => row.rawMaterialId));
         const ingredientRows = (ingredientResult.data ?? [])
           .filter(ingredient => !rawMaterials.some(material => linkedIds.has(material.id) && material.name.trim().toLowerCase() === ingredient.name.trim().toLowerCase()))
@@ -188,7 +186,7 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
       const payload: { id: string; menu_item_id: string; raw_material_id: string; quantity: number; transformacao: Transformation }[] = [];
       const producedDocuments: { id: string; row: RecipeRow; inputs: { id: string; quantity: number }[] }[] = [];
       for (const row of rows) {
-        const outputItemType: ItemType = row.outputType === "item_acabado" ? "produto_acabado" : "semiacabado";
+        const outputItemType: ItemType = "semiacabado";
         const id = await resolve(row, row.isProduced ? outputItemType : "insumo", id => updateRow(row.key, { rawMaterialId: id }));
         if (!id) return false;
         if (row.isProduced && row.rawMaterialId) {
@@ -240,7 +238,7 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
           quantity: Number(row.quantity),
           unit: materialUnit(row.rawMaterialId, row.newUnit),
           process: row.transformation,
-          output_type: row.isProduced ? row.outputType : undefined,
+          output_type: row.isProduced ? "semiacabado" : undefined,
           theoretical: true,
           recipe: produced ? {
             yield: { quantity: Number(produced.row.outputQuantity), unit: materialUnit(produced.id, produced.row.newUnit) },
@@ -302,15 +300,6 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
             {TRANSFORMATIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
-        {row.isProduced && <label className={labelClass} htmlFor={`${row.key}-output-type`}>
-          <span>Tipo de resultado</span>
-          <select id={`${row.key}-output-type`} aria-label="Tipo de resultado" disabled={disabled || row.recipeCreated}
-            value={row.outputType} onChange={event => updateRow(row.key, { outputType: event.target.value as OutputType })}
-            className="h-9 w-full rounded-md border border-border bg-muted px-2 text-xs text-foreground">
-            <option value="semiacabado">Semiacabado</option>
-            <option value="item_acabado">Item acabado</option>
-          </select>
-        </label>}
         {row.isProduced && <fieldset className="min-w-0 space-y-3 border-l-2 border-primary/30 pl-3" disabled={disabled || row.recipeCreated}>
           <legend className="mb-2 text-xs font-medium text-foreground">Receita de {row.newName.trim() || "novo insumo"}</legend>
           <label className={labelClass} htmlFor={`${row.key}-output`}>
