@@ -65,7 +65,7 @@ export const TUTORIALS:Tutorial[] = [
  'No estado atual, a conexão aparece indisponível e o botão Conectar fica desabilitado; não há integração funcional para iniciar nesta tela.',
  'Retorne às Conexões para consultar os provedores que já têm fluxo próprio.']},
  {id:'printers',title:'Cadastrar e imprimir',page:'/admin?sec=printers',steps:[
- 'Em Impressoras, confira a lista existente ou abra Nova impressora e informe um nome, o tipo e o gatilho; o identificador do dispositivo é opcional.',
+ 'Em Impressoras, confira a lista existente ou abra Nova impressora e informe um nome, o tipo e um ou mais gatilhos (quando ela imprime); o identificador do dispositivo é opcional.',
  'Escolha a conexão que descreve o uso pretendido e revise o cadastro antes de clicar em Salvar: esse clique grava imediatamente, sem etapa adicional de confirmação.',
  'Ativar, Desativar e remover também são ações imediatas. Confirme a intenção e a impressora selecionada antes de usar esses controles.',
  'A impressão real abre o diálogo do navegador. QZ Tray, WebUSB, seleção automática de equipamento e impressão silenciosa ainda não estão implementados; a conexão cadastrada não seleciona uma impressora física.',

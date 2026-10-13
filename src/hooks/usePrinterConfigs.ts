@@ -18,10 +18,19 @@ export interface PrinterConfig {
   businessUnitId: string | null;
   name: string;
   tipo: PrinterTipo;
+  /** Gatilho principal (o primeiro da lista). Mantido para o código antigo. */
   gatilho: PrinterGatilho;
+  /** Todos os momentos em que esta impressora imprime. */
+  gatilhos: PrinterGatilho[];
   connectionType: PrinterConnectionType;
   deviceIdentifier: string | null;
   active: boolean;
+}
+
+/** Sem repetidos e só valores conhecidos, na ordem em que aparecem em GATILHO_LABELS. */
+export function normalizeGatilhos(values: readonly string[]): PrinterGatilho[] {
+  const set = new Set(values);
+  return (Object.keys(GATILHO_LABELS) as PrinterGatilho[]).filter((g) => set.has(g));
 }
 
 export const GATILHO_LABELS: Record<PrinterGatilho, string> = {
@@ -60,6 +69,8 @@ export const usePrinterConfigs = () => {
         name: p.name,
         tipo: p.tipo as PrinterTipo,
         gatilho: p.gatilho as PrinterGatilho,
+        // Antes da migration de vários gatilhos, a lista não existe: usa o gatilho único.
+        gatilhos: normalizeGatilhos(p.gatilhos?.length ? p.gatilhos : [p.gatilho]),
         connectionType: p.connection_type as PrinterConnectionType,
         deviceIdentifier: p.device_identifier,
         active: p.active,
@@ -75,14 +86,20 @@ export const usePrinterConfigs = () => {
   const createPrinter = async (input: {
     name: string;
     tipo: PrinterTipo;
-    gatilho: PrinterGatilho;
+    gatilhos: PrinterGatilho[];
     connectionType: PrinterConnectionType;
     deviceIdentifier?: string | null;
   }) => {
+    const gatilhos = normalizeGatilhos(input.gatilhos);
+    if (!gatilhos.length) {
+      toast.error("Escolha pelo menos um gatilho");
+      return false;
+    }
     const { error } = await supabase.from("printer_configs").insert({
       name: input.name,
       tipo: input.tipo,
-      gatilho: input.gatilho,
+      gatilho: gatilhos[0],
+      gatilhos,
       connection_type: input.connectionType,
       device_identifier: input.deviceIdentifier || null,
       business_unit_id: businessUnitId,
@@ -101,18 +118,23 @@ export const usePrinterConfigs = () => {
     input: Partial<{
       name: string;
       tipo: PrinterTipo;
-      gatilho: PrinterGatilho;
+      gatilhos: PrinterGatilho[];
       connectionType: PrinterConnectionType;
       deviceIdentifier: string | null;
       active: boolean;
     }>
   ) => {
+    const gatilhos = input.gatilhos !== undefined ? normalizeGatilhos(input.gatilhos) : undefined;
+    if (gatilhos && !gatilhos.length) {
+      toast.error("Escolha pelo menos um gatilho");
+      return false;
+    }
     const { error } = await supabase
       .from("printer_configs")
       .update({
         ...(input.name !== undefined && { name: input.name }),
         ...(input.tipo !== undefined && { tipo: input.tipo }),
-        ...(input.gatilho !== undefined && { gatilho: input.gatilho }),
+        ...(gatilhos && { gatilho: gatilhos[0], gatilhos }),
         ...(input.connectionType !== undefined && { connection_type: input.connectionType }),
         ...(input.deviceIdentifier !== undefined && { device_identifier: input.deviceIdentifier }),
         ...(input.active !== undefined && { active: input.active }),
@@ -137,10 +159,15 @@ export const usePrinterConfigs = () => {
     return true;
   };
 
+  /** Impressoras ativas que imprimem neste gatilho (pode haver mais de uma). */
+  const getPrintersForGatilho = useCallback(
+    (gatilho: PrinterGatilho) => printers.filter((p) => p.active && p.gatilhos.includes(gatilho)),
+    [printers]
+  );
   /** Impressora ativa configurada pra um gatilho específico (a 1ª, se houver mais de uma). */
   const getPrinterForGatilho = useCallback(
-    (gatilho: PrinterGatilho) => printers.find((p) => p.gatilho === gatilho && p.active) ?? null,
-    [printers]
+    (gatilho: PrinterGatilho) => getPrintersForGatilho(gatilho)[0] ?? null,
+    [getPrintersForGatilho]
   );
 
   return {
@@ -150,6 +177,7 @@ export const usePrinterConfigs = () => {
     updatePrinter,
     deletePrinter,
     getPrinterForGatilho,
+    getPrintersForGatilho,
     refresh: loadPrinters,
   };
 };

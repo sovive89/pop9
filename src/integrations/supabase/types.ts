@@ -832,6 +832,7 @@ export type Database = {
           created_at: string
           device_identifier: string | null
           gatilho: string
+          gatilhos: string[]
           id: string
           name: string
           tipo: string
@@ -843,6 +844,7 @@ export type Database = {
           created_at?: string
           device_identifier?: string | null
           gatilho: string
+          gatilhos?: string[]
           id?: string
           name: string
           tipo: string
@@ -854,6 +856,7 @@ export type Database = {
           created_at?: string
           device_identifier?: string | null
           gatilho?: string
+          gatilhos?: string[]
           id?: string
           name?: string
           tipo?: string

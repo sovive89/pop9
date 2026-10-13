@@ -15,7 +15,7 @@ export const PAGE_HELP: Record<string, string> = {
   hub: "Consulte a proposta de integração futura com o Pop9 Hub. A conexão ainda está em preparação.",
   crm: "Consulte o histórico de consumo e os relatórios por cliente.",
   stock: "Cadastre insumos e receitas sem movimentar saldo. Registre compras e produção para atualizar o estoque real; acompanhe lotes e validade.",
-  printers: "Cadastre impressoras e configure os gatilhos de impressão disponíveis.",
+  printers: "Cadastre impressoras e escolha um ou mais gatilhos para cada uma (ex.: comanda da cozinha e conta da mesa na mesma térmica).",
   documents: "Exporte o cardápio em PDF e pacotes para iFood/99Food, baixe imagens dos itens e consulte links operacionais.",
   qrcodes: "Gere e baixe os códigos QR para o acesso dos clientes ao estabelecimento e às mesas.",
   units: "Cadastre e organize as unidades do estabelecimento.",
