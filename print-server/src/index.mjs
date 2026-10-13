@@ -96,7 +96,7 @@ async function processJob(job) {
           log(`Pedido ${order.orderId.slice(0, 8)}: ${tickets.length} comanda(s) em ${printer.name}`);
         } catch (e) { failures.push(`${printer.name}: ${e.message}`); }
       }
-      if (orphans.length) failures.push(`Sem impressora para ${[...new Set(orphans.map((t) => (t.destination === "bar" ? "o bar" : "a cozinha")))].join(" e ")}`);
+      if (orphans.length) failures.push(`Sem impressora para ${[...new Set(orphans.map((t) => t.destination))].join(" e ")}`);
       if (failures.length) throw new Error(failures.join("; "));
       await supabase.rpc("finish_print_job", { p_job: job.id, p_ok: true });
     } catch (e) {
