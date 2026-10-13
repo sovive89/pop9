@@ -59,37 +59,37 @@ function MaterialFields({ input, materials, disabled, base = false, onChange, on
           value={input.rawMaterialId} onChange={event => onChange({ rawMaterialId: event.target.value, newName: "" })}
           className="h-9 w-full min-w-0 rounded-md border border-border bg-muted px-2 text-xs text-foreground">
           <option value="">Criar novo insumo</option>
-          {materials.map(item => <option key={item.id} value={item.id}>{item.name} ({item.unit})</option>)}
+          {materials.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select>
       </label>
       <Button type="button" variant="ghost" size="icon" disabled={disabled} onClick={onRemove}
         aria-label={`Remover ${name.toLowerCase()}`} data-tooltip={`Remova este ${name.toLowerCase()} da ficha em edição. O cadastro no estoque será mantido.`}
         className="h-9 w-9 shrink-0 text-destructive"><Trash2 className="h-4 w-4" /></Button>
     </div>
-    <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3">
-      {!input.rawMaterialId && <label className={`${labelClass} col-span-2 sm:col-span-1`} htmlFor={`${input.key}-name`}>
-        <span>Nome do novo {name.toLowerCase()}</span>
-        <MenuPrefixField id={`${input.key}-name`} label={`Nome do novo ${name.toLowerCase()}`} disabled={disabled}
-          value={input.newName} onChange={value => onChange({ newName: value })} mode="whole"
-          suggestions={materials.map(row => ({ id: row.id, label: row.name, value: row.name, kind: 'material', unit: row.unit }))}
-          onPick={suggestion => onChange({ rawMaterialId: suggestion.id, newName: '', newUnit: suggestion.unit ?? '' })}
-          placeholder={base ? "Ex.: tomate" : "Ex.: molho da casa"} className="h-9 min-w-0 text-xs" />
-      </label>}
+    {!input.rawMaterialId && <label className={labelClass} htmlFor={`${input.key}-name`}>
+      <span>Nome do novo {name.toLowerCase()}</span>
+      <MenuPrefixField id={`${input.key}-name`} label={`Nome do novo ${name.toLowerCase()}`} disabled={disabled}
+        value={input.newName} onChange={value => onChange({ newName: value })} mode="whole"
+        suggestions={materials.map(row => ({ id: row.id, label: row.name, value: row.name, kind: 'material', unit: row.unit }))}
+        onPick={suggestion => onChange({ rawMaterialId: suggestion.id, newName: '', newUnit: suggestion.unit ?? '' })}
+        placeholder={base ? "Ex.: tomate" : "Ex.: molho da casa"} className="h-9 min-w-0 text-xs" />
+    </label>}
+    <div className="grid min-w-0 grid-cols-2 gap-2">
+      <label className={labelClass} htmlFor={`${input.key}-quantity`}>
+        <span>Quantidade usada na receita</span>
+        <Input id={`${input.key}-quantity`} aria-label={base ? "Quantidade do insumo-base" : "Quantidade do insumo por item"}
+          data-tooltip={base ? "Quantidade deste insumo-base necessária para a quantidade de referência da receita. Informe na unidade exibida." : "Quantidade consumida para preparar uma unidade do item do cardápio. Informe na unidade exibida."}
+          type="number" min="0.001" step="any" disabled={disabled} value={input.quantity}
+          onChange={event => onChange({ quantity: event.target.value })} placeholder="Ex.: 0,150" className="h-9 min-w-0 text-xs" />
+      </label>
       <label className={labelClass} htmlFor={`${input.key}-unit`}>
         <span>Unidade de medida</span>
         <select id={`${input.key}-unit`} aria-label={`Unidade de medida do ${name.toLowerCase()}`}
           data-tooltip={input.rawMaterialId ? "A unidade do insumo já cadastrado é fixa. A quantidade da ficha será descontada nessa unidade." : "Selecione uma unidade pré-definida para o novo insumo."}
           disabled={disabled || Boolean(input.rawMaterialId)} value={unit}
-          onChange={event => onChange({ newUnit: event.target.value })} className="h-9 min-w-0 rounded-md border border-border bg-muted px-2 text-xs text-foreground">
+          onChange={event => onChange({ newUnit: event.target.value })} className="h-9 w-full min-w-0 rounded-md border border-border bg-muted px-2 text-xs text-foreground">
           {STOCK_UNITS.map(option => <option key={option} value={option}>{option}</option>)}
         </select>
-      </label>
-      <label className={labelClass} htmlFor={`${input.key}-quantity`}>
-        <span>{base ? "Quantidade na receita" : "Quantidade por item"}{unit ? ` (${unit})` : ""}</span>
-        <Input id={`${input.key}-quantity`} aria-label={base ? "Quantidade do insumo-base" : "Quantidade do insumo por item"}
-          data-tooltip={base ? "Quantidade deste insumo-base necessária para a quantidade de referência da receita. Informe na unidade exibida." : "Quantidade consumida para preparar uma unidade do item do cardápio. Informe na unidade exibida."}
-          type="number" min="0.001" step="any" disabled={disabled} value={input.quantity}
-          onChange={event => onChange({ quantity: event.target.value })} placeholder="Ex.: 0,150" className="h-9 min-w-0 text-xs" />
       </label>
     </div>
   </div>;
