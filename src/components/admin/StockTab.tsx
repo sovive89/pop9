@@ -423,6 +423,9 @@ const StockTab = () => {
 
       {view === "insumos" && (
         <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Você pode cadastrar o insumo primeiro aqui, mesmo sem lote. Depois, ao montar o cardápio, selecione-o na ficha técnica para criar o vínculo; o fluxo também funciona no sentido inverso.
+          </p>
           <div className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -449,6 +452,11 @@ const StockTab = () => {
                       {m.itemType !== "insumo" && (
                         <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">
                           {ITEM_TYPE_LABELS[m.itemType]}
+                        </Badge>
+                      )}
+                      {m.isTheoretical && (
+                        <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-700">
+                          Teórico · aguardando 1º lote
                         </Badge>
                       )}
                     </p>

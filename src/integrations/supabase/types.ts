@@ -1210,6 +1210,7 @@ export type Database = {
           current_stock: number
           id: string
           is_produced: boolean
+          is_theoretical: boolean
           min_stock: number
           name: string
           tipo: Database["public"]["Enums"]["item_tipo"]
@@ -1219,12 +1220,13 @@ export type Database = {
         Insert: {
           active?: boolean
           average_cost?: number
-          business_unit_id: string
+          business_unit_id?: string
           categoria?: string | null
           created_at?: string
           current_stock?: number
           id?: string
           is_produced?: boolean
+          is_theoretical?: boolean
           min_stock?: number
           name: string
           tipo?: Database["public"]["Enums"]["item_tipo"]
@@ -1240,6 +1242,7 @@ export type Database = {
           current_stock?: number
           id?: string
           is_produced?: boolean
+          is_theoretical?: boolean
           min_stock?: number
           name?: string
           tipo?: Database["public"]["Enums"]["item_tipo"]

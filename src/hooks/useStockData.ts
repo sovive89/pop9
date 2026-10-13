@@ -17,6 +17,7 @@ export interface RawMaterial {
   minStock: number;
   averageCost: number;
   active: boolean;
+  isTheoretical: boolean;
 }
 
 export interface Lote {
@@ -208,6 +209,7 @@ export const useStockData = () => {
         minStock: Number(r.min_stock),
         averageCost: Number(r.average_cost),
         active: r.active,
+        isTheoretical: r.is_theoretical,
       }))
     );
   }, [businessUnitId]);
@@ -402,6 +404,7 @@ export const useStockData = () => {
       // (migration 20260828041000) deriva a partir de tipo no insert.
       min_stock: input.minStock,
       categoria: input.categoria || null,
+      is_theoretical: true,
       business_unit_id: businessUnitId,
     }).select("id").single();
     if (error || !data) {
@@ -502,6 +505,8 @@ export const useStockData = () => {
       toast.error("Erro ao registrar entrada: " + error.message);
       return false;
     }
+    await supabase.from("raw_materials").update({ is_theoretical: false })
+      .eq("id", input.rawMaterialId).eq("business_unit_id", businessUnitId);
     toast.success(`Entrada registrada — lote ${numeroLote}`);
     await Promise.all([loadRawMaterials(), loadAlerts(), loadLotes()]);
     return true;
@@ -649,6 +654,8 @@ export const useStockData = () => {
       if (loteErr) {
         console.warn("Não foi possível registrar o lote de produção (migration de lotes pendente?):", loteErr.message);
       }
+      await supabase.from("raw_materials").update({ is_theoretical: false })
+        .eq("id", recipe.outputRawMaterialId).eq("business_unit_id", businessUnitId);
     }
 
     toast.success(`Lote produzido — etiqueta ${batchRow.batch_code}`);

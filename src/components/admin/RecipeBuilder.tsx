@@ -1,7 +1,8 @@
 import { useState, useEffect, forwardRef, useImperativeHandle } from "react";
-import { Plus, Trash2, ChefHat } from "lucide-react";
+import { Plus, Trash2, ChefHat, Sparkles, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useStockData, type RawMaterial, type ItemType } from "@/hooks/useStockData";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
@@ -91,6 +92,8 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, disa
   const [loaded, setLoaded] = useState(!menuItemId);
   const [loadError, setLoadError] = useState("");
   const [retry, setRetry] = useState(0);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [helpExpanded, setHelpExpanded] = useState(false);
 
   useEffect(() => {
     if (!menuItemId) { setLoaded(true); return; }
@@ -172,8 +175,13 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, disa
 
   return <section className="min-w-0 space-y-3" aria-label="Ficha técnica do item">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <h4 tabIndex={0} data-tooltip="Monte primeiro o cardápio e a ficha técnica. Os novos insumos são cadastrados no estoque com saldo zero; compras e produção são lançadas depois."
-        className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground"><ChefHat className="h-3.5 w-3.5" /> Ficha técnica</h4>
+      <div className="flex items-center gap-2">
+        <h4 tabIndex={0} data-tooltip="Monte primeiro o cardápio e a ficha técnica. Os novos insumos são cadastrados no estoque com saldo zero; compras e produção são lançadas depois."
+          className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground"><ChefHat className="h-3.5 w-3.5" /> Ficha técnica</h4>
+        <Button type="button" variant="ghost" size="sm" onClick={() => setHelpOpen(true)} className="h-7 gap-1 px-2 text-xs text-primary">
+          <Sparkles className="h-3.5 w-3.5" /> Como montar
+        </Button>
+      </div>
       <Button type="button" variant="outline" size="sm" disabled={disabled || !loaded} onClick={() => setRows(previous => [...previous, emptyRow()])}
         data-tooltip="Adicione um insumo existente ou crie um novo com saldo zero, diretamente no cardápio."><Plus className="h-3 w-3" /> Adicionar insumo</Button>
     </div>
@@ -214,6 +222,25 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, disa
         </fieldset>}
       </div>;
     })}
+    <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
+      <DialogContent className={`w-[calc(100%-2rem)] p-4 ${helpExpanded ? "max-w-lg" : "max-w-sm"}`}>
+        <DialogHeader className="relative pr-8">
+          <DialogTitle className="flex items-center gap-2 text-base"><Sparkles className="h-4 w-4 text-primary" /> Orientação da montagem</DialogTitle>
+          <DialogDescription>Você pode começar pelo cardápio ou pelo Estoque. A ficha técnica conecta os dois lados.</DialogDescription>
+          <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-7 w-7" onClick={() => setHelpExpanded(value => !value)} aria-label={helpExpanded ? "Usar janela compacta" : "Expandir janela de orientação"}>
+            {helpExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
+        </DialogHeader>
+        <ol className="space-y-3 text-sm">
+          <li><strong>1. Adicione o componente.</strong> Ex.: pão, queijo, molho ou hambúrguer.</li>
+          <li><strong>2. Vincule ao estoque.</strong> Use um insumo já cadastrado no Estoque ou crie-o aqui. Se for novo, ele aparecerá como teórico, aguardando o primeiro lote.</li>
+          <li><strong>3. Informe a quantidade por item.</strong> Use a unidade cadastrada: g, kg, ml, L ou un.</li>
+          <li><strong>4. Se for produzido, marque a opção.</strong> Informe o rendimento e os insumos-base da receita.</li>
+          <li><strong>5. Salve o cardápio.</strong> Nada é comprado ou movimentado agora; somente o cadastro e a ficha técnica são criados.</li>
+        </ol>
+        <p className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">A relação é bidirecional: um insumo criado no Estoque pode ser usado depois no cardápio; um insumo criado na ficha aparece no Estoque. Ao registrar a primeira compra ou produção, ele deixa de ser teórico.</p>
+      </DialogContent>
+    </Dialog>
   </section>;
 });
 RecipeBuilder.displayName = "RecipeBuilder";

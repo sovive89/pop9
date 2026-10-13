@@ -82,9 +82,11 @@ const categoryKeyFrom = (label: string, taken: string[] = []) => {
 
 const CategoryEditor = ({ category, existingKeys = [], onSave, onCancel }: CategoryEditorProps) => {
   const isNew = !category;
-  // A chave é interna e gerada do nome; categorias antigas mantêm a sua.
-  const key = category?.key ?? "";
   const [label, setLabel] = useState(category?.label ?? "");
+  // Categorias novas recebem uma sugestão legível; categorias existentes
+  // preservam a chave atual para não quebrar os itens já vinculados.
+  const [key, setKey] = useState(category?.key ?? categoryKeyFrom(category?.label ?? "", existingKeys));
+  const [keyTouched, setKeyTouched] = useState(!isNew);
   const [destination, setDestination] = useState(category?.destination ?? "kitchen");
   const [sectorTouched, setSectorTouched] = useState(!isNew);
   const { activeSectors } = usePrintSectors();
@@ -104,7 +106,9 @@ const CategoryEditor = ({ category, existingKeys = [], onSave, onCancel }: Categ
       return;
     }
     setSaving(true);
-    const finalKey = isNew ? categoryKeyFrom(label, existingKeys) : key;
+    const normalizedKey = key.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
+    const finalKey = isNew ? categoryKeyFrom(normalizedKey || label, existingKeys) : key;
     const ok = await onSave(
       { id: category?.id, key: finalKey, label: label.trim(), icon_name: iconName, icon_color: iconColor, destination, sort_order: parseInt(sortOrder) || 0 },
       isNew
@@ -124,11 +128,21 @@ const CategoryEditor = ({ category, existingKeys = [], onSave, onCancel }: Categ
           <label className="text-xs font-medium text-muted-foreground">Nome</label>
           <Input value={label} onChange={(e) => {
             setLabel(e.target.value);
+            if (isNew && !keyTouched) setKey(categoryKeyFrom(e.target.value, existingKeys));
             if (!iconTouched) setIconName(suggestCategoryIcon(e.target.value));
             // Setor sugerido pelo nome (bebidas → Bar) enquanto o admin não escolheu outro.
             if (isNew && !sectorTouched) setDestination(/bebida|drink|suco|refri|cerveja|chopp|vinho|cafe|café|agua|água|dose|caipir/i.test(e.target.value) ? "bar" : "kitchen");
           }} placeholder="ex: Saladas" className="h-8 text-sm" />
         </div>
+      </div>
+      <div className="space-y-1">
+        <label htmlFor="category-key" className="text-xs font-medium text-muted-foreground">Chave (slug)</label>
+        <Input id="category-key" value={key} disabled={!isNew}
+          onChange={(e) => { setKey(e.target.value); setKeyTouched(true); }}
+          placeholder="ex: saladas" className="h-8 font-mono text-sm" />
+        <p className="text-[10px] text-muted-foreground">
+          Identificador interno sugerido automaticamente a partir do nome. Sem acentos ou espaços; ajuste se necessário.
+        </p>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
