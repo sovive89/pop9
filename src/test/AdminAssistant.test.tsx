@@ -8,6 +8,7 @@ vi.mock('@/hooks/useAuth',()=>({useAuth:()=>({user:{id:'staff'}})}));
 vi.mock('@/hooks/useUnitRoles',()=>({useUnitRoles:()=>({roles:mocks.roles,loading:false})}));
 vi.mock('@/hooks/useCurrentBusinessUnit',()=>({useCurrentBusinessUnit:()=>({businessUnitId:mocks.unit,units:[{id:'u1',name:'Confit'},{id:'u2',name:'Outra'}],loading:false})}));
 vi.mock('@/integrations/supabase/client',()=>({supabase:{functions:{invoke:mocks.invoke}}}));
+vi.mock('@/hooks/useMenuSuggestionCatalog',()=>({useMenuSuggestionCatalog:()=>({categories:[],materials:[],products:[],suggestions:{categories:[{id:'c1',label:'Hambúrgueres',value:'Hambúrgueres',kind:'category'}],materials:[{id:'r1',label:'Queijo',value:'Queijo (g)',kind:'material',unit:'g'}],products:[],words:[{id:'w1',label:'artesanal',value:'artesanal',kind:'word'}]},loading:false,error:false,limited:false})}));
 function Page(){const location=useLocation();return <p data-testid="page">{location.pathname+location.search}</p>;}
 function App({path='/admin?sec=stock'}:{path?:string}){return <MemoryRouter initialEntries={[path]}><Routes><Route path="*" element={<Page/>}/></Routes><AdminAssistant/></MemoryRouter>;}
 const menuPlan={action:'draft',routeId:'menu',formId:'menu-guided',fields:{name:'Burger da Casa',category:'hamburgueres',price:'42,90'},explanation:'Preparei um rascunho local com os dados informados.',missing:['Ingredientes e quantidades'],};
@@ -25,6 +26,21 @@ describe('agente PØP9',()=>{
 });
 
 describe('escopo do rascunho de cardápio',()=>{
+ it('completa categorias, palavras e insumos no rascunho guiado sem solicitar gravação',async()=>{
+  render(<App path="/admin?sec=menu"/>);fireEvent.click(screen.getByRole('button',{name:'Abrir agente PØP9'}));
+  fireEvent.click(screen.getByRole('tab',{name:'Rascunho de cardápio'}));
+  fireEvent.click(screen.getByRole('button',{name:/^Próximo$/}));
+  let field=screen.getByLabelText('Categoria e tipo');fireEvent.focus(field);fireEvent.change(field,{target:{value:'ham'}});
+  fireEvent.click(screen.getByRole('button',{name:'Hambúrgueres Categoria'}));expect(field).toHaveValue('Hambúrgueres');
+  fireEvent.click(screen.getByRole('button',{name:/^Próximo$/}));
+  field=screen.getByLabelText('Descrição comercial');fireEvent.focus(field);fireEvent.change(field,{target:{value:'Produto art'}});
+  fireEvent.keyDown(field,{key:'ArrowDown'});fireEvent.keyDown(field,{key:'Enter'});expect(field).toHaveValue('Produto artesanal');
+  fireEvent.click(screen.getByRole('button',{name:/^Próximo$/}));fireEvent.click(screen.getByRole('button',{name:/^Próximo$/}));
+  field=screen.getByLabelText('Ingredientes e quantidades');fireEvent.focus(field);fireEvent.change(field,{target:{value:'que'}});
+  fireEvent.click(screen.getByRole('button',{name:'Queijo g'}));expect(field).toHaveValue('Queijo (g)');
+  await waitFor(()=>expect(mocks.invoke).toHaveBeenCalled());
+  expect(mocks.invoke.mock.calls.every(([,opts])=>opts.body.action==='models')).toBe(true);
+ });
  it.each([['attendant','/atendimento'],['kitchen','/cozinha'],['cashier','/caixa']])('não oferece rascunho a %s',async(role,path)=>{
   mocks.roles=[role];render(<App path={path}/>);fireEvent.click(screen.getByRole('button',{name:'Abrir agente PØP9'}));
   expect(screen.queryByRole('tab',{name:'Rascunho de cardápio'})).not.toBeInTheDocument();

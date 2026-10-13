@@ -60,10 +60,10 @@ export function IntegrationCard({
       </div>
 
       <div className="mt-auto flex items-center justify-between gap-2 pt-1">
-        <IntegrationStatusBadge status={status} />
+        {definition.implemented ? <IntegrationStatusBadge status={status} /> : <span className="text-xs text-muted-foreground">Em desenvolvimento</span>}
         {!isConnected && (
           <Button data-tooltip="Abra os detalhes e as configurações desta integração." size="sm" variant="outline" onClick={onOpen}>
-            {primaryActionLabel(definition.type)}
+            {definition.implemented ? primaryActionLabel(definition.type) : "Ver requisitos"}
           </Button>
         )}
       </div>
