@@ -740,7 +740,7 @@ const StockTab = () => {
                 }}>
                   <SelectTrigger><SelectValue placeholder="Escolha..." /></SelectTrigger>
                   <SelectContent>
-                    {[...new Set([purchaseTarget ? materialsById[purchaseTarget]?.unit : "", "kg", "g", "L", "ml", "un", "caixa", "pacote", "saco"].filter(Boolean))].map((u) => (
+                    {[...new Set([purchaseTarget ? materialsById[purchaseTarget]?.unit : "", "kg", "g", "L", "ml", "un", "pé", "ramo", "maço", "cabeça", "cacho", "bandeja", "caixa", "pacote", "saco", "fardo", "galão", "botijão", "dúzia", "garrafa", "lata", "pote", "frasco", "rolo"].filter(Boolean))].map((u) => (
                       <SelectItem key={u} value={u!}>{u}</SelectItem>
                     ))}
                   </SelectContent>
