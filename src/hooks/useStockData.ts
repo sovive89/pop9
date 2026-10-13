@@ -209,7 +209,10 @@ export const useStockData = () => {
         minStock: Number(r.min_stock),
         averageCost: Number(r.average_cost),
         active: r.active,
-        isTheoretical: r.is_theoretical,
+        // Compatibilidade com ambientes que ainda não aplicaram a migration
+        // do marcador: saldo zero continua sendo tratado como cadastro teórico
+        // até a coluna existir no banco remoto.
+        isTheoretical: r.is_theoretical ?? (Number(r.current_stock) === 0 && Number(r.average_cost) === 0),
       }))
     );
   }, [businessUnitId]);
@@ -396,7 +399,7 @@ export const useStockData = () => {
       toast.error("Nenhuma unidade ativa encontrada");
       return null;
     }
-    const { data, error } = await supabase.from("raw_materials").insert({
+    const theoreticalPayload = {
       name: input.name,
       unit: input.unit,
       tipo: input.itemType,
@@ -406,7 +409,14 @@ export const useStockData = () => {
       categoria: input.categoria || null,
       is_theoretical: true,
       business_unit_id: businessUnitId,
-    }).select("id").single();
+    } satisfies Database["public"]["Tables"]["raw_materials"]["Insert"];
+    let { data, error } = await supabase.from("raw_materials").insert(theoreticalPayload).select("id").single();
+    // O deploy do frontend pode chegar antes da migration no projeto remoto.
+    // Nesse caso, repete sem a coluna nova para não bloquear a ficha técnica.
+    if (error && /is_theoretical|column .* does not exist|schema cache/i.test(error.message)) {
+      const { is_theoretical: _ignored, ...legacyPayload } = theoreticalPayload;
+      ({ data, error } = await supabase.from("raw_materials").insert(legacyPayload).select("id").single());
+    }
     if (error || !data) {
       toast.error("Erro ao criar insumo: " + (error?.message ?? "ID não retornado"));
       return null;
