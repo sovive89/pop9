@@ -3,7 +3,7 @@ import * as XLSX from 'https://esm.sh/xlsx@0.18.5';
 import { json, cors, uuid } from '../_shared/operational.ts';
 import { CHAT_MODELS } from '../_shared/assistant-help.ts';
 import { decryptAIKey, documentCompletion, parseModelJson } from '../_shared/ai-text.ts';
-import { sanitizeDraft, findUnitConflicts, EXTRACTION_SYSTEM } from '../_shared/menu-import-schema.ts';
+import { sanitizeDraft, findUnitConflicts, EXTRACTION_SYSTEM, CREATION_SYSTEM } from '../_shared/menu-import-schema.ts';
 
 // Lê arquivos de cardápio/fichas técnicas enviados pelo admin (bucket privado menu-imports)
 // e devolve um RASCUNHO validado. Esta função NÃO grava cardápio nem estoque: a gravação é
@@ -56,6 +56,9 @@ Deno.serve(async (req) => {
     }
     paths = files as string[];
     if (!paths.length && !pastedText.trim()) return json({ error: 'Anexe um arquivo ou cole o texto do cardápio.' }, 400);
+    // mode 'create': a IA propõe a ficha a partir da descrição (não só extrai o que está escrito).
+    const create = body.mode === 'create';
+    if (create && !pastedText.trim()) return json({ error: 'Descreva o item ou preparo para criar a ficha.' }, 400);
 
     const model = CHAT_MODELS.find(m => m.id === body.model); if (!model) return json({ error: 'Selecione um modelo de IA disponível' }, 400);
     const { data: credential, error: credentialError } = await admin.from('ai_provider_credentials').select('provider,encrypted_key,iv').eq('business_unit_id', unit).eq('provider', model.provider).eq('status', 'connected').maybeSingle();
@@ -83,10 +86,12 @@ Deno.serve(async (req) => {
       } else texts.push(`--- Arquivo ${index + 1} (texto) ---\n${new TextDecoder().decode(bytes).slice(0, MAX_TEXT)}`);
     }
     if (pastedText.trim()) texts.push(`--- Texto colado pelo administrador ---\n${pastedText}`);
-    const userText = `Unidade: ${business.name}. Extraia o cardápio e as fichas técnicas dos arquivos anexados e do conteúdo abaixo.\n` +
+    const userText = (create
+      ? `Unidade: ${business.name}. Crie a ficha técnica pedida abaixo.\n`
+      : `Unidade: ${business.name}. Extraia o cardápio e as fichas técnicas dos arquivos anexados e do conteúdo abaixo.\n`) +
       (texts.length ? `<conteudo>\n${texts.join('\n\n').slice(0, MAX_TEXT * 2)}\n</conteudo>` : '');
 
-    const result = await documentCompletion(model.provider, model.model, await decryptAIKey(credential.encrypted_key, credential.iv), EXTRACTION_SYSTEM, userText, attachments);
+    const result = await documentCompletion(model.provider, model.model, await decryptAIKey(credential.encrypted_key, credential.iv), create ? CREATION_SYSTEM : EXTRACTION_SYSTEM, userText, attachments);
     const { draft, warnings } = sanitizeDraft(parseModelJson(result.text));
     const { data: materials, error: materialsError } = await admin.from('raw_materials').select('name,unit').eq('business_unit_id', unit).limit(5000);
     if (materialsError) throw Error('Não foi possível conferir os insumos já cadastrados.');

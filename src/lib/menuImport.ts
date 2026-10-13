@@ -60,9 +60,9 @@ export async function uploadImportFiles(businessUnitId: string, files: File[]): 
   return paths;
 }
 
-export async function extractMenuDraft(input: { businessUnitId: string; model: string; files: string[]; text: string }): Promise<ExtractResult> {
+export async function extractMenuDraft(input: { businessUnitId: string; model: string; files: string[]; text: string; mode?: "create" }): Promise<ExtractResult> {
   const { data, error } = await supabase.functions.invoke("menu-import", {
-    body: { action: "extract", businessUnitId: input.businessUnitId, model: input.model, files: input.files, text: input.text, requestId: crypto.randomUUID() },
+    body: { action: "extract", mode: input.mode, businessUnitId: input.businessUnitId, model: input.model, files: input.files, text: input.text, requestId: crypto.randomUUID() },
   });
   if (error) throw Error(await errorMessage(error, "Não foi possível ler os arquivos. Verifique sua conexão e tente novamente."));
   if (data?.error) throw Error(data.error);

@@ -66,15 +66,27 @@ type MenuItemSaveResult = string | false | { failedId: string };
 // ── Category Editor ──
 interface CategoryEditorProps {
   category?: DbMenuCategory;
+  /** Chaves já usadas na unidade, para gerar uma chave nova sem repetir. */
+  existingKeys?: string[];
   onSave: (cat: CategoryInput, isNew: boolean) => Promise<boolean>;
   onCancel: () => void;
 }
 
-const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => {
+/** Chave interna gerada a partir do nome: "Bebidas Quentes" → "bebidas_quentes". */
+const categoryKeyFrom = (label: string, taken: string[] = []) => {
+  const base = label.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40) || "categoria";
+  let candidate = base;
+  for (let n = 2; taken.includes(candidate); n++) candidate = `${base}_${n}`;
+  return candidate;
+};
+
+const CategoryEditor = ({ category, existingKeys = [], onSave, onCancel }: CategoryEditorProps) => {
   const isNew = !category;
-  const [key, setKey] = useState(category?.key ?? "");
+  // A chave é interna e gerada do nome; categorias antigas mantêm a sua.
+  const key = category?.key ?? "";
   const [label, setLabel] = useState(category?.label ?? "");
   const [destination, setDestination] = useState(category?.destination ?? "kitchen");
+  const [sectorTouched, setSectorTouched] = useState(!isNew);
   const { activeSectors } = usePrintSectors();
   // Mantém o setor atual na lista mesmo se desativado, para não trocar sem querer ao editar.
   const sectorOptions = activeSectors.some((s) => s.slug === destination) ? activeSectors : [...activeSectors, { slug: destination, name: destination, active: false }];
@@ -87,13 +99,14 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
   const PreviewIcon = getCategoryIcon(iconName, label);
 
   const handleSave = async () => {
-    if (!key.trim() || !label.trim()) {
-      toast.error("Chave e nome são obrigatórios");
+    if (!label.trim()) {
+      toast.error("Informe o nome da categoria");
       return;
     }
     setSaving(true);
+    const finalKey = isNew ? categoryKeyFrom(label, existingKeys) : key;
     const ok = await onSave(
-      { id: category?.id, key: key.trim().toLowerCase(), label: label.trim(), icon_name: iconName, icon_color: iconColor, destination, sort_order: parseInt(sortOrder) || 0 },
+      { id: category?.id, key: finalKey, label: label.trim(), icon_name: iconName, icon_color: iconColor, destination, sort_order: parseInt(sortOrder) || 0 },
       isNew
     );
     setSaving(false);
@@ -106,21 +119,21 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
         <h3 className="text-sm font-semibold text-foreground">{isNew ? "Nova Categoria" : "Editar Categoria"}</h3>
         <button data-tooltip="Feche a edição sem salvar as alterações pendentes." aria-label="Feche a edição sem salvar as alterações pendentes." onClick={onCancel} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground" data-tooltip="Identificador interno, sem acentos nem espaços. O cliente vê só o Nome.">Chave (identificador interno)</label>
-          <Input value={key} onChange={(e) => setKey(e.target.value)} disabled={!isNew} placeholder="ex: saladas" className="h-8 text-sm" />
-          <p className="text-[10px] text-muted-foreground">Código interno, sem acento ou espaço (ex.: saladas). Não muda depois de criada; o cliente vê só o Nome.</p>
-        </div>
+      <div className="grid grid-cols-1 gap-3">
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Nome</label>
-          <Input value={label} onChange={(e) => { setLabel(e.target.value); if (!iconTouched) setIconName(suggestCategoryIcon(e.target.value)); }} placeholder="ex: Saladas" className="h-8 text-sm" />
+          <Input value={label} onChange={(e) => {
+            setLabel(e.target.value);
+            if (!iconTouched) setIconName(suggestCategoryIcon(e.target.value));
+            // Setor sugerido pelo nome (bebidas → Bar) enquanto o admin não escolheu outro.
+            if (isNew && !sectorTouched) setDestination(/bebida|drink|suco|refri|cerveja|chopp|vinho|cafe|café|agua|água|dose|caipir/i.test(e.target.value) ? "bar" : "kitchen");
+          }} placeholder="ex: Saladas" className="h-8 text-sm" />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Setor</label>
-          <select data-tooltip="Setor que recebe os pedidos desta categoria (crie novos em Impressoras)." aria-label="Setor que recebe os pedidos desta categoria." value={destination} onChange={(e) => setDestination(e.target.value)} className="w-full h-8 rounded-md border border-border bg-muted px-3 text-sm text-foreground">
+          <select data-tooltip="Setor que recebe os pedidos desta categoria (crie novos em Impressoras)." aria-label="Setor que recebe os pedidos desta categoria." value={destination} onChange={(e) => { setDestination(e.target.value); setSectorTouched(true); }} className="w-full h-8 rounded-md border border-border bg-muted px-3 text-sm text-foreground">
             {sectorOptions.map((s) => <option key={s.slug} value={s.slug}>{s.name}</option>)}
           </select>
         </div>
@@ -136,9 +149,12 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
           <PreviewIcon className="h-7 w-7 shrink-0" style={{ color: iconColor }} />
           <span className="text-sm font-medium text-foreground truncate">{label || "Nova categoria"}</span>
         </div>
-        <Input value={iconSearch} onChange={(e) => setIconSearch(e.target.value)} placeholder="Buscar ícone..." className="h-8 text-sm" />
-        <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-48 overflow-y-auto">
-          {CATEGORY_ICON_OPTIONS.filter((option) => (option.label + " " + option.name).toLowerCase().includes(iconSearch.toLowerCase())).map(({ name, label: iconLabel, Icon }) => (
+        <Input value={iconSearch} onChange={(e) => setIconSearch(e.target.value)} placeholder="Buscar ícone (ex.: suco, combo, açaí)..." className="h-8 text-sm" />
+        <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto">
+          {CATEGORY_ICON_OPTIONS.filter((option) => {
+            const plain = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+            return plain(`${option.label} ${option.name}`).includes(plain(iconSearch));
+          }).map(({ name, label: iconLabel, Icon }) => (
             <button key={name} type="button" title={iconLabel} aria-label={iconLabel} aria-pressed={iconName === name}
               onClick={() => { setIconName(name); setIconTouched(true); }}
               className={`flex flex-col items-center gap-1 rounded-lg border p-2 min-w-0 ${iconName === name ? "border-primary bg-primary/10" : "border-border hover:bg-muted"}`}>
@@ -396,6 +412,32 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     onCancel();
   };
 
+  // Sugestão por IA: usa o modo "criar ficha" e aproveita só o que estiver vazio.
+  const [suggesting, setSuggesting] = useState(false);
+  const suggestWithAi = async () => {
+    if (!businessUnitId || !name.trim()) return;
+    setSuggesting(true);
+    try {
+      const { listImportModels, extractMenuDraft } = await import("@/lib/menuImport");
+      const { models, warning } = await listImportModels(businessUnitId);
+      if (!models.length) throw new Error(warning || "Conecte a IA em Conexões desta unidade.");
+      const catLabel = categories.find((c) => c.key === category)?.label ?? "";
+      const { draft } = await extractMenuDraft({ businessUnitId, model: models[0].id, files: [], mode: "create",
+        text: `${name.trim()}${catLabel ? ` (categoria ${catLabel})` : ""}${description.trim() ? `. ${description.trim()}` : ""}` });
+      const found = draft.items[0];
+      if (!found) throw new Error("A IA não conseguiu sugerir. Detalhe melhor o nome.");
+      let filled = 0;
+      if (!description.trim() && found.description) { setDescription(found.description); filled++; }
+      if (!ingredients.some((i) => i.name.trim()) && found.ingredients.length) {
+        setIngredients(found.ingredients.map((ing, i) => ({ name: ing.name, removable: ing.removable, extra_price: ing.extraPrice || null, sort_order: i })));
+        filled++;
+      }
+      toast[filled ? "success" : "info"](filled ? "Sugestão aplicada nos campos vazios. Revise antes de salvar." : "Os campos já estavam preenchidos; nada foi alterado.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível sugerir");
+    } finally { setSuggesting(false); }
+  };
+
   const addIngredient = () => {
     setIngredients([...ingredients, { name: "", removable: true, extra_price: null, sort_order: ingredients.length }]);
   };
@@ -465,6 +507,15 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
             Ativo
           </label>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" size="sm" variant="outline" disabled={suggesting || !name.trim() || !businessUnitId}
+          data-tooltip="A IA sugere descrição e ingredientes a partir do nome. Só preenche campos vazios; revise antes de salvar."
+          onClick={() => void suggestWithAi()}>
+          <Sparkles className="mr-1 h-4 w-4" />{suggesting ? "Sugerindo..." : "Sugerir com IA"}
+        </Button>
+        <span className="text-[11px] text-muted-foreground">Preenche descrição e ingredientes vazios a partir do nome.</span>
       </div>
 
       <div className="space-y-1">
@@ -671,6 +722,7 @@ const UnitMenuTab = () => {
           {(creatingCategory || editingCategory) && (
             <CategoryEditor
               category={editingCategory ?? undefined}
+              existingKeys={categories.map((c) => c.key)}
               onSave={saveCategory}
               onCancel={() => { setEditingCategory(null); setCreatingCategory(false); }}
             />

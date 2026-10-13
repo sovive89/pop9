@@ -1,6 +1,7 @@
 import OperationalLinks from "@/components/admin/OperationalLinks";
 import { useEffect, useRef, useState } from "react";
-import { FileText, ClipboardList, Receipt, FolderOpen, Download, ImageIcon, UtensilsCrossed } from "lucide-react";
+import { FileText, ClipboardList, Receipt, FolderOpen, Download, ImageIcon, UtensilsCrossed, Sparkles } from "lucide-react";
+import AiRecipeSheetDialog from "@/components/admin/AiRecipeSheetDialog";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useMenuDocuments } from "@/hooks/useMenuDocuments";
@@ -51,6 +52,7 @@ export default function DocumentsTab() {
     } catch {if(activeScope.current===requestScope)toast.error("Não foi possível baixar a imagem. Verifique o arquivo cadastrado.");}
   };
   const [sheetBusy,setSheetBusy]=useState(false);
+  const [aiSheetOpen,setAiSheetOpen]=useState(false);
   const downloadSheets=async(kind:"templates"|"export")=>{
     if(sheetBusy || (kind==="export" && !businessUnitId))return;
     const requestScope=scope;setSheetBusy(true);
@@ -100,6 +102,8 @@ export default function DocumentsTab() {
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" disabled={sheetBusy} data-tooltip="Modelos em branco com exemplos: fichas dos itens vendidos e receitas de preparos da casa." onClick={()=>void downloadSheets("templates")}><Download className="mr-2 h-4 w-4" />Baixar modelos (ZIP)</Button>
         <Button variant="outline" disabled={sheetBusy || !businessUnitId} data-tooltip="Exporta itens, insumos e quantidades cadastrados nesta unidade." onClick={()=>void downloadSheets("export")}><FileText className="mr-2 h-4 w-4" />Exportar fichas atuais (ZIP)</Button>
+        <Button disabled={!businessUnitId} data-tooltip="Descreva o item ou preparo e a IA monta a ficha técnica no formato de exportação." onClick={()=>setAiSheetOpen(true)}><Sparkles className="mr-2 h-4 w-4" />Criar ficha com IA</Button>
+        <AiRecipeSheetDialog businessUnitId={businessUnitId} open={aiSheetOpen} onOpenChange={setAiSheetOpen} />
       </div>
     </section>
     <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-5">
