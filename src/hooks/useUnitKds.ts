@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 
@@ -9,11 +9,20 @@ export function useUnitKds(unitId?: string | null) {
   const { businessUnitId } = useCurrentBusinessUnit();
   const unit = unitId ?? businessUnitId;
   const [state, setState] = useState<{ unit: string | null; enabled: boolean; loaded: boolean }>({ unit: null, enabled: true, loaded: false });
+  const latest = useRef(0);
+  // Leituras sobrepostas (foco + troca) podem voltar fora de ordem: só a mais recente vale.
   const load = useCallback(async () => {
+    const request = ++latest.current;
     if (!unit) { setState({ unit: null, enabled: true, loaded: true }); return; }
-    const { data, error } = await supabase.from("business_units").select("kds_enabled" as "id").eq("id", unit).maybeSingle();
-    const row = data as unknown as { kds_enabled?: boolean } | null;
-    setState({ unit, enabled: Boolean(error) || row?.kds_enabled !== false, loaded: true });
+    try {
+      const { data, error } = await supabase.from("business_units").select("kds_enabled" as "id").eq("id", unit).maybeSingle();
+      if (request !== latest.current) return;
+      const row = data as unknown as { kds_enabled?: boolean } | null;
+      setState({ unit, enabled: Boolean(error) || row?.kds_enabled !== false, loaded: true });
+    } catch {
+      // Falha de rede ou cliente indisponível: mantém o comportamento padrão.
+      if (request === latest.current) setState({ unit, enabled: true, loaded: true });
+    }
   }, [unit]);
   useEffect(() => {
     void load();

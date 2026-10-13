@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { PAGE_HELP } from "@/lib/page-help";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
+import { useUnitRoles } from "@/hooks/useUnitRoles";
 import { useUnitKds, setUnitKds } from "@/hooks/useUnitKds";
 import { useUnitPrintMode, setUnitPrintMode } from "@/hooks/useUnitPrintMode";
 
@@ -39,6 +40,8 @@ export default function SettingsTab() {
   const { businessUnitId, units } = useCurrentBusinessUnit();
   const kds = useUnitKds();
   const printMode = useUnitPrintMode();
+  const { roles, loading: rolesLoading, error: rolesError } = useUnitRoles();
+  const canEdit = !rolesLoading && !rolesError && roles.includes("admin");
   const unitName = units.find((u) => u.id === businessUnitId)?.name;
   if (!businessUnitId) return <p className="text-sm text-muted-foreground">Selecione uma unidade para configurar.</p>;
   return (
@@ -46,17 +49,19 @@ export default function SettingsTab() {
       <div>
         <h2 tabIndex={0} data-tooltip={PAGE_HELP["settings"]} className="text-lg font-semibold">Configurações</h2>
         <p className="text-sm text-muted-foreground">{unitName} · as mudanças valem só para esta unidade.</p>
+        {!rolesLoading && rolesError && <p role="alert" className="text-sm text-destructive">Não foi possível verificar suas permissões. Recarregue a página para alterar os módulos.</p>}
+        {!rolesLoading && !rolesError && !canEdit && <p role="status" className="text-sm text-amber-500">Só um administrador desta unidade pode alterar os módulos.</p>}
       </div>
       <div className="space-y-3">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Módulos</h3>
-        <ModuleRow icon={ChefHat} title="KDS da cozinha" checked={kds.enabled} disabled={!kds.loaded}
+        <ModuleRow icon={ChefHat} title="KDS da cozinha" checked={kds.enabled} disabled={!kds.loaded || !canEdit}
           on="Os pedidos aparecem na tela da cozinha (/cozinha), que marca preparo e pronto."
           off="A cozinha trabalha só com a comanda impressa e o atendimento confirma a entrega direto, sem esperar “pronto”."
-          onChange={async (value) => { await setUnitKds(businessUnitId, value); await kds.reload(); }} />
-        <ModuleRow icon={Printer} title="Estação de impressão" checked={printMode.mode === "station"} disabled={!printMode.loaded}
+          onChange={(value) => setUnitKds(businessUnitId, value)} />
+        <ModuleRow icon={Printer} title="Estação de impressão" checked={printMode.mode === "station"} disabled={!printMode.loaded || !canEdit}
           on="Todo pedido (mesa, online e integrações como iFood e 99Food) entra numa fila e sai na Estação de impressão (/impressao) aberta no aparelho da impressora."
           off="A comanda imprime no navegador de quem envia o pedido. Pedidos online e de integrações não imprimem."
-          onChange={async (value) => { await setUnitPrintMode(businessUnitId, value ? "station" : "device"); await printMode.reload(); }} />
+          onChange={(value) => setUnitPrintMode(businessUnitId, value ? "station" : "device")} />
       </div>
     </section>
   );

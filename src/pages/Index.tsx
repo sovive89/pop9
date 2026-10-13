@@ -22,7 +22,7 @@ const Index = () => {
   const { roles: unitRoles, loading: rolesLoading, error: rolesError } = useUnitRoles();
   const kds = useUnitKds();
   const printMode = useUnitPrintMode();
-  const { businessUnitId } = useCurrentBusinessUnit();
+  const { businessUnitId, units, loading: unitsLoading, error: unitsError } = useCurrentBusinessUnit();
   const roles = { admin: unitRoles.includes("admin"), attendant: unitRoles.includes("attendant"), kitchen: unitRoles.includes("kitchen"), cashier: unitRoles.includes("cashier") };
   const [profileName, setProfileName] = useState("");
   const [tab, setTab] = useState<"mesas" | "pedidos">("mesas");
@@ -66,7 +66,24 @@ const Index = () => {
   }
 
   if (rolesError) return <p role="alert" className="p-6">Não foi possível verificar suas permissões. Recarregue a página.</p>;
-  if (!businessUnitId) return <p className="p-6">Selecione uma unidade para iniciar.</p>;
+  if (!businessUnitId) {
+    // Sem unidade: explica o motivo em vez de pedir uma seleção que não aparece.
+    const message = unitsLoading ? "Carregando unidades..."
+      : unitsError ? "Não foi possível carregar suas unidades. Verifique a conexão e recarregue a página."
+      : units.length === 0 ? "Seu usuário ainda não está vinculado a nenhuma unidade. Peça a um administrador para liberar seu acesso em Admin → Usuários."
+      : "Selecione uma unidade para iniciar.";
+    return (
+      <div className="space-y-4 p-6">
+        <p role={unitsError ? "alert" : "status"}>{message}</p>
+        {!unitsLoading && (unitsError || units.length === 0) && (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => window.location.reload()}>Recarregar</Button>
+            <Button variant="outline" onClick={() => void signOut()}>Sair</Button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (!roles.admin && !roles.attendant) {
     return <Navigate to={roles.cashier ? "/caixa" : roles.kitchen ? "/cozinha" : "/login"} replace />;
@@ -146,7 +163,7 @@ const Index = () => {
                     <span className="hidden sm:inline">Atendimento</span>
                   </Button>
                 )}
-                {(roles.kitchen || roles.admin) && kds.enabled && (
+                {(roles.kitchen || roles.admin) && kds.loaded && kds.enabled && (
                   <Button data-tooltip="Abra a cozinha e acompanhe o preparo dos pedidos."
                     variant="outline"
                     size="sm"

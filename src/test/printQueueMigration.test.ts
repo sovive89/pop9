@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import { beforeAll, beforeEach, afterAll, describe, expect, it } from "vitest";
 
 const migration = readFileSync("supabase/migrations/20261013030000_print_queue.sql", "utf8");
+const kdsMigration = readFileSync("supabase/migrations/20261013020000_unit_kds_toggle.sql", "utf8");
+const guard = readFileSync("supabase/migrations/20261013040000_unit_module_guard.sql", "utf8");
 const UNIT_A = "00000000-0000-0000-0000-000000000001";
 const UNIT_B = "00000000-0000-0000-0000-000000000002";
 const KITCHEN_A = "00000000-0000-0000-0000-000000000011";
@@ -40,18 +42,36 @@ beforeAll(async () => {
     create table public.orders (id uuid primary key default gen_random_uuid(), business_unit_id uuid not null);
     create table public.order_items (id uuid primary key default gen_random_uuid(), order_id uuid not null references public.orders(id), name text);
   `);
+  await db.exec(kdsMigration);
   await db.exec(migration);
+  await db.exec(guard);
 }, 30000);
 
 beforeEach(async () => {
   await db.exec("truncate public.print_jobs, public.order_items, public.orders, public.user_roles, public.business_units cascade");
   await db.query("insert into public.business_units (id) values ($1), ($2)", [UNIT_A, UNIT_B]);
   await db.query("insert into public.user_roles values ($1,'kitchen',$2), ($3,'kitchen',$2), ($4,'admin',$5), ($6,'admin',$2)", [KITCHEN_A, UNIT_A, KITCHEN_A2, ADMIN_B, UNIT_B, ADMIN_A]);
+  await as(null);
   await db.query("update public.business_units set print_mode = 'station' where id = $1", [UNIT_A]);
   await as(KITCHEN_A);
 });
 
 afterAll(async () => { await db?.close(); });
+
+describe("unit modules guard", () => {
+  it("blocks direct updates of module columns by a logged user but allows the unit-admin functions", async () => {
+    await as(ADMIN_A);
+    await expect(db.query("update public.business_units set kds_enabled = false where id = $1", [UNIT_A])).rejects.toThrow("Configurações");
+    await expect(db.query("update public.business_units set print_mode = 'device' where id = $1", [UNIT_A])).rejects.toThrow("Configurações");
+    await db.query("select public.set_unit_kds($1, false)", [UNIT_A]);
+    const row = (await db.query<{ kds_enabled: boolean }>("select kds_enabled from public.business_units where id = $1", [UNIT_A])).rows[0];
+    expect(row.kds_enabled).toBe(false);
+    await expect(db.query("insert into public.business_units (id, print_mode) values ('00000000-0000-0000-0000-0000000000aa', 'station')")).rejects.toThrow("Configurações");
+    await db.query("insert into public.business_units (id) values ('00000000-0000-0000-0000-0000000000ab')");
+    // Outras colunas continuam editáveis pela policy existente.
+    await db.query("update public.business_units set active = true where id = $1", [UNIT_A]);
+  });
+});
 
 describe("print queue", () => {
   it("creates exactly one job per order in station mode, whatever the number of item inserts", async () => {

@@ -12,6 +12,7 @@ begin
   if auth.uid() is null or not app_private.has_unit_role(p_unit, array['admin']) then
     raise exception 'Sem permissão para alterar o KDS desta unidade' using errcode = '42501';
   end if;
+  perform pg_catalog.set_config('pop9.unit_settings', 'on', true);
   update public.business_units set kds_enabled = p_enabled where id = p_unit;
   if not found then raise exception 'Unidade não encontrada'; end if;
   return p_enabled;
