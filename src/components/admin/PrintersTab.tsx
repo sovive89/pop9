@@ -41,6 +41,22 @@ import {
   type PrinterSector,
 } from "@/hooks/usePrinterConfigs";
 
+type PrintSectorRow = { slug: string; name: string; active: boolean };
+type PrintSectorError = { message: string };
+type PrintSectorClient = {
+  from(table: "print_sectors"): {
+    select(columns: string): {
+      eq(column: string, value: string): {
+        order(column: string): Promise<{ data: PrintSectorRow[] | null; error: PrintSectorError | null }>;
+      };
+    };
+    insert(values: { business_unit_id: string; slug: string; name: string }): Promise<{ error: PrintSectorError | null }>;
+  };
+};
+
+// print_sectors is introduced by a migration and is not yet in the generated Supabase types.
+const printSectorClient = supabase as unknown as PrintSectorClient;
+
 const TIPO_OPTIONS: { value: PrinterTipo; label: string }[] = [
   { value: "termica", label: "Térmica (comanda/conta)" },
   { value: "etiqueta", label: "Etiqueta adesiva" },
@@ -81,7 +97,7 @@ const PrintersTab = () => {
   const [sectorBusy, setSectorBusy] = useState(false);
   const loadSectors = useCallback(async () => {
     if (!businessUnitId) { setSectors([]); return; }
-    const { data, error } = await (supabase as any).from("print_sectors")
+    const { data, error } = await printSectorClient.from("print_sectors")
       .select("slug,name,active").eq("business_unit_id", businessUnitId).order("name");
     if (error) { toast.error("Erro ao carregar setores: " + error.message); return; }
     setSectors(data ?? []);
@@ -95,7 +111,7 @@ const PrintersTab = () => {
     if (!slug || sectors.some(s => s.slug === slug)) { toast.error("Setor duplicado ou inválido"); return; }
     setSectorBusy(true);
     try {
-      const { error } = await (supabase as any).from("print_sectors")
+      const { error } = await printSectorClient.from("print_sectors")
         .insert({ business_unit_id: businessUnitId, slug, name });
       if (error) { toast.error(error.message); return; }
       setNewSector(""); await loadSectors();
