@@ -1,6 +1,7 @@
 import { PAGE_HELP } from "@/lib/page-help";
 import { useState, useEffect, useMemo } from "react";
 import { useUnitRoles } from "@/hooks/useUnitRoles";
+import { useUnitKds } from "@/hooks/useUnitKds";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import { useAuth } from "@/hooks/useAuth";
 import { Navigate, useNavigate } from "react-router-dom";
@@ -18,6 +19,7 @@ const Index = () => {
   const navigate = useNavigate();
   const { sessions } = useSessionStore();
   const { roles: unitRoles, loading: rolesLoading, error: rolesError } = useUnitRoles();
+  const kds = useUnitKds();
   const { businessUnitId } = useCurrentBusinessUnit();
   const roles = { admin: unitRoles.includes("admin"), attendant: unitRoles.includes("attendant"), kitchen: unitRoles.includes("kitchen"), cashier: unitRoles.includes("cashier") };
   const [profileName, setProfileName] = useState("");
@@ -142,7 +144,7 @@ const Index = () => {
                     <span className="hidden sm:inline">Atendimento</span>
                   </Button>
                 )}
-                {(roles.kitchen || roles.admin) && (
+                {(roles.kitchen || roles.admin) && kds.enabled && (
                   <Button data-tooltip="Abra a cozinha e acompanhe o preparo dos pedidos."
                     variant="outline"
                     size="sm"

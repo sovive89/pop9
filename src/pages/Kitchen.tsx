@@ -15,6 +15,8 @@ import { toast } from "sonner";
 import type { IngredientMod } from "@/utils/orders";
 import { parseIngredientMods } from "@/lib/kitchen-order-parsers";
 import { useAuth } from "@/hooks/useAuth";
+import { useUnitKds } from "@/hooks/useUnitKds";
+import { ChefHat } from "lucide-react";
 
 // ── Types ──
 interface KitchenItem {
@@ -207,6 +209,7 @@ const mapOrder = (o: KitchenOrderRow): KitchenOrder => ({
 // ── Kitchen Display ──
 const KitchenDisplay = () => {
   const { signOut } = useAuth();
+  const kds = useUnitKds();
   const [orders, setOrders] = useState<KitchenOrder[]>([]);
   const [finishedOrders, setFinishedOrders] = useState<KitchenOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -555,6 +558,17 @@ const KitchenDisplay = () => {
   };
 
   const getOrderNumber = (id: string) => "#" + id.slice(0, 4).toUpperCase();
+
+  if (kds.loaded && !kds.enabled) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[hsl(220,20%,12%)] p-6 text-center text-white">
+        <ChefHat className="h-12 w-12 text-white/40" aria-hidden />
+        <h1 className="text-xl font-semibold">KDS desativado nesta unidade</h1>
+        <p className="max-w-md text-sm text-white/70">A cozinha trabalha pela comanda impressa, que sai ao enviar o pedido. O atendimento confirma a entrega direto na lista de pedidos. Um administrador pode reativar em Admin → Unidades.</p>
+        <button type="button" className="text-sm underline text-white/70" onClick={() => void signOut()}>Sair</button>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
