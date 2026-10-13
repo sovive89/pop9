@@ -66,6 +66,8 @@ describe("unit modules guard", () => {
     await db.query("select public.set_unit_kds($1, false)", [UNIT_A]);
     const row = (await db.query<{ kds_enabled: boolean }>("select kds_enabled from public.business_units where id = $1", [UNIT_A])).rows[0];
     expect(row.kds_enabled).toBe(false);
+    await expect(db.query("insert into public.business_units (id, print_mode) values ('00000000-0000-0000-0000-0000000000aa', 'station')")).rejects.toThrow("Configurações");
+    await db.query("insert into public.business_units (id) values ('00000000-0000-0000-0000-0000000000ab')");
     // Outras colunas continuam editáveis pela policy existente.
     await db.query("update public.business_units set active = true where id = $1", [UNIT_A]);
   });

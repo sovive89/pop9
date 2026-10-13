@@ -40,8 +40,8 @@ export default function SettingsTab() {
   const { businessUnitId, units } = useCurrentBusinessUnit();
   const kds = useUnitKds();
   const printMode = useUnitPrintMode();
-  const { roles, loading: rolesLoading } = useUnitRoles();
-  const canEdit = !rolesLoading && roles.includes("admin");
+  const { roles, loading: rolesLoading, error: rolesError } = useUnitRoles();
+  const canEdit = !rolesLoading && !rolesError && roles.includes("admin");
   const unitName = units.find((u) => u.id === businessUnitId)?.name;
   if (!businessUnitId) return <p className="text-sm text-muted-foreground">Selecione uma unidade para configurar.</p>;
   return (
@@ -49,7 +49,8 @@ export default function SettingsTab() {
       <div>
         <h2 tabIndex={0} data-tooltip={PAGE_HELP["settings"]} className="text-lg font-semibold">Configurações</h2>
         <p className="text-sm text-muted-foreground">{unitName} · as mudanças valem só para esta unidade.</p>
-        {!rolesLoading && !canEdit && <p role="status" className="text-sm text-amber-500">Só um administrador desta unidade pode alterar os módulos.</p>}
+        {!rolesLoading && rolesError && <p role="alert" className="text-sm text-destructive">Não foi possível verificar suas permissões. Recarregue a página para alterar os módulos.</p>}
+        {!rolesLoading && !rolesError && !canEdit && <p role="status" className="text-sm text-amber-500">Só um administrador desta unidade pode alterar os módulos.</p>}
       </div>
       <div className="space-y-3">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Módulos</h3>

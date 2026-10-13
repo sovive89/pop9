@@ -1067,7 +1067,16 @@ const KitchenPage = () => {
     return <Navigate to="/login" replace state={{ from: "/cozinha" }} />;
   }
 
-  if (kds.loaded && !kds.enabled) {
+  // Só monta a tela da cozinha (pedidos, realtime, som) depois de confirmar que o KDS está ativo.
+  if (!kds.loaded) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[hsl(220,20%,12%)] text-white">
+        <span className="h-12 w-12 animate-pulse text-primary text-4xl inline-block" aria-hidden>🔥</span>
+        <span className="text-sm text-white/70">Carregando...</span>
+      </div>
+    );
+  }
+  if (!kds.enabled) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[hsl(220,20%,12%)] p-6 text-center text-white">
         <ChefHat className="h-12 w-12 text-white/40" aria-hidden />
