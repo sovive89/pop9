@@ -55,64 +55,7 @@ Deno.serve(async (req) => {
     const files = Array.isArray(body.files) ? body.files : [];
     const pastedText = typeof body.text === 'string' ? body.text.slice(0, MAX_TEXT) : '';
     if (files.length > MAX_FILES) return json({ error: `Envie no máximo ${MAX_FILES} arquivos por vez.` }, 400);
-    const pathPattern = new RegExp(`^${unit}/[0-9a-f-]{36}\\.(pdf|png|jpe?g|webp|xlsx|xls|ods|docx|csv|txt|md)import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.99.2';
-import * as XLSX from 'https://esm.sh/xlsx@0.18.5';
-import * as mammoth from 'https://esm.sh/mammoth@1.10.0';
-import { json, cors, uuid } from '../_shared/operational.ts';
-import { CHAT_MODELS } from '../_shared/assistant-help.ts';
-import { decryptAIKey, documentCompletion, parseModelJson } from '../_shared/ai-text.ts';
-import { sanitizeDraft, findUnitConflicts, toCatalogDraft, CATALOG_EXTRACTION_SYSTEM, EXTRACTION_SYSTEM, CREATION_SYSTEM } from '../_shared/menu-import-schema.ts';
-
-// Lê arquivos de cardápio/fichas técnicas enviados pelo admin (bucket privado menu-imports)
-// e devolve um RASCUNHO validado. Esta função NÃO grava cardápio nem estoque: a gravação é
-// feita depois, pela RPC apply_menu_import, a partir do rascunho revisado pelo admin.
-
-const MAX_FILES = 5;
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
-const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
-const MAX_TEXT = 60000;
-const EXT: Record<string, { kind: 'pdf' | 'image' | 'sheet' | 'text' | 'docx'; mime: string }> = {
-  pdf: { kind: 'pdf', mime: 'application/pdf' }, png: { kind: 'image', mime: 'image/png' },
-  jpg: { kind: 'image', mime: 'image/jpeg' }, jpeg: { kind: 'image', mime: 'image/jpeg' }, webp: { kind: 'image', mime: 'image/webp' },
-  xlsx: { kind: 'sheet', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
-  xls: { kind: 'sheet', mime: 'application/vnd.ms-excel' },
-  ods: { kind: 'sheet', mime: 'application/vnd.oasis.opendocument.spreadsheet' },
-  docx: { kind: 'docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
-  csv: { kind: 'text', mime: 'text/csv' }, txt: { kind: 'text', mime: 'text/plain' },
-  md: { kind: 'text', mime: 'text/markdown' },
-};
-
-function toBase64(bytes: Uint8Array) {
-  let out = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) out += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return btoa(out);
-}
-
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
-  if (req.method !== 'POST') return json({ error: 'Método não permitido' }, 405);
-  let admin: ReturnType<typeof createClient> | undefined; let requestId: string | undefined; let reserved = false;
-  let paths: string[] = [];
-  try {
-    const authorization = req.headers.get('Authorization');
-    if (!authorization?.startsWith('Bearer ')) return json({ error: 'Não autenticado' }, 401);
-    admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false, autoRefreshToken: false } });
-    const { data: { user }, error: authError } = await admin.auth.getUser(authorization.slice(7));
-    if (authError || !user) return json({ error: 'Não autenticado' }, 401);
-    const raw = await req.text(); if (raw.length > 80000) return json({ error: 'Solicitação muito grande' }, 413);
-    let body; try { body = JSON.parse(raw); } catch { return json({ error: 'Dados inválidos' }, 400); }
-    const unit = body.businessUnitId; if (!uuid(unit)) return json({ error: 'Unidade inválida' }, 400);
-    const { data: roles, error: roleError } = await admin.from('user_roles').select('business_unit_id').eq('user_id', user.id).eq('role', 'admin');
-    if (roleError) throw Error('Não foi possível verificar o acesso.');
-    if (!roles?.some((r: { business_unit_id: string | null }) => r.business_unit_id === null || r.business_unit_id === unit)) return json({ error: 'Importação disponível somente ao administrador desta unidade' }, 403);
-    const { data: business, error: businessError } = await admin.from('business_units').select('id,name').eq('id', unit).eq('active', true).maybeSingle();
-    if (businessError) throw Error('Não foi possível consultar a unidade.'); if (!business) return json({ error: 'Unidade indisponível' }, 404);
-    if (body.action !== 'extract') return json({ error: 'Ação inválida' }, 400);
-
-    const files = Array.isArray(body.files) ? body.files : [];
-    const pastedText = typeof body.text === 'string' ? body.text.slice(0, MAX_TEXT) : '';
-    if (files.length > MAX_FILES) return json({ error: `Envie no máximo ${MAX_FILES} arquivos por vez.` }, 400);
-    );
+    const pathPattern = new RegExp(`^${unit}/[0-9a-f-]{36}\\.(pdf|png|jpe?g|webp|xlsx|xls|ods|docx|csv|txt|md)$`);
     for (const file of files) {
       if (typeof file !== 'string' || !pathPattern.test(file)) return json({ error: 'Arquivo inválido para esta unidade' }, 400);
     }
