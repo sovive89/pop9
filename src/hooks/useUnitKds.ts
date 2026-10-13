@@ -37,7 +37,7 @@ export function useUnitKds(unitId?: string | null) {
 }
 
 export async function setUnitKds(unitId: string, enabled: boolean) {
-  const rpc = supabase.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
+  const rpc = supabase.rpc.bind(supabase) as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
   const { error } = await rpc("set_unit_kds", { p_unit: unitId, p_enabled: enabled });
   if (error) throw Error(error.message);
   window.dispatchEvent(new Event(CHANGE_EVENT));

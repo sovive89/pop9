@@ -74,7 +74,7 @@ export async function extractMenuDraft(input: { businessUnitId: string; model: s
  * segurança após uma falha de rede: o banco devolve o resultado já salvo, sem duplicar.
  */
 export async function applyMenuImport(input: { businessUnitId: string; requestId: string; draft: MenuImportDraft; publish: boolean }): Promise<ApplyResult> {
-  const rpc = supabase.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: ApplyResult | null; error: { message: string } | null }>;
+  const rpc = supabase.rpc.bind(supabase) as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: ApplyResult | null; error: { message: string } | null }>;
   const { data, error } = await rpc("apply_menu_import", {
     p_unit: input.businessUnitId, p_request: input.requestId,
     p_payload: { categories: input.draft.categories, items: input.draft.items }, p_publish: input.publish,

@@ -38,7 +38,8 @@ export function useUnitPrintMode(unitId?: string | null) {
 }
 
 type Rpc = (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
-export const rpc: Rpc = (fn, args) => (supabase.rpc as unknown as Rpc)(fn, args);
+// bind: supabase.rpc usa "this"; chamada solta quebra com "this.rest" indefinido.
+export const rpc: Rpc = (fn, args) => (supabase.rpc.bind(supabase) as unknown as Rpc)(fn, args);
 
 export async function setUnitPrintMode(unitId: string, mode: PrintMode) {
   const { error } = await rpc("set_unit_print_mode", { p_unit: unitId, p_mode: mode });
