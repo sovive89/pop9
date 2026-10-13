@@ -3,11 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-
-const PROVIDERS = [
-  ["openai","OpenAI — GPT Image"],["google","Google — Gemini / Nano Banana / Imagen"],
-  ["xai","xAI — Grok Imagine"],["anthropic","Anthropic — Claude (texto)"],
-] as const;
+import { AI_PROVIDERS } from "../../../../supabase/functions/_shared/ai-providers";
 type Connection = { provider:string;status:string;validated_at:string|null };
 export function AIConnectionsPanel() {
   const [unitId,setUnitId]=useState("");
@@ -81,7 +77,7 @@ export function AIConnectionsPanel() {
     {(!units.length || unitError) && <Button type="button" variant="outline" onClick={()=>setRetryUnits(n=>n+1)}>Tentar carregar unidades novamente</Button>}
     <label className="block text-sm">Provedor</label>
     <select data-tooltip="Escolha o provedor de IA que será conectado a esta unidade." aria-label="Escolha o provedor de IA que será conectado a esta unidade." className="w-full rounded-md border border-border bg-background p-2 text-sm" value={provider} onChange={e=>setProvider(e.target.value)}>
-      {PROVIDERS.map(([id,label])=><option key={id} value={id}>{label}</option>)}
+      {AI_PROVIDERS.map(({id,label})=><option key={id} value={id}>{label}</option>)}
     </select>
     <Input type="password" autoComplete="off" value={key} onChange={e=>setKey(e.target.value)} placeholder="Chave de API (não será exibida após salvar)" />
     <div className="flex gap-2">
@@ -90,6 +86,6 @@ export function AIConnectionsPanel() {
       {connections.some(c=>c.provider===provider)&&<Button data-tooltip="Desconecte esta integração da unidade selecionada." variant="destructive" disabled={busy} onClick={()=>void disconnect()}>Desconectar</Button>}
     </div>
     <p className="text-sm">Status: {connections.find(c=>c.provider===provider)?.status==="connected"?"Conectado":"Não conectado"}</p>
-    <p className="text-xs text-muted-foreground">A geração de imagem usa as credenciais Google ou OpenAI desta unidade.</p>
+    <p className="text-xs text-muted-foreground">Estas credenciais atendem ao assistente e à geração de cardápios/fichas e leitura de documentos. Imagens usam Google ou OpenAI. Ler uma nota fiscal não emite uma nota.</p>
   </section>;
 }

@@ -1,5 +1,5 @@
 import OperationalLinks from "@/components/admin/OperationalLinks";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FileText, ClipboardList, Receipt, FolderOpen, Download, ImageIcon, UtensilsCrossed } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ export default function DocumentsTab() {
   const [search,setSearch] = useState("");
   const [exportState,setExportState] = useState({ scope,busy:false,progress:"",warning:"" });
   const activeScope = useRef(scope); activeScope.current=scope;
+  useEffect(()=>{activeScope.current=scope;return()=>{activeScope.current="";};},[scope]);
   const inProgress = useRef<string | null>(null);
   const busy = exportState.scope===scope && exportState.busy;
   const disabled = loading || error || !businessUnitId || !items.length || busy;
@@ -51,12 +52,16 @@ export default function DocumentsTab() {
   };
   const [sheetBusy,setSheetBusy]=useState(false);
   const downloadSheets=async(kind:"templates"|"export")=>{
-    if(sheetBusy)return;setSheetBusy(true);
+    if(sheetBusy || (kind==="export" && !businessUnitId))return;
+    const requestScope=scope;setSheetBusy(true);
     try{
       const {templateFiles,exportFiles,zipFiles}=await import("@/utils/recipeSheets");
+      if(activeScope.current!==requestScope)return;
       const files=kind==="templates"?templateFiles():await exportFiles(businessUnitId!);
-      downloadBlob(new Blob([await zipFiles(files)],{type:"application/zip"}),`${safeFileName(unitName||"pop9")}-${kind==="templates"?"modelos-fichas-tecnicas":"fichas-tecnicas"}.zip`);
-    }catch(error){toast.error(error instanceof Error?error.message:"Não foi possível gerar as planilhas.");}
+      const bytes=await zipFiles(files);
+      if(activeScope.current!==requestScope)return;
+      downloadBlob(new Blob([bytes],{type:"application/zip"}),`${safeFileName(unitName||"pop9")}-${kind==="templates"?"modelos-fichas-tecnicas":"fichas-tecnicas"}.zip`);
+    }catch(error){if(activeScope.current===requestScope)toast.error(error instanceof Error?error.message:"Não foi possível gerar as planilhas.");}
     finally{setSheetBusy(false);}
   };
   const visibleItems=items.filter(item=>`${item.name} ${item.categoryLabel}`.toLocaleLowerCase("pt-BR").includes(search.toLocaleLowerCase("pt-BR")));
@@ -98,7 +103,7 @@ export default function DocumentsTab() {
       </div>
     </section>
     <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-5">
-      <div><h3 className="flex items-center gap-2 font-semibold"><FileText className="h-5 w-5 text-primary" />Relatórios</h3><p className="text-sm text-muted-foreground">Vendas, pedidos, pagamentos e inadimplência, com exportação em CSV.</p></div>
+      <div><h3 className="flex items-center gap-2 font-semibold"><FileText className="h-5 w-5 text-primary" />Relatórios</h3><p className="text-sm text-muted-foreground">Vendas, pedidos e pagamentos da unidade. Os registros de inadimplência podem ser exportados em CSV.</p></div>
       <Button variant="outline" asChild><Link to="/relatorios">Abrir relatórios</Link></Button>
     </section>
     <section className="space-y-3"><h3 className="font-semibold">Outros documentos</h3><p className="text-sm text-muted-foreground">As informações operacionais continuam nos módulos de origem. O upload e o armazenamento de documentos administrativos ainda estão em preparação.</p>
