@@ -1,3 +1,8 @@
+-- This older fix has a future timestamp in main. Preserve the later atomic
+-- implementation when replaying migrations in filename order.
+do $stock_guard$ begin
+  if to_regprocedure('public.produce_stock_batch(uuid,uuid,jsonb)') is null then
+    execute $legacy_stock_ddl$
 -- Corrige o crédito e o consumo de produção preservando o escopo por unidade.
 create or replace function public.production_batch_credits_stock()
 returns trigger language plpgsql security definer set search_path to 'public'
@@ -33,3 +38,6 @@ begin
   return new;
 end;
 $$;
+$legacy_stock_ddl$;
+  end if;
+end $stock_guard$;

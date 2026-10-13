@@ -8,6 +8,8 @@ import { useStockData, type RawMaterial, type ItemType } from "@/hooks/useStockD
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import { toast } from "sonner";
 import MenuPrefixField from '@/components/admin/MenuPrefixField';
+import type { MenuRecipeDraft, RecipeMaterialDraft } from "@/lib/recipeDraft";
+import { useRef } from "react";
 import { STOCK_UNITS } from '@/lib/stockUnits';
 import { toStockQuantity } from '@/lib/stockQuantityConversion';
 
@@ -34,7 +36,7 @@ interface RecipeRow extends MaterialInput {
 export interface RecipeBuilderHandle {
   validate: () => boolean;
   importFromMenuItem: (sourceMenuItemId: string) => Promise<boolean>;
-  commit: (menuItemId: string) => Promise<boolean>;
+  getDraft: () => MenuRecipeDraft[];
 }
 interface Props { menuItemId?: string; menuItemName?: string; disabled?: boolean }
 
@@ -96,8 +98,10 @@ function MaterialFields({ input, materials, disabled, base = false, onChange, on
 }
 
 const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menuItemName, disabled = false }, ref) => {
-  const { rawMaterials, createRawMaterialRecord, createRecipe } = useStockData();
+  const { rawMaterials, ready: stockReady, savePreparation } = useStockData();
   const { businessUnitId } = useCurrentBusinessUnit();
+  const materialsRef = useRef(rawMaterials); materialsRef.current = rawMaterials;
+  const currentUnit = useRef(businessUnitId); currentUnit.current = businessUnitId;
   const [rows, setRows] = useState<RecipeRow[]>([]);
   const [loaded, setLoaded] = useState(!menuItemId);
   const [loadError, setLoadError] = useState("");
@@ -108,7 +112,9 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
   const [collapsedRecipes, setCollapsedRecipes] = useState<string[]>([]);
 
   useEffect(() => {
-    if (!menuItemId) { setLoaded(true); return; }
+    setRows([]);
+    if (!menuItemId) { setLoaded(true); setLoadError(""); return; }
+    if (!stockReady) { setLoaded(false); return; }
     let cancelled = false;
     setLoaded(false);
     setLoadError("");
@@ -123,99 +129,49 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
       recipeRequest(),
       supabase.from("menu_item_ingredients").select("id, name").eq("menu_item_id", menuItemId),
     ]).then(([recipeResult, ingredientResult]) => {
-        if (cancelled) return;
+        if (cancelled || currentUnit.current !== businessUnitId) return;
         const error = recipeResult.error ?? ingredientResult.error;
         if (error) { setLoadError("Não foi possível carregar a ficha técnica: " + error.message); return; }
-        const recipeRows = (recipeResult.data ?? []).map(item => { const loaded = item as typeof item & { display_unit?: string | null; display_quantity?: number | null; transformacao?: string }; const transformation = (loaded.transformacao ?? "desconto_direto") as Transformation; const material = rawMaterials.find(m => m.id === item.raw_material_id); return { ...emptyRow(), key: item.id, rawMaterialId: item.raw_material_id, newUnit: loaded.display_unit || material?.unit || "un", quantity: String(loaded.display_quantity ?? item.quantity), transformation, isProduced: transformation === "producao" }; });
+        const recipeRows = (recipeResult.data ?? []).map(item => { const loaded = item as typeof item & { display_unit?: string | null; display_quantity?: number | null; transformacao?: string }; const transformation = (loaded.transformacao ?? "desconto_direto") as Transformation; const material = materialsRef.current.find(m => m.id === item.raw_material_id); return { ...emptyRow(), key: item.id, rawMaterialId: item.raw_material_id, newUnit: loaded.display_unit || material?.unit || "un", quantity: String(loaded.display_quantity ?? item.quantity), transformation, isProduced: transformation !== "desconto_direto", recipeCreated: true }; });
         const linkedIds = new Set(recipeRows.map(row => row.rawMaterialId));
         const ingredientRows = (ingredientResult.data ?? [])
-          .filter(ingredient => !rawMaterials.some(material => linkedIds.has(material.id) && material.name.trim().toLowerCase() === ingredient.name.trim().toLowerCase()))
+          .filter(ingredient => !materialsRef.current.some(material => linkedIds.has(material.id) && material.name.trim().toLowerCase() === ingredient.name.trim().toLowerCase()))
           .map(ingredient => {
-            const material = rawMaterials.find(item => item.name.trim().toLowerCase() === ingredient.name.trim().toLowerCase());
+            const material = materialsRef.current.find(item => item.name.trim().toLowerCase() === ingredient.name.trim().toLowerCase());
             return { ...emptyRow(), key: crypto.randomUUID(), rawMaterialId: material?.id ?? "", newName: material ? "" : ingredient.name, newUnit: material?.unit ?? "un" };
           });
         setRows([...recipeRows, ...ingredientRows]);
         setLoaded(true);
       });
     return () => { cancelled = true; };
-  }, [menuItemId, retry, rawMaterials]);
+  }, [menuItemId, businessUnitId, retry, stockReady]);
 
   const updateRow = (key: string, patch: Partial<RecipeRow>) =>
     setRows(previous => previous.map(row => row.key === key ? { ...row, ...patch } : row));
   const updateSubInput = (rowKey: string, key: string, patch: Partial<MaterialInput>) =>
     setRows(previous => previous.map(row => row.key === rowKey ? { ...row, subInputs: row.subInputs.map(input => input.key === key ? { ...input, ...patch } : input) } : row));
 
-  const saveTechnicalDocument = async (entityType: "menu_item" | "raw_material", entityId: string, document: Record<string, unknown>) => {
-    if (!businessUnitId) return;
-    try {
-      const latest = await supabase.from("technical_documents").select("revision")
-        .eq("business_unit_id", businessUnitId).eq("document_type", "ficha_tecnica")
-        .eq("entity_type", entityType).eq("entity_id", entityId).order("revision", { ascending: false }).limit(1);
-      const revision = Number(latest.data?.[0]?.revision ?? 0) + 1;
-      const { error } = await supabase.from("technical_documents").insert({
-        business_unit_id: businessUnitId, document_type: "ficha_tecnica", entity_type: entityType,
-        entity_id: entityId, revision, status: "draft", document: JSON.parse(JSON.stringify(document)),
-      });
-      if (error) toast.error("Ficha salva, mas o documento JSON não foi atualizado: " + error.message);
-    } catch (error) {
-      toast.error("Ficha salva, mas o documento JSON ainda não está disponível neste ambiente: " + (error instanceof Error ? error.message : String(error)));
-    }
-  };
-
+  const materialDraft = (input: MaterialInput): RecipeMaterialDraft => ({
+    rawMaterialId: input.rawMaterialId, newName: input.newName.trim(), newUnit: input.newUnit,
+    quantity: Number(input.quantity),
+  });
+  const rowDraft = (row: RecipeRow, includeSaved = false): MenuRecipeDraft => ({ ...materialDraft(row), transformation: row.transformation,
+    preparation: row.isProduced && (includeSaved || !row.recipeCreated) ? {
+      requestId: row.key, outputQuantity: Number(row.outputQuantity), inputs: row.subInputs.map(materialDraft),
+    } : null,
+  });
   const saveProducedRecipe = async (row: RecipeRow) => {
     if (savingRecipe || row.recipeCreated || !businessUnitId || !loaded) return;
-    const valid = (input: MaterialInput) => (input.rawMaterialId || input.newName.trim()) && positive(input.quantity) && STOCK_UNITS.includes(input.newUnit as typeof STOCK_UNITS[number]);
-    if (!valid(row) || !positive(row.outputQuantity) || !row.subInputs.length || row.subInputs.some(input => !valid(input))) {
-      toast.error("Informe nome, quantidade, unidade, rendimento e todos os insumos-base da receita.");
-      return;
+    if (!positive(row.outputQuantity) || !row.subInputs.length || row.subInputs.some(input => !positive(input.quantity))) {
+      toast.error("Informe rendimento e todos os insumos-base com quantidade maior que zero."); return;
     }
     setSavingRecipe(row.key);
     try {
-      const resolve = async (input: MaterialInput, itemType: ItemType): Promise<string | null> =>
-        input.rawMaterialId || await createRawMaterialRecord({
-          name: input.newName.trim(), unit: input.newUnit, itemType, minStock: 0,
-        });
-      // O cadastro de saída é teórico. Nenhum lote ou saldo é criado aqui.
-      const outputId = await resolve(row, "semiacabado");
-      if (!outputId) return;
-      updateRow(row.key, { rawMaterialId: outputId });
-      const inputs: { rawMaterialId: string; quantity: number }[] = [];
-      for (const input of row.subInputs) {
-        const id = await resolve(input, "insumo");
-        if (!id) return;
-        const stockUnit = rawMaterials.find(m => m.id === id)?.unit ?? input.newUnit;
-        const quantity = toStockQuantity(Number(input.quantity), input.newUnit, stockUnit);
-        if (quantity === null) {
-          toast.error(`Unidade incompatível para o insumo-base: ${input.newName || rawMaterials.find(m => m.id === id)?.name || id}.`);
-          return;
-        }
-        inputs.push({ rawMaterialId: id, quantity });
-        updateSubInput(row.key, input.key, { rawMaterialId: id });
-      }
-      const outputName = row.newName.trim() || rawMaterials.find(m => m.id === outputId)?.name || "Item produzido";
-      const created = await createRecipe({
-        name: `Receita — ${outputName}`, outputRawMaterialId: outputId,
-        outputQuantity: Number(row.outputQuantity), shelfLifeDays: null,
-        tipo: row.transformation === "porcionamento" ? "porcionamento" : "producao", inputs,
-      });
-      if (!created) return;
-      updateRow(row.key, { recipeCreated: true });
+      const outputId = await savePreparation(rowDraft(row, true));
+      if (!outputId || currentUnit.current !== businessUnitId) return;
+      updateRow(row.key, { rawMaterialId: outputId, recipeCreated: true });
       setCollapsedRecipes(previous => [...previous, row.key]);
-      await saveTechnicalDocument("raw_material", outputId, {
-        schema_version: 1, document_type: "ficha_tecnica", status: "draft", revision: 1,
-        output: { type: "raw_material", id: outputId, name: outputName, unit: row.newUnit, quantity: Number(row.outputQuantity) },
-        ingredients: inputs.map(input => ({
-          raw_material_id: input.rawMaterialId,
-          name: rawMaterials.find(m => m.id === input.rawMaterialId)?.name || row.subInputs.find(m => m.rawMaterialId === input.rawMaterialId)?.newName || "",
-          quantity: input.quantity,
-          unit: rawMaterials.find(m => m.id === input.rawMaterialId)?.unit || row.subInputs.find(m => m.rawMaterialId === input.rawMaterialId)?.newUnit || "un",
-          process: "desconto_direto",
-        })),
-      });
-      toast.success("Ficha técnica de produção salva. O estoque só será movimentado após produzir.");
-    } finally {
-      setSavingRecipe(null);
-    }
+    } finally { setSavingRecipe(null); }
   };
 
   const validate = () => {
@@ -225,7 +181,7 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
     const validMaterial = (input: MaterialInput) => (input.rawMaterialId || input.newName.trim()) && STOCK_UNITS.some(u => u === input.newUnit) && positive(input.quantity);
     for (const [index, row] of rows.entries()) {
       if (!validMaterial(row)) return fail(`Insumo ${index + 1}: informe nome, unidade de medida e quantidade maior que zero.`);
-      if (row.isProduced && (!positive(row.outputQuantity) || !row.subInputs.length || row.subInputs.some(input => !validMaterial(input))))
+      if (row.isProduced && !row.recipeCreated && (!positive(row.outputQuantity) || !row.subInputs.length || row.subInputs.some(input => !validMaterial(input))))
         return fail(`Receita do insumo ${index + 1}: informe a quantidade de referência e os insumos-base com nome, unidade e quantidade maior que zero.`);
     }
     return true;
@@ -239,6 +195,7 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
         supabase.from("menu_items").select("id").eq("id", sourceMenuItemId).eq("business_unit_id", businessUnitId).single(),
         supabase.from("recipe_items").select("raw_material_id,quantity,display_quantity,display_unit,transformacao").eq("menu_item_id", sourceMenuItemId),
       ]);
+      if (currentUnit.current !== businessUnitId) return false;
       if (source.error || lines.error) {
         toast.error("Não foi possível carregar a ficha de Documentos.");
         return false;
@@ -259,112 +216,7 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
       toast.success("Ficha carregada. Revise e salve para vincular ao item.");
       return true;
     },
-    commit: async targetMenuItemId => {
-      if (!validate()) return false;
-      const resolve = async (input: MaterialInput, itemType: ItemType, onCreated: (id: string) => void) => {
-        if (input.rawMaterialId) return input.rawMaterialId;
-        const id = await createRawMaterialRecord({ name: input.newName.trim(), unit: input.newUnit.trim(), itemType, minStock: 0 });
-        if (id) onCreated(id);
-        return id;
-      };
-      const payload: { id: string; menu_item_id: string; raw_material_id: string; quantity: number; display_quantity: number; display_unit: string; transformacao: Transformation }[] = [];
-      const producedDocuments: { id: string; row: RecipeRow; inputs: { id: string; quantity: number }[] }[] = [];
-      for (const row of rows) {
-        const createsOutput = row.transformation !== "desconto_direto";
-        const outputItemType: ItemType = "semiacabado";
-        const id = await resolve(row, createsOutput ? outputItemType : "insumo", id => updateRow(row.key, { rawMaterialId: id }));
-        if (!id) return false;
-        if (row.isProduced && row.rawMaterialId) {
-          await supabase.from("raw_materials").update({ tipo: outputItemType })
-            .eq("id", id).eq("business_unit_id", businessUnitId);
-        }
-        if (row.isProduced && !row.recipeCreated) {
-          const inputs: { rawMaterialId: string; quantity: number }[] = [];
-          for (const input of row.subInputs) {
-            const baseId = await resolve(input, "insumo", id => updateSubInput(row.key, input.key, { rawMaterialId: id }));
-            if (!baseId) return false;
-            inputs.push({ rawMaterialId: baseId, quantity: Number(input.quantity) });
-          }
-          producedDocuments.push({ id, row, inputs: inputs.map(input => ({ id: input.rawMaterialId, quantity: input.quantity })) });
-          const outputName = row.newName.trim() || rawMaterials.find(material => material.id === id)?.name || "Componente produzido";
-          if (!await createRecipe({ name: `Receita — ${outputName}`, outputRawMaterialId: id,
-          outputQuantity: Number(row.outputQuantity), shelfLifeDays: null,
-            tipo: row.transformation === "porcionamento" ? "porcionamento" : "producao", inputs })) return false;
-          updateRow(row.key, { recipeCreated: true });
-        }
-        const stockUnit = rawMaterials.find(material => material.id === id)?.unit ?? row.newUnit;
-        const normalized = toStockQuantity(Number(row.quantity), row.newUnit, stockUnit);
-        if (normalized === null) {
-          toast.error(`A receita usa ${row.newUnit}, mas o cadastro de ${row.newName || rawMaterials.find(m => m.id === id)?.name || "insumo"} está em ${stockUnit}. Conclua a definição da unidade-base antes de salvar: não é seguro converter essas medidas automaticamente.`);
-          return false;
-        }
-        payload.push({ id: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(row.key) ? row.key : crypto.randomUUID(), menu_item_id: targetMenuItemId, raw_material_id: id, quantity: normalized, display_quantity: Number(row.quantity), display_unit: row.newUnit, transformacao: row.transformation });
-      }
-      // Save before removing obsolete rows so a failed write does not erase the
-      // existing recipe. Stable row IDs also make a retry update the same rows.
-      const existing = await supabase.from("recipe_items").select("id").eq("menu_item_id", targetMenuItemId);
-      if (existing.error) { toast.error("Erro ao consultar ficha técnica: " + existing.error.message); return false; }
-      if (payload.length) {
-        let { error } = await supabase.from("recipe_items").upsert(payload, { onConflict: "id" });
-        if (error && /transformacao|column .* does not exist|schema cache/i.test(error.message)) {
-          const legacyPayload = payload.map(({ transformacao: _transformacao, ...item }) => item);
-          ({ error } = await supabase.from("recipe_items").upsert(legacyPayload, { onConflict: "id" }));
-        }
-        if (error) { toast.error("Erro ao salvar ficha técnica: " + error.message); return false; }
-      }
-      const retained = new Set(payload.map(item => item.id));
-      const removed = (existing.data ?? []).filter(item => !retained.has(item.id)).map(item => item.id);
-      if (removed.length) {
-        const { error } = await supabase.from("recipe_items").delete().eq("menu_item_id", targetMenuItemId).in("id", removed);
-        if (error) { toast.error("Erro ao remover insumos da ficha técnica: " + error.message); return false; }
-      }
-      // A confirmação depende de uma leitura real do banco, não apenas do retorno do upsert.
-      const verified = await supabase.from("recipe_items")
-        .select("id,raw_material_id,quantity").eq("menu_item_id", targetMenuItemId);
-      if (verified.error) {
-        toast.error("Ficha enviada, mas não foi possível confirmar a gravação: " + verified.error.message);
-        return false;
-      }
-      const actual = verified.data ?? [];
-      const expected = new Map(payload.map(line => [line.raw_material_id, (payload.filter(p => p.raw_material_id === line.raw_material_id)).reduce((sum,p) => sum + p.quantity, 0)]));
-      const recorded = new Map<string,number>();
-      for (const line of actual) recorded.set(line.raw_material_id, (recorded.get(line.raw_material_id) ?? 0) + Number(line.quantity));
-      if (actual.length !== payload.length || [...expected].some(([id,quantity]) => Math.abs((recorded.get(id) ?? NaN) - quantity) > 0.000001)) {
-        toast.error("A ficha técnica não foi confirmada no banco. Mantenha o editor aberto e tente salvar novamente.");
-        return false;
-      }
-      const materialName = (id: string, fallback: string) => rawMaterials.find(material => material.id === id)?.name ?? fallback;
-      const materialUnit = (id: string, fallback: string) => rawMaterials.find(material => material.id === id)?.unit ?? fallback;
-      const ingredients = rows.map(row => {
-        const produced = producedDocuments.find(item => item.row.key === row.key);
-        return {
-          id: row.key,
-          name: materialName(row.rawMaterialId, row.newName.trim()),
-          raw_material_id: row.rawMaterialId,
-          quantity: Number(row.quantity),
-          unit: row.newUnit,
-          process: row.transformation,
-          output_type: row.transformation !== "desconto_direto" ? "semiacabado" : undefined,
-          theoretical: true,
-          recipe: produced ? {
-            yield: { quantity: Number(produced.row.outputQuantity), unit: materialUnit(produced.id, produced.row.newUnit) },
-            ingredients: produced.inputs.map(input => ({ id: input.id, name: materialName(input.id, ""), raw_material_id: input.id, quantity: input.quantity, unit: materialUnit(input.id, "un") })),
-          } : undefined,
-        };
-      });
-      await saveTechnicalDocument("menu_item", targetMenuItemId, {
-        schema_version: 1, document_type: "ficha_tecnica", status: "draft", revision: 1,
-        output: { type: "menu_item", id: targetMenuItemId, name: menuItemName ?? "", unit: "un", quantity: 1 }, ingredients,
-      });
-      for (const produced of producedDocuments) {
-        await saveTechnicalDocument("raw_material", produced.id, {
-          schema_version: 1, document_type: "ficha_tecnica", status: "draft", revision: 1,
-          output: { type: "raw_material", id: produced.id, name: materialName(produced.id, produced.row.newName.trim()), unit: materialUnit(produced.id, produced.row.newUnit), quantity: Number(produced.row.outputQuantity) },
-          ingredients: produced.inputs.map(input => ({ id: input.id, name: materialName(input.id, ""), raw_material_id: input.id, quantity: input.quantity, unit: materialUnit(input.id, "un"), process: "desconto_direto", theoretical: true })),
-        });
-      }
-      return true;
-    },
+    getDraft: () => rows.map(row => rowDraft(row)),
   }));
 
   return <section className="min-w-0 space-y-3" aria-label="Ficha técnica do item">

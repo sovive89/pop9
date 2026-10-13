@@ -1,163 +1,54 @@
 import { createRef } from "react";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import RecipeBuilder, { type RecipeBuilderHandle } from "@/components/admin/RecipeBuilder";
-
-const mocks = vi.hoisted(() => ({
-  createMaterial: vi.fn(), createRecipe: vi.fn(), error: vi.fn(), from: vi.fn(),
-  upsert: vi.fn(), remove: vi.fn(), existing: [] as { id: string }[], loadError: null as { message: string } | null,
-}));
+const mocks = vi.hoisted(() => ({ error: vi.fn(), from: vi.fn(), unit: "unit-1", loadError: null as { message: string } | null }));
 vi.mock("sonner", () => ({ toast: { error: mocks.error } }));
-vi.mock("@/hooks/useCurrentBusinessUnit", () => ({ useCurrentBusinessUnit: () => ({ businessUnitId: "unit-1" }) }));
-vi.mock("@/hooks/useStockData", () => ({ useStockData: () => ({
-  rawMaterials: [{ id: "tomato", name: "Tomate", unit: "g" }],
-  createRawMaterialRecord: mocks.createMaterial, createRecipe: mocks.createRecipe,
-}) }));
+vi.mock("@/hooks/useCurrentBusinessUnit", () => ({ useCurrentBusinessUnit: () => ({ businessUnitId: mocks.unit }) }));
+vi.mock("@/hooks/useStockData", () => ({ useStockData: () => ({ ready: true, rawMaterials: [{ id: "tomato", name: "Tomate", unit: "g" }] }) }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { from: mocks.from } }));
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  mocks.existing = [];
-  mocks.loadError = null;
-  mocks.createMaterial.mockImplementation(async ({ name }: { name: string }) => `id-${name}`);
-  mocks.createRecipe.mockResolvedValue(true);
-  mocks.upsert.mockResolvedValue({ error: null });
-  mocks.remove.mockReturnValue({ eq: () => ({ in: async () => ({ error: null }) }) });
-  mocks.from.mockImplementation(() => ({
-    select: () => ({ eq: async () => ({ data: mocks.existing, error: mocks.loadError }) }),
-    upsert: mocks.upsert, delete: mocks.remove,
-  }));
-});
+beforeEach(() => { vi.clearAllMocks(); mocks.unit="unit-1";mocks.loadError=null;
+  mocks.from.mockImplementation(() => ({ select: () => ({ eq: async () => ({ data: [], error: mocks.loadError }) }) })); });
 afterEach(cleanup);
-
 const fill = (name: string, value: string) => fireEvent.change(screen.getByLabelText(name), { target: { value } });
-function createProducedIngredient() {
+function produced() {
   fireEvent.click(screen.getByRole("button", { name: "Adicionar insumo" }));
-  fill("Nome do novo insumo", "Molho");
-  fill("Unidade de medida do insumo", "kg");
-  fill("Quantidade do insumo por item", "0.05");
+  fill("Nome do novo insumo", "Molho"); fill("Unidade de medida do insumo", "kg");fill("Quantidade do insumo por item", "0.05");
   fireEvent.click(screen.getByLabelText("É produzido: tem receita própria"));
 }
-
-describe("menu-first recipe building", () => {
-  it("shows just the ingredient name above the quantity used in the recipe", () => {
-    render(<RecipeBuilder />);
-    fireEvent.click(screen.getByRole("button", { name: "Adicionar insumo" }));
-    const ingredientSelect = screen.getByLabelText("Insumo");
-    expect(ingredientSelect.querySelector('option[value="tomato"]')).toHaveTextContent(/^Tomate$/);
-    expect(screen.getByText("Quantidade usada na receita")).toBeInTheDocument();
-    expect(screen.getByLabelText("Unidade de medida do insumo")).toBeInTheDocument();
-    expect(screen.queryByText(/saldo disponível/i)).not.toBeInTheDocument();
+describe("technical recipe draft", () => {
+  it("autocomplete reuses an existing material and its unit", () => {
+    const ref=createRef<RecipeBuilderHandle>();render(<RecipeBuilder ref={ref}/>);
+    fireEvent.click(screen.getByRole("button", {name:"Adicionar insumo"}));
+    const name=screen.getByLabelText("Nome do novo insumo");fireEvent.focus(name);fireEvent.change(name,{target:{value:"tom"}});
+    fireEvent.keyDown(name,{key:"ArrowDown"});fireEvent.keyDown(name,{key:"Enter"});
+    expect(screen.getByLabelText("Insumo")).toHaveValue("tomato");expect(screen.getByLabelText("Unidade de medida do insumo")).toHaveValue("g");
+    fill("Quantidade do insumo por item","150");expect(ref.current!.validate()).toBe(true);
+    expect(ref.current!.getDraft()).toEqual([expect.objectContaining({rawMaterialId:"tomato",quantity:150,preparation:null})]);
+    expect(mocks.from).not.toHaveBeenCalled();
   });
-  it("autocomplete selects the existing ingredient and uses its unit without creating a duplicate", async () => {
-    const ref = createRef<RecipeBuilderHandle>(); render(<RecipeBuilder ref={ref} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Adicionar insumo' }));
-    const name = screen.getByLabelText('Nome do novo insumo');
-    fireEvent.focus(name); fireEvent.change(name, { target: { value: 'tom' } });
-    fireEvent.keyDown(name, { key: 'ArrowDown' }); fireEvent.keyDown(name, { key: 'Enter' });
-    expect(screen.getByLabelText('Insumo')).toHaveValue('tomato');
-    expect(screen.getByLabelText('Unidade de medida do insumo')).toHaveValue('g');
-    expect(screen.getByLabelText('Unidade de medida do insumo')).toBeEnabled();
-    fill('Quantidade do insumo por item', '150');
-    expect(mocks.createMaterial).not.toHaveBeenCalled();
-    await act(async () => { expect(await ref.current!.commit('menu-item')).toBe(true); });
-    expect(mocks.createMaterial).not.toHaveBeenCalled();
-    expect(mocks.upsert).toHaveBeenCalledWith([expect.objectContaining({ raw_material_id: 'tomato', quantity: 150 })], { onConflict: 'id' });
+  it("includes produced material and bases in one payload without writing inventory", () => {
+    const ref=createRef<RecipeBuilderHandle>();render(<RecipeBuilder ref={ref}/>);produced();
+    fill("Nome do novo insumo-base","Tomate novo");fill("Unidade de medida do insumo-base","g");fill("Quantidade do insumo-base","800");fill("Quantidade de referência da receita","2");
+    expect(ref.current!.validate()).toBe(true);expect(ref.current!.getDraft()).toEqual([{rawMaterialId:"",newName:"Molho",newUnit:"kg",quantity:0.05, transformation:"producao",
+      preparation:{requestId:expect.any(String),outputQuantity:2,inputs:[{rawMaterialId:"",newName:"Tomate novo",newUnit:"g",quantity:800}]}}]);
+    expect(mocks.from).not.toHaveBeenCalled();
   });
-  it("converts an edited recipe unit without modifying the unit of the stock material", async () => {
-    const ref = createRef<RecipeBuilderHandle>(); render(<RecipeBuilder ref={ref} />);
-    fireEvent.click(screen.getByRole("button", { name: "Adicionar insumo" }));
-    fill("Insumo", "tomato");
-    fill("Unidade de medida do insumo", "kg");
-    fill("Quantidade do insumo por item", "0.15");
-    await act(async () => { expect(await ref.current!.commit("menu-item")).toBe(true); });
-    expect(mocks.upsert).toHaveBeenCalledWith([
-      expect.objectContaining({
-        raw_material_id: "tomato", quantity: 150, display_quantity: 0.15, display_unit: "kg",
-      }),
-    ], { onConflict: "id" });
-    expect(mocks.createMaterial).not.toHaveBeenCalled();
+  it("can reuse an existing base material", () => {
+    const ref=createRef<RecipeBuilderHandle>();render(<RecipeBuilder ref={ref}/>);produced();fill("Insumo-base","tomato");fill("Quantidade do insumo-base","250");
+    expect(screen.getByLabelText("Unidade de medida do insumo-base")).toHaveValue("g");expect(ref.current!.validate()).toBe(true);
+    expect(ref.current!.getDraft()[0].preparation!.inputs[0]).toMatchObject({rawMaterialId:"tomato",quantity:250});
   });
-
-  it("refuses incompatible units instead of silently reducing stock in the wrong dimension", async () => {
-    const ref = createRef<RecipeBuilderHandle>(); render(<RecipeBuilder ref={ref} />);
-    fireEvent.click(screen.getByRole("button", { name: "Adicionar insumo" }));
-    fill("Insumo", "tomato");
-    fill("Unidade de medida do insumo", "un");
-    fill("Quantidade do insumo por item", "2");
-    await act(async () => { expect(await ref.current!.commit("menu-item")).toBe(false); });
-    expect(mocks.upsert).not.toHaveBeenCalled();
-    expect(mocks.error).toHaveBeenCalledWith(expect.stringContaining("não é seguro converter"));
+  it("rejects nonpositive quantities before a save", () => {
+    const ref=createRef<RecipeBuilderHandle>();render(<RecipeBuilder ref={ref}/>);produced();fill("Nome do novo insumo-base","Tomate");fill("Quantidade do insumo-base","0");
+    expect(ref.current!.validate()).toBe(false);expect(mocks.error).toHaveBeenCalled();expect(mocks.from).not.toHaveBeenCalled();
   });
-
-  it("opens usable base ingredient fields and creates theoretical ingredients without stock movements", async () => {
-    const ref = createRef<RecipeBuilderHandle>();
-    render(<RecipeBuilder ref={ref} />);
-    createProducedIngredient();
-    expect(screen.getByLabelText("Nome do novo insumo-base")).toBeVisible();
-    fill("Nome do novo insumo-base", "Tomate novo");
-    fill("Unidade de medida do insumo-base", "g");
-    fill("Quantidade do insumo-base", "800");
-    fill("Quantidade de referência da receita", "2");
-    let result: boolean;
-    await act(async () => { result = await ref.current!.commit("menu-item"); });
-    expect(result!).toBe(true);
-    expect(mocks.createMaterial).toHaveBeenCalledWith({ name: "Molho", unit: "kg", itemType: "semiacabado", minStock: 0 });
-    expect(mocks.createMaterial).toHaveBeenCalledWith({ name: "Tomate novo", unit: "g", itemType: "insumo", minStock: 0 });
-    expect(mocks.createRecipe).toHaveBeenCalledWith(expect.objectContaining({
-      outputRawMaterialId: "id-Molho", outputQuantity: 2, inputs: [{ rawMaterialId: "id-Tomate novo", quantity: 800 }],
-    }));
-    expect(mocks.upsert).toHaveBeenCalledWith([expect.objectContaining({ menu_item_id: "menu-item", raw_material_id: "id-Molho", quantity: 0.05 })], { onConflict: "id" });
-    expect(mocks.from.mock.calls.every(([table]) => ["recipe_items", "raw_materials", "technical_documents"].includes(table))).toBe(true);
+  it("blocks saving when the previous recipe cannot be read", async () => {
+    mocks.loadError={message:"Não autorizado"};const ref=createRef<RecipeBuilderHandle>();render(<RecipeBuilder ref={ref} menuItemId="existing"/>);
+    await waitFor(()=>expect(screen.getByRole("alert")).toHaveTextContent("Não autorizado"));expect(ref.current!.validate()).toBe(false);
   });
-
-  it("reuses an existing base ingredient and shows its registered unit", async () => {
-    const ref = createRef<RecipeBuilderHandle>();
-    render(<RecipeBuilder ref={ref} />);
-    createProducedIngredient();
-    fill("Insumo-base", "tomato");
-    expect(screen.getByLabelText("Unidade de medida do insumo-base")).toHaveValue("g");
-    expect(screen.getByLabelText("Unidade de medida do insumo-base")).toBeEnabled();
-    fill("Quantidade do insumo-base", "250");
-    await act(async () => { await ref.current!.commit("menu-item"); });
-    expect(mocks.createMaterial).toHaveBeenCalledTimes(1);
-    expect(mocks.createRecipe).toHaveBeenCalledWith(expect.objectContaining({ inputs: [{ rawMaterialId: "tomato", quantity: 250 }] }));
-  });
-
-  it("rejects missing or non-positive quantities before saving any data", async () => {
-    const ref = createRef<RecipeBuilderHandle>();
-    render(<RecipeBuilder ref={ref} />);
-    createProducedIngredient();
-    fill("Nome do novo insumo-base", "Tomate");
-    fill("Quantidade do insumo-base", "0");
-    expect(ref.current!.validate()).toBe(false);
-    await act(async () => { expect(await ref.current!.commit("menu-item")).toBe(false); });
-    expect(mocks.error).toHaveBeenCalled();
-    expect(mocks.createMaterial).not.toHaveBeenCalled();
-    expect(mocks.upsert).not.toHaveBeenCalled();
-  });
-
-  it("preserves the previous recipe when loading fails", async () => {
-    mocks.loadError = { message: "Não autorizado" };
-    const ref = createRef<RecipeBuilderHandle>();
-    render(<RecipeBuilder ref={ref} menuItemId="existing-menu-item" />);
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Não autorizado"));
-    expect(await ref.current!.commit("existing-menu-item")).toBe(false);
-    expect(mocks.remove).not.toHaveBeenCalled();
-  });
-
-  it("does not erase saved rows when an upsert fails and retries without duplicating created ingredients", async () => {
-    mocks.existing = [{ id: "old-row" }];
-    mocks.upsert.mockResolvedValueOnce({ error: { message: "Falha de rede" } });
-    const ref = createRef<RecipeBuilderHandle>();
-    render(<RecipeBuilder ref={ref} />);
-    fireEvent.click(screen.getByRole("button", { name: "Adicionar insumo" }));
-    fill("Nome do novo insumo", "Farinha");
-    fill("Quantidade do insumo por item", "0.1");
-    await act(async () => { expect(await ref.current!.commit("menu-item")).toBe(false); });
-    expect(mocks.remove).not.toHaveBeenCalled();
-    await act(async () => { expect(await ref.current!.commit("menu-item")).toBe(true); });
-    expect(mocks.createMaterial).toHaveBeenCalledTimes(1);
-    expect(mocks.remove).toHaveBeenCalledTimes(1);
+  it("clears a new-item recipe when changing units", () => {
+    const ref=createRef<RecipeBuilderHandle>();const view=render(<RecipeBuilder ref={ref}/>);produced();mocks.unit="unit-2";view.rerender(<RecipeBuilder ref={ref}/>);
+    expect(ref.current!.getDraft()).toEqual([]);
   });
 });

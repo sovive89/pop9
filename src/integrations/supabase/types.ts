@@ -1861,6 +1861,10 @@ export type Database = {
       }
     }
     Views: {
+      stock_lot_balances: {
+        Row: Database["public"]["Tables"]["lotes"]["Row"] & { quantidade_restante: number }
+        Relationships: []
+      }
       client_balances: {
         Row: {
           client_id: string | null
@@ -1954,6 +1958,11 @@ export type Database = {
       }
     }
     Functions: {
+      save_stock_preparation: { Args: { p_unit: string; p_data: Json }; Returns: string }
+      save_menu_item_with_recipe: { Args: { p_unit: string; p_item_id: string; p_data: Json }; Returns: string }
+      create_stock_recipe: { Args: { p_unit: string; p_recipe_id: string; p_data: Json }; Returns: string }
+      register_stock_purchase: { Args: { p_unit: string; p_lote_id: string; p_data: Json }; Returns: string }
+      produce_stock_batch: { Args: { p_unit: string; p_batch_id: string; p_data: Json }; Returns: string }
       set_unit_operation: { Args: { p_unit: string; p_open: boolean }; Returns: Json }
       // Requires deployment of the versioned purchase-lot migrations.
       manage_purchase_lot: {
