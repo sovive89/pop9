@@ -113,9 +113,6 @@ const StockTab = () => {
   const [pPurchaseUnit, setPPurchaseUnit] = useState("");
   const [pConversion, setPConversion] = useState("1");
   const [pSupplierId, setPSupplierId] = useState<string>("");
-  const [pIsBox, setPIsBox] = useState(false);
-  const [pBoxCount, setPBoxCount] = useState("");
-  const [pUnitsPerBox, setPUnitsPerBox] = useState("");
   const [pValidade, setPValidade] = useState("");
   const [pDataEntrada, setPDataEntrada] = useState(() => new Date().toLocaleDateString("en-CA"));
   const [pNumeroLote, setPNumeroLote] = useState("");
@@ -189,9 +186,6 @@ const StockTab = () => {
     setPPurchaseUnit("");
     setPConversion("1");
     setPSupplierId("");
-    setPIsBox(false);
-    setPBoxCount("");
-    setPUnitsPerBox("");
     setPValidade("");
     setPDataEntrada(new Date().toLocaleDateString("en-CA"));
     setPNumeroLote("");
@@ -255,9 +249,6 @@ const StockTab = () => {
     setPUnitCost(previous?.custoTotal != null && previous?.quantidadeCompra
       ? String(previous.custoTotal / previous.quantidadeCompra) : "");
     setPSupplierId(previous?.fornecedorId || "");
-    setPIsBox(previous?.caixas != null);
-    setPBoxCount(previous?.caixas != null ? String(previous.caixas) : "");
-    setPUnitsPerBox(previous?.conteudoPorCaixa != null ? String(previous.conteudoPorCaixa) : "");
     setPValidade(previous?.validade || "");
     setPNumeroLote(""); // Never reuse the previous lot identifier.
     setEditingLotId(null);
@@ -279,9 +270,6 @@ const StockTab = () => {
     setPValidade(lot.validade || "");
     setPDataEntrada(lot.dataEntrada.slice(0, 10));
     setPNumeroLote(lot.numeroLote);
-    setPIsBox(lot.caixas != null);
-    setPBoxCount(lot.caixas == null ? "" : String(lot.caixas));
-    setPUnitsPerBox(lot.conteudoPorCaixa == null ? "" : String(lot.conteudoPorCaixa));
     setPurchaseOpen(true);
   };
 
@@ -291,7 +279,6 @@ const StockTab = () => {
     const conversionFactor = Number(pConversion);
     if (!Number.isFinite(purchaseQuantity) || purchaseQuantity <= 0 ||
         !Number.isFinite(conversionFactor) || conversionFactor <= 0) return;
-    if (pIsBox && (!(Number(pBoxCount) > 0) || !(Number(pUnitsPerBox) > 0))) return;
     const normalizedQuantity = purchaseQuantity * conversionFactor;
     const totalCost = pTotalCost === "" ? null : Number(pTotalCost);
     if (totalCost !== null && (!Number.isFinite(totalCost) || totalCost < 0)) return;
@@ -305,8 +292,9 @@ const StockTab = () => {
           fornecedor_id: pSupplierId || null,
           validade: pValidade || null,
           numero_lote: pNumeroLote.trim(),
-          caixas: pIsBox ? Number(pBoxCount) : null,
-          conteudo_por_caixa: pIsBox ? Number(pUnitsPerBox) : null,
+          // Preserve historical packaging details when editing an existing lot.
+          caixas: lotes.find(l => l.id === editingLotId)?.caixas ?? null,
+          conteudo_por_caixa: lotes.find(l => l.id === editingLotId)?.conteudoPorCaixa ?? null,
         })
       : await registerPurchase({
       rawMaterialId: purchaseTarget,
@@ -317,8 +305,6 @@ const StockTab = () => {
       totalCost,
       unitCost: totalCost === null ? null : totalCost / normalizedQuantity,
       supplierId: pSupplierId || null,
-      boxCount: pIsBox ? Number(pBoxCount) : undefined,
-      unitsPerBox: pIsBox ? Number(pUnitsPerBox) : undefined,
       validade: pValidade || null,
       dataEntrada: pDataEntrada,
       numeroLote: pNumeroLote.trim() || null,
@@ -778,16 +764,6 @@ const StockTab = () => {
                 Para caixa, pacote ou unidade sem equivalência conhecida, informe a conversão; o sistema não estima pesos.
               </p>
             </div>
-            <button data-tooltip="Informe a embalagem em caixas e a conversão para a unidade do estoque." type="button" onClick={() => setPIsBox((v) => !v)}
-              className="w-full flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm">
-              <Package className="h-4 w-4" /> {pIsBox ? "✓ " : ""}Detalhar embalagem em caixas (opcional)
-            </button>
-            {pIsBox && <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2"><Label>Nº de caixas</Label>
-                <Input type="number" min="0" step="any" value={pBoxCount} onChange={(e) => setPBoxCount(e.target.value)} /></div>
-              <div className="space-y-2"><Label>Conteúdo por caixa</Label>
-                <Input type="number" min="0" step="any" value={pUnitsPerBox} onChange={(e) => setPUnitsPerBox(e.target.value)} /></div>
-            </div>}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Custo unitário (R$/{pPurchaseUnit || "un"})</Label>
