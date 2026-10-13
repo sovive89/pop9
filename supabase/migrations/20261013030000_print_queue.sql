@@ -111,6 +111,7 @@ begin
     raise exception 'Sem permissão para alterar a impressão desta unidade' using errcode = '42501';
   end if;
   if p_mode not in ('device', 'station') then raise exception 'Modo de impressão inválido'; end if;
+  perform pg_catalog.set_config('pop9.unit_settings', 'on', true);
   update public.business_units set print_mode = p_mode where id = p_unit;
   if not found then raise exception 'Unidade não encontrada'; end if;
   return p_mode;
