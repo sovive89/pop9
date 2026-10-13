@@ -46,7 +46,7 @@ describe("menu-first recipe building", () => {
     const ingredientSelect = screen.getByLabelText("Insumo");
     expect(ingredientSelect.querySelector('option[value="tomato"]')).toHaveTextContent(/^Tomate$/);
     expect(screen.getByText("Quantidade usada na receita")).toBeInTheDocument();
-    expect(screen.getByText("Unidade de medida")).toBeInTheDocument();
+    expect(screen.getByLabelText("Unidade de medida do insumo")).toBeInTheDocument();
     expect(screen.queryByText(/saldo disponível/i)).not.toBeInTheDocument();
   });
   it("autocomplete selects the existing ingredient and uses its unit without creating a duplicate", async () => {
@@ -57,13 +57,39 @@ describe("menu-first recipe building", () => {
     fireEvent.keyDown(name, { key: 'ArrowDown' }); fireEvent.keyDown(name, { key: 'Enter' });
     expect(screen.getByLabelText('Insumo')).toHaveValue('tomato');
     expect(screen.getByLabelText('Unidade de medida do insumo')).toHaveValue('g');
-    expect(screen.getByLabelText('Unidade de medida do insumo')).toBeDisabled();
+    expect(screen.getByLabelText('Unidade de medida do insumo')).toBeEnabled();
     fill('Quantidade do insumo por item', '150');
     expect(mocks.createMaterial).not.toHaveBeenCalled();
     await act(async () => { expect(await ref.current!.commit('menu-item')).toBe(true); });
     expect(mocks.createMaterial).not.toHaveBeenCalled();
     expect(mocks.upsert).toHaveBeenCalledWith([expect.objectContaining({ raw_material_id: 'tomato', quantity: 150 })], { onConflict: 'id' });
   });
+  it("converts an edited recipe unit without modifying the unit of the stock material", async () => {
+    const ref = createRef<RecipeBuilderHandle>(); render(<RecipeBuilder ref={ref} />);
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar insumo" }));
+    fill("Insumo", "tomato");
+    fill("Unidade de medida do insumo", "kg");
+    fill("Quantidade do insumo por item", "0.15");
+    await act(async () => { expect(await ref.current!.commit("menu-item")).toBe(true); });
+    expect(mocks.upsert).toHaveBeenCalledWith([
+      expect.objectContaining({
+        raw_material_id: "tomato", quantity: 150, display_quantity: 0.15, display_unit: "kg",
+      }),
+    ], { onConflict: "id" });
+    expect(mocks.createMaterial).not.toHaveBeenCalled();
+  });
+
+  it("refuses incompatible units instead of silently reducing stock in the wrong dimension", async () => {
+    const ref = createRef<RecipeBuilderHandle>(); render(<RecipeBuilder ref={ref} />);
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar insumo" }));
+    fill("Insumo", "tomato");
+    fill("Unidade de medida do insumo", "un");
+    fill("Quantidade do insumo por item", "2");
+    await act(async () => { expect(await ref.current!.commit("menu-item")).toBe(false); });
+    expect(mocks.upsert).not.toHaveBeenCalled();
+    expect(mocks.error).toHaveBeenCalledWith(expect.stringContaining("não é seguro converter"));
+  });
+
   it("opens usable base ingredient fields and creates theoretical ingredients without stock movements", async () => {
     const ref = createRef<RecipeBuilderHandle>();
     render(<RecipeBuilder ref={ref} />);
@@ -91,7 +117,7 @@ describe("menu-first recipe building", () => {
     createProducedIngredient();
     fill("Insumo-base", "tomato");
     expect(screen.getByLabelText("Unidade de medida do insumo-base")).toHaveValue("g");
-    expect(screen.getByLabelText("Unidade de medida do insumo-base")).toBeDisabled();
+    expect(screen.getByLabelText("Unidade de medida do insumo-base")).toBeEnabled();
     fill("Quantidade do insumo-base", "250");
     await act(async () => { await ref.current!.commit("menu-item"); });
     expect(mocks.createMaterial).toHaveBeenCalledTimes(1);
