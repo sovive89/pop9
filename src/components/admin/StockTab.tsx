@@ -117,6 +117,7 @@ const StockTab = () => {
   const [pBoxCount, setPBoxCount] = useState("");
   const [pUnitsPerBox, setPUnitsPerBox] = useState("");
   const [pValidade, setPValidade] = useState("");
+  const [pDataEntrada, setPDataEntrada] = useState(() => new Date().toLocaleDateString("en-CA"));
   const [pNumeroLote, setPNumeroLote] = useState("");
 
   const [supName, setSupName] = useState("");
@@ -192,6 +193,7 @@ const StockTab = () => {
     setPBoxCount("");
     setPUnitsPerBox("");
     setPValidade("");
+    setPDataEntrada(new Date().toLocaleDateString("en-CA"));
     setPNumeroLote("");
     setPurchaseTarget(null);
     setEditingLotId(null);
@@ -275,6 +277,7 @@ const StockTab = () => {
     setPUnitCost(cost == null ? "" : String(cost / (lot.quantidadeCompra ?? lot.quantidadeEntrada)));
     setPSupplierId(lot.fornecedorId || "");
     setPValidade(lot.validade || "");
+    setPDataEntrada(lot.dataEntrada.slice(0, 10));
     setPNumeroLote(lot.numeroLote);
     setPIsBox(lot.caixas != null);
     setPBoxCount(lot.caixas == null ? "" : String(lot.caixas));
@@ -317,6 +320,7 @@ const StockTab = () => {
       boxCount: pIsBox ? Number(pBoxCount) : undefined,
       unitsPerBox: pIsBox ? Number(pUnitsPerBox) : undefined,
       validade: pValidade || null,
+      dataEntrada: pDataEntrada,
       numeroLote: pNumeroLote.trim() || null,
     });
     setSaving(false);
@@ -811,6 +815,10 @@ const StockTab = () => {
                 </SelectContent>
               </Select>
             </div>
+            {!editingLotId && <div className="space-y-2 border-t border-border pt-3">
+              <Label>Data de entrada do lote</Label>
+              <Input type="date" value={pDataEntrada} max={new Date().toLocaleDateString("en-CA")} onChange={(e) => setPDataEntrada(e.target.value)} />
+            </div>}
             <div className="grid grid-cols-2 gap-3 border-t border-border pt-3">
               <div className="space-y-2">
                 <Label className="text-sm text-muted-foreground flex items-center gap-1">
