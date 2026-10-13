@@ -1,5 +1,5 @@
 import { createOCRResponsesRequest, extractOCRResponseText } from './ocr-responses.ts';
-import type { ModelAttachment } from './ai-text.ts';
+import type { ModelAttachment } from './document-attachment.ts';
 
 /** Responses para cardápios/catálogos: mantém o contrato próprio do ERP. */
 export async function openAIDocumentCompletion(model: string, key: string, system: string, userText: string, attachments: ModelAttachment[], fetcher: typeof fetch = fetch) {

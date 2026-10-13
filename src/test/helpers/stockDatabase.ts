@@ -40,6 +40,7 @@ export async function stockDatabase() {
   // main contains this older implementation with a future filename timestamp.
   // Replaying it must preserve the new tracked production behavior.
   await db.exec(readFileSync('supabase/migrations/20261013180000_fix_production_stock_movements_business_unit.sql','utf8'));
+  await db.exec(readFileSync('supabase/migrations/20261013230958_produced_yield_and_material_units.sql','utf8'));
   await db.exec('create trigger cancel_stock after update on orders for each row execute function order_cancel_reverts_stock()');
   return db;
 }
