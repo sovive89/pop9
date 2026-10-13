@@ -18,9 +18,6 @@ interface MaterialInput {
 }
 interface RecipeRow extends MaterialInput {
   isProduced: boolean;
-  outputQuantity: string;
-  recipeCreated: boolean;
-  subInputs: MaterialInput[];
 }
 export interface RecipeBuilderHandle {
   validate: () => boolean;
@@ -31,7 +28,7 @@ interface Props { menuItemId?: string; disabled?: boolean }
 const emptyInput = (): MaterialInput => ({
   key: crypto.randomUUID(), rawMaterialId: "", newName: "", newUnit: "un", quantity: "",
 });
-const emptyRow = (): RecipeRow => ({ ...emptyInput(), isProduced: false, outputQuantity: "1", recipeCreated: false, subInputs: [] });
+const emptyRow = (): RecipeRow => ({ ...emptyInput(), isProduced: false });
 const positive = (value: string) => Number.isFinite(Number(value)) && Number(value) > 0;
 const labelClass = "block min-w-0 space-y-1 text-xs text-muted-foreground";
 
@@ -112,9 +109,6 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, disa
 
   const updateRow = (key: string, patch: Partial<RecipeRow>) =>
     setRows(previous => previous.map(row => row.key === key ? { ...row, ...patch } : row));
-  const updateSubInput = (rowKey: string, key: string, patch: Partial<MaterialInput>) =>
-    setRows(previous => previous.map(row => row.key === rowKey ? { ...row, subInputs: row.subInputs.map(input => input.key === key ? { ...input, ...patch } : input) } : row));
-
   const validate = () => {
     const fail = (message: string) => { toast.error(message); return false; };
     if (!loaded) return fail(loadError || "Aguarde o carregamento da ficha técnica.");
@@ -191,16 +185,15 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, disa
       <Button type="button" variant="outline" size="sm" onClick={() => setRetry(value => value + 1)}>Tentar novamente</Button></div>}
     {loaded && !rows.length && <p className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">Clique em “Adicionar insumo” para começar a ficha técnica.</p>}
     {rows.map(row => {
-      const unit = rawMaterials.find(material => material.id === row.rawMaterialId)?.unit ?? row.newUnit;
       return <div key={row.key} className="min-w-0 space-y-3 rounded-lg bg-secondary/30 p-3">
         <MaterialFields input={row} materials={rawMaterials} disabled={disabled}
-          onChange={patch => updateRow(row.key, { ...patch, ...(patch.rawMaterialId !== undefined ? { isProduced: false, recipeCreated: false, subInputs: [] } : {}) })}
+          onChange={patch => updateRow(row.key, { ...patch, ...(patch.rawMaterialId !== undefined ? { isProduced: false } : {}) })}
           onRemove={() => setRows(previous => previous.filter(item => item.key !== row.key))} />
         {!row.rawMaterialId && <label className="flex items-start gap-2 text-xs text-muted-foreground">
           <input type="checkbox" disabled={disabled} checked={row.isProduced} aria-label="É produzido: tem receita própria"
             data-tooltip="Ative para um insumo preparado na casa, como molho ou massa. Cadastre abaixo os insumos-base e as quantidades da receita."
             onChange={event => updateRow(row.key, { isProduced: event.target.checked,
-              subInputs: event.target.checked && !row.subInputs.length ? [emptyInput()] : row.subInputs })} />
+              })} />
           É produzido: tem receita própria
         </label>}
         {row.isProduced && <fieldset className="min-w-0 space-y-3 border-l-2 border-primary/30 pl-3" disabled={disabled || row.recipeCreated}>
