@@ -34,7 +34,7 @@ import {
 import { useStockData, ProductionRecipeInput, ItemType, FichaTipo, alocarFefo } from "@/hooks/useStockData";
 import { STOCK_UNITS } from "@/lib/stockUnits";
 
-type SubView = "insumos" | "producao" | "fornecedores";
+type SubView = "insumos" | "produzidos" | "producao" | "fornecedores";
 
 const STATUS_LABELS: Record<string, string> = {
   valido: "Válido",
@@ -154,8 +154,17 @@ const StockTab = () => {
     [rawMaterials]
   );
 
-  const filteredMaterials = rawMaterials.filter((m) =>
-    m.name.toLowerCase().includes(search.toLowerCase())
+  // Um preparo só pertence ao estoque físico após sua primeira produção
+  // (ou quando existir um lote de origem produção). Antes, sua receita fica em Produção.
+  const isProducedMaterial = (m: (typeof rawMaterials)[number]) =>
+    m.isProduced || m.itemType === "semiacabado" || m.itemType === "produto_acabado";
+  const hasProductionHistory = (id: string) =>
+    lotes.some(l => l.rawMaterialId === id && l.origem === "producao");
+  const filteredMaterials = rawMaterials.filter(m =>
+    m.name.toLowerCase().includes(search.toLowerCase()) &&
+    (view === "produzidos"
+      ? isProducedMaterial(m) && (!m.isTheoretical || hasProductionHistory(m.id))
+      : !isProducedMaterial(m))
   );
 
   const resetMaterialForm = () => {
@@ -426,9 +435,10 @@ const StockTab = () => {
         </div>
       )}
 
-      <div className="flex gap-1 rounded-xl border border-border bg-muted/30 p-1">
+      <div className="grid grid-cols-2 gap-1 rounded-xl border border-border bg-muted/30 p-1 sm:grid-cols-4">
         {[
-          { key: "insumos" as const, label: "Insumos", icon: Package },
+          { key: "insumos" as const, label: "Insumos-base", icon: Package },
+          { key: "produzidos" as const, label: "Produzidos", icon: Boxes },
           { key: "producao" as const, label: "Produção", icon: Factory },
           { key: "fornecedores" as const, label: "Fornecedores", icon: Truck },
         ].map(({ key, label, icon: Icon }) => (
@@ -447,10 +457,12 @@ const StockTab = () => {
         ))}
       </div>
 
-      {view === "insumos" && (
+      {(view === "insumos" || view === "produzidos") && (
         <div className="space-y-3">
           <p className="text-xs text-muted-foreground">
-            Você pode cadastrar o insumo primeiro aqui, mesmo sem lote. Depois, ao montar o cardápio, selecione-o na ficha técnica para criar o vínculo; o fluxo também funciona no sentido inverso.
+            {view === "insumos"
+              ? "Insumos-base são cadastrados com saldo zero e recebem entradas por lote, cada uma com sua unidade de compra e fator de conversão editáveis."
+              : "Somente itens já produzidos aparecem aqui. Antes da primeira produção, seus cadastros e fichas permanecem na aba Produção, sem saldo físico."}
           </p>
           <div className="flex gap-2">
             <div className="relative flex-1">
@@ -462,9 +474,9 @@ const StockTab = () => {
                 className="h-10 pl-9"
               />
             </div>
-            <Button data-tooltip="Cadastre um insumo teórico, com saldo zero. Registre a compra ou produção depois." aria-label="Cadastre um insumo teórico, com saldo zero. Registre a compra ou produção depois." onClick={() => setNewMaterialOpen(true)} size="icon" className="h-10 w-10 shrink-0">
+            {view === "insumos" && <Button data-tooltip="Cadastre apenas o insumo-base teórico, com saldo zero. A unidade de compra é definida em cada lote." aria-label="Cadastrar insumo-base" onClick={() => { setMatItemType("insumo"); setNewMaterialOpen(true); }} size="icon" className="h-10 w-10 shrink-0">
               <Plus className="h-4 w-4" />
-            </Button>
+            </Button>}
           </div>
 
           {filteredMaterials.map((m) => {
@@ -490,9 +502,9 @@ const StockTab = () => {
                       {m.categoria ? `${m.categoria} · ` : ""}Custo médio: R$ {m.averageCost.toFixed(2)} / {m.unit}
                     </p>
                   </div>
-                  <Button data-tooltip="Registre uma compra real deste insumo, com quantidade, custo e dados do lote." size="sm" variant="outline" onClick={() => openPurchase(m.id)}>
+                  {view === "insumos" && <Button data-tooltip="Registre uma compra real deste insumo, com quantidade, unidade, custo e dados do lote." size="sm" variant="outline" onClick={() => openPurchase(m.id)}>
                     <Plus className="h-3.5 w-3.5 mr-1" /> Entrada
-                  </Button>
+                  </Button>}
                 </div>
                 <div className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
                   low ? "bg-destructive/10 text-destructive" : "bg-muted/50 text-foreground"
@@ -506,7 +518,7 @@ const StockTab = () => {
             );
           })}
           {filteredMaterials.length === 0 && (
-            <p className="text-center text-muted-foreground py-8">Nenhum insumo cadastrado</p>
+            <p className="text-center text-muted-foreground py-8">{view === "produzidos" ? "Nenhum item produzido ainda. Use Produção para registrar o primeiro lote." : "Nenhum insumo-base cadastrado"}</p>
           )}
         </div>
       )}
