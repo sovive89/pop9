@@ -5,6 +5,7 @@ import { Clock, CheckCircle2, ChefHat, AlertTriangle, Bell, Package, HandPlatter
 import { useDeliveredOrders } from "@/hooks/useDeliveredOrders";
 import { Button } from "@/components/ui/button";
 import { useSessionStore } from "@/hooks/useSessionStore";
+import { useUnitKds } from "@/hooks/useUnitKds";
 import {
   type PlacedOrder,
   type OrderStatus,
@@ -37,6 +38,7 @@ const statusBadge: Record<OrderStatus, string> = {
 
 const ActiveOrdersPanel = () => {
   const { sessions, markDelivered } = useSessionStore();
+  const kds = useUnitKds();
   const [view, setView] = useState<"active" | "delivered">("active");
   const [date, setDate] = useState(() => {
     const today = new Date();
@@ -215,8 +217,8 @@ const ActiveOrdersPanel = () => {
                     <span className="text-sm font-semibold text-foreground">
                       {formatCurrency(orderTotal(fo.order))}
                     </span>
-                    {isReady && (
-                      <Button data-tooltip="Confirme que este pedido foi entregue ao cliente."
+                    {(isReady || (!kds.enabled && view === "active")) && (
+                      <Button data-tooltip={kds.enabled ? "Confirme que este pedido foi entregue ao cliente." : "KDS desativado: confirme a entrega assim que o pedido sair da cozinha."}
                         size="sm"
                         variant="outline"
                         disabled={deliveringId === fo.order.id}

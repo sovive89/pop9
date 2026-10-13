@@ -19,4 +19,5 @@ export const PAGE_HELP: Record<string, string> = {
   documents: "Exporte o cardápio em PDF e pacotes para iFood/99Food, baixe imagens dos itens e consulte links operacionais.",
   qrcodes: "Gere e baixe os códigos QR para o acesso dos clientes ao estabelecimento e às mesas.",
   units: "Cadastre e organize as unidades do estabelecimento.",
+  settings: "Ative ou desative módulos da unidade: KDS da cozinha e estação de impressão central.",
 };

@@ -36,6 +36,7 @@ import PrintersTab from "@/components/admin/PrintersTab";
 import QrCodesTab from "@/components/admin/QrCodesTab";
 import BusinessUnitsTab from "@/components/admin/BusinessUnitsTab";
 import DocumentsTab from "@/components/admin/DocumentsTab";
+import SettingsTab from "@/components/admin/SettingsTab";
 import {
   SidebarProvider,
   Sidebar,
@@ -53,7 +54,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-type SectionKey = "menu" | "users" | "password" | "connections" | "hub" | "crm" | "stock" | "printers" | "qrcodes" | "units" | "documents";
+type SectionKey = "menu" | "users" | "password" | "connections" | "hub" | "crm" | "stock" | "printers" | "qrcodes" | "units" | "documents" | "settings";
 
 const SECTIONS: { key: SectionKey; label: string; icon: LucideIcon }[] = [
   { key: "menu", label: "Cardápio", icon: UtensilsCrossed },
@@ -67,6 +68,7 @@ const SECTIONS: { key: SectionKey; label: string; icon: LucideIcon }[] = [
   { key: "documents", label: "Central de Documentos", icon: FolderOpen },
   { key: "qrcodes", label: "QR Codes", icon: QrCode },
   { key: "units", label: "Unidades", icon: Building2 },
+  { key: "settings", label: "Configurações", icon: Settings },
 ];
 
 /**
@@ -87,7 +89,7 @@ function SectionMenuButton({
   const { isMobile, setOpenMobile } = useSidebar();
   const Icon = section.icon;
   const descriptions: Record<SectionKey, string> = {
-    menu: "Gerencie produtos e categorias do cardápio.", users: "Gerencie os acessos dos funcionários.", password: "Altere as credenciais de acesso.", connections: "Configure integrações externas.", hub: "Integração futura com o Pop9 Hub.", crm: "Consulte e organize os clientes.", stock: "Controle insumos e movimentações.", printers: "Cadastre impressoras e configure os gatilhos disponíveis.", documents: "Exporte o cardápio, baixe imagens e consulte os documentos do estabelecimento.", qrcodes: "Gerencie os códigos QR.", units: "Gerencie as unidades do estabelecimento."
+    menu: "Gerencie produtos e categorias do cardápio.", users: "Gerencie os acessos dos funcionários.", password: "Altere as credenciais de acesso.", connections: "Configure integrações externas.", hub: "Integração futura com o Pop9 Hub.", crm: "Consulte e organize os clientes.", stock: "Controle insumos e movimentações.", printers: "Cadastre impressoras e configure os gatilhos disponíveis.", documents: "Exporte o cardápio, baixe imagens e consulte os documentos do estabelecimento.", qrcodes: "Gerencie os códigos QR.", units: "Gerencie as unidades do estabelecimento.", settings: "Ative ou desative módulos da unidade, como o KDS da cozinha e a estação de impressão."
   };
 
   return (
@@ -257,6 +259,7 @@ const Admin = () => {
             {activeSection === "units" && <BusinessUnitsTab />}
             {activeSection === "connections" && <ConnectionsTab />}
             {activeSection === "hub" && <Pop9HubTab />}
+            {activeSection === "settings" && <SettingsTab />}
           </div>
         </main>
       </SidebarInset>
