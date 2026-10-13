@@ -80,6 +80,12 @@ const categoryKeyFrom = (label: string, taken: string[] = []) => {
   return candidate;
 };
 
+const ingredientsFromDescription = (description: string, fallback: Omit<DbIngredient, "id">[]) => {
+  const names = description.split(",").map(value => value.trim()).filter(Boolean);
+  if (names.length < 2) return fallback;
+  return names.map((name, sort_order) => ({ name, removable: false, extra_price: null, sort_order }));
+};
+
 const CategoryEditor = ({ category, existingKeys = [], onSave, onCancel }: CategoryEditorProps) => {
   const isNew = !category;
   const [label, setLabel] = useState(category?.label ?? "");
@@ -383,6 +389,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     setSaving(true);
     if (recipeBuilderRef.current && !recipeBuilderRef.current.validate()) { setSaving(false); return; }
     const finalImage = imageUrl.trim() || null;
+    const listedIngredients = ingredientsFromDescription(description, ingredients);
     const savedId = await onSave(
       {
         ...(item
@@ -395,7 +402,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
         image_url: finalImage,
         active,
         status,
-        ingredients,
+        ingredients: listedIngredients,
         variants,
       },
       isNew
@@ -522,6 +529,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
           onChange={setDescription} suggestions={catalog.suggestions.words}
           className="w-full rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
         />
+        <p className="text-[11px] text-muted-foreground">Para exibir ingredientes no cardápio, separe-os por vírgulas. Ex.: pão brioche, carne, queijo, molho especial.</p>
       </div>
 
       {/* Image Upload */}
