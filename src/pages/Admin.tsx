@@ -12,6 +12,8 @@ import {
   Map,
   ChefHat,
   Settings,
+  ToggleRight,
+  Palette,
   Plug,
   Network,
   Contact,
@@ -37,6 +39,7 @@ import QrCodesTab from "@/components/admin/QrCodesTab";
 import BusinessUnitsTab from "@/components/admin/BusinessUnitsTab";
 import DocumentsTab from "@/components/admin/DocumentsTab";
 import SettingsTab from "@/components/admin/SettingsTab";
+import BrandTab from "@/components/admin/BrandTab";
 import {
   SidebarProvider,
   Sidebar,
@@ -54,7 +57,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-type SectionKey = "menu" | "users" | "password" | "connections" | "hub" | "crm" | "stock" | "printers" | "qrcodes" | "units" | "documents" | "settings";
+type SectionKey = "menu" | "users" | "password" | "connections" | "hub" | "crm" | "stock" | "printers" | "qrcodes" | "units" | "documents" | "settings" | "brand";
 
 const SECTIONS: { key: SectionKey; label: string; icon: LucideIcon }[] = [
   { key: "menu", label: "Cardápio", icon: UtensilsCrossed },
@@ -68,7 +71,8 @@ const SECTIONS: { key: SectionKey; label: string; icon: LucideIcon }[] = [
   { key: "documents", label: "Central de Documentos", icon: FolderOpen },
   { key: "qrcodes", label: "QR Codes", icon: QrCode },
   { key: "units", label: "Unidades", icon: Building2 },
-  { key: "settings", label: "Configurações", icon: Settings },
+  { key: "settings", label: "Módulos", icon: ToggleRight },
+  { key: "brand", label: "Marca", icon: Palette },
 ];
 
 /**
@@ -89,7 +93,7 @@ function SectionMenuButton({
   const { isMobile, setOpenMobile } = useSidebar();
   const Icon = section.icon;
   const descriptions: Record<SectionKey, string> = {
-    menu: "Gerencie produtos e categorias do cardápio.", users: "Gerencie os acessos dos funcionários.", password: "Altere as credenciais de acesso.", connections: "Configure integrações externas.", hub: "Integração futura com o Pop9 Hub.", crm: "Consulte e organize os clientes.", stock: "Controle insumos e movimentações.", printers: "Cadastre impressoras e configure os gatilhos disponíveis.", documents: "Exporte o cardápio, baixe imagens e consulte os documentos do estabelecimento.", qrcodes: "Gerencie os códigos QR.", units: "Gerencie as unidades do estabelecimento.", settings: "Ative ou desative módulos da unidade, como o KDS da cozinha e a estação de impressão."
+    menu: "Gerencie produtos e categorias do cardápio.", users: "Gerencie os acessos dos funcionários.", password: "Altere as credenciais de acesso.", connections: "Configure integrações externas.", hub: "Integração futura com o Pop9 Hub.", crm: "Consulte e organize os clientes.", stock: "Controle insumos e movimentações.", printers: "Cadastre impressoras e configure os gatilhos disponíveis.", documents: "Exporte o cardápio, baixe imagens e consulte os documentos do estabelecimento.", qrcodes: "Gerencie os códigos QR.", units: "Gerencie as unidades do estabelecimento.", settings: "Ative ou desative módulos da unidade, como o KDS da cozinha e a estação de impressão.", brand: "Logo, fundo e cores do cardápio que o cliente vê."
   };
 
   return (
@@ -123,7 +127,7 @@ const Admin = () => {
   const setActiveSection=(section:SectionKey)=>setSearchParams({sec:section});
 
   useEffect(() => {
-    if (["users", "password", "connections", "printers", "qrcodes", "units"].includes(activeSection)) setShowSettings(true);
+    if (["settings", "brand", "users", "password", "connections", "printers", "qrcodes", "units"].includes(activeSection)) setShowSettings(true);
   }, [activeSection]);
 
   if (loading || rolesLoading) {
@@ -176,7 +180,7 @@ const Admin = () => {
           <SidebarGroup>
             <SidebarMenu><SidebarMenuItem><SidebarMenuButton tooltip="Configurações" aria-expanded={showSettings} aria-controls="admin-settings" onClick={() => setShowSettings(value => !value)}><Settings /><span>Configurações</span></SidebarMenuButton></SidebarMenuItem></SidebarMenu>
             {showSettings && <SidebarGroupContent id="admin-settings"><SidebarMenu>
-              {SECTIONS.filter(section => ["users", "password", "connections", "printers", "qrcodes", "units"].includes(section.key)).map(section => <SectionMenuButton key={section.key} section={section} isActive={activeSection === section.key} onSelect={() => setActiveSection(section.key)} />)}
+              {SECTIONS.filter(section => ["settings", "brand", "users", "password", "connections", "printers", "qrcodes", "units"].includes(section.key)).map(section => <SectionMenuButton key={section.key} section={section} isActive={activeSection === section.key} onSelect={() => setActiveSection(section.key)} />)}
             </SidebarMenu></SidebarGroupContent>}
           </SidebarGroup>
 
@@ -260,6 +264,7 @@ const Admin = () => {
             {activeSection === "connections" && <ConnectionsTab />}
             {activeSection === "hub" && <Pop9HubTab />}
             {activeSection === "settings" && <SettingsTab />}
+            {activeSection === "brand" && <BrandTab />}
           </div>
         </main>
       </SidebarInset>

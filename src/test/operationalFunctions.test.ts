@@ -2,7 +2,9 @@
 import {readFileSync} from "node:fs";
 import ts from "typescript";
 import {describe,it,expect,vi} from "vitest";
-import * as helpers from "../../supabase/functions/_shared/operational";
+import * as operational from "../../supabase/functions/_shared/operational";
+import * as brand from "../../supabase/functions/_shared/brand";
+const helpers={...operational,...brand};
 const UNIT="00000000-0000-0000-0000-000000000001";
 function endpoint(name:string,options:{authorized?:boolean;secrets?:Record<string,string>;duplicate?:boolean}={}){
   const rpc=vi.fn(async(name:string,args:Record<string,unknown>)=>({data:name==="ingest_whatsapp_message" ? {id:args.p_id} : name==="claim_whatsapp_reply" ? options.duplicate ? null : {id:args.p_id,reply:"Olá"} : {orderId:"order",total:25},error:null}));

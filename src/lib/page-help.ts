@@ -20,4 +20,5 @@ export const PAGE_HELP: Record<string, string> = {
   qrcodes: "Gere e baixe os códigos QR para o acesso dos clientes ao estabelecimento e às mesas.",
   units: "Cadastre e organize as unidades do estabelecimento.",
   settings: "Ative ou desative módulos da unidade: KDS da cozinha e estação de impressão central.",
+  brand: "Logo, imagem de fundo e cores do cardápio do cliente (/pedir). Não muda a estrutura das páginas nem o painel interno.",
 };

@@ -1,5 +1,6 @@
 import {createClient} from "https://esm.sh/@supabase/supabase-js@2.99.2";
 import {json,uuid,sha256,publicOrigin} from "../_shared/operational.ts";
+import {sanitizeBrand,brandAssetPrefix,EMPTY_BRAND} from "../_shared/brand.ts";
 
 Deno.serve(async(req:Request)=>{
   if(req.method==="OPTIONS")return json({});
@@ -22,7 +23,10 @@ Deno.serve(async(req:Request)=>{
       const {data:items,error}=await db.from("menu_items").select("id,name,description,price,image_url,category").eq("business_unit_id",unit).eq("active",true).eq("status","published").order("name");
       if(error)throw error;
       const {data:whatsapp}=await db.from("integrations").select("config").eq("provider","whatsapp").eq("business_unit_id",unit).maybeSingle();
-      return json({name:store.name,items,businessPhone:whatsapp?.config?.businessPhone ?? "",pickupOnly:true});
+      // Marca é opcional: sem a tabela ou sem registro, o cardápio segue com o visual padrão.
+      const {data:brandRow,error:brandError}=await db.from("brand_settings").select("logo_url,background_url,primary_color,background_color,card_color,text_color").eq("business_unit_id",unit).maybeSingle();
+      const brand=brandError ? EMPTY_BRAND : sanitizeBrand(brandRow,brandAssetPrefix(Deno.env.get("SUPABASE_URL") ?? "",unit));
+      return json({name:store.name,items,businessPhone:whatsapp?.config?.businessPhone ?? "",pickupOnly:true,brand});
     }
     if(body.action!=="submit")return json({error:"Ação inválida"},400);
     if(typeof body.access_token!=="string" || !/^[a-f0-9-]{72}$/.test(body.access_token))return json({error:"Valide seu número enviando PEDIR no WhatsApp da loja"},401);
