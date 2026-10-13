@@ -33,8 +33,9 @@ import {
 } from "@/components/ui/dialog";
 import { useStockData, ProductionRecipeInput, ItemType, FichaTipo, alocarFefo } from "@/hooks/useStockData";
 import { STOCK_UNITS } from "@/lib/stockUnits";
+import { STOCK_CATEGORIES, stockCategory, type StockCategory } from "@/lib/stockCategories";
 
-type SubView = "insumos" | "produzidos" | "producao" | "fornecedores";
+type SubView = StockCategory | "produzidos" | "producao" | "fornecedores";
 
 const STATUS_LABELS: Record<string, string> = {
   valido: "Válido",
@@ -80,6 +81,7 @@ const StockTab = () => {
     lotes,
     loading,
     createRawMaterial,
+    updateRawMaterialCategory,
     registerPurchase,
     managePurchaseLot,
     createSupplier,
@@ -102,7 +104,7 @@ const StockTab = () => {
   const [matName, setMatName] = useState("");
   const [matUnit, setMatUnit] = useState("");
   const [matItemType, setMatItemType] = useState<ItemType>("insumo");
-  const [matCategoria, setMatCategoria] = useState("");
+  const [matCategoria, setMatCategoria] = useState<StockCategory>("insumos");
   const [matMinStock, setMatMinStock] = useState("");
 
   const [pQuantity, setPQuantity] = useState("");
@@ -159,19 +161,23 @@ const StockTab = () => {
   const isProducedMaterial = (m: (typeof rawMaterials)[number]) =>
     m.isProduced || m.itemType === "semiacabado" || m.itemType === "produto_acabado";
   const hasProductionHistory = (id: string) =>
-    lotes.some(l => l.rawMaterialId === id && l.origem === "producao");
+    lotes.some(l => l.rawMaterialId === id && l.origem === "producao") ||
+    labels.some(label => label.productName === materialsById[id]?.name);
+  const isCategoryView = (value: SubView): value is StockCategory =>
+    STOCK_CATEGORIES.some(category => category.value === value);
   const filteredMaterials = rawMaterials.filter(m =>
     m.name.toLowerCase().includes(search.toLowerCase()) &&
     (view === "produzidos"
-      ? isProducedMaterial(m) && (!m.isTheoretical || hasProductionHistory(m.id))
-      : !isProducedMaterial(m))
+      ? isProducedMaterial(m) && hasProductionHistory(m.id)
+      : isCategoryView(view) && !isProducedMaterial(m) &&
+        stockCategory(m.categoria, m.itemType) === view)
   );
 
   const resetMaterialForm = () => {
     setMatName("");
     setMatUnit("");
     setMatItemType("insumo");
-    setMatCategoria("");
+    setMatCategoria("insumos");
     setMatMinStock("");
   };
 
@@ -437,7 +443,11 @@ const StockTab = () => {
 
       <div className="grid grid-cols-2 gap-1 rounded-xl border border-border bg-muted/30 p-1 sm:grid-cols-4">
         {[
-          { key: "insumos" as const, label: "Insumos-base", icon: Package },
+          { key: "insumos" as const, label: "Insumos", icon: Package },
+          { key: "unitarios" as const, label: "Itens unitários", icon: Boxes },
+          { key: "bar" as const, label: "Bar", icon: Package },
+          { key: "limpeza" as const, label: "Limpeza e higiene", icon: Package },
+          { key: "operacionais" as const, label: "Consumíveis operacionais", icon: Package },
           { key: "produzidos" as const, label: "Produzidos", icon: Boxes },
           { key: "producao" as const, label: "Produção", icon: Factory },
           { key: "fornecedores" as const, label: "Fornecedores", icon: Truck },
@@ -457,12 +467,12 @@ const StockTab = () => {
         ))}
       </div>
 
-      {(view === "insumos" || view === "produzidos") && (
+      {(isCategoryView(view) || view === "produzidos") && (
         <div className="space-y-3">
           <p className="text-xs text-muted-foreground">
-            {view === "insumos"
-              ? "Insumos-base são cadastrados com saldo zero e recebem entradas por lote, cada uma com sua unidade de compra e fator de conversão editáveis."
-              : "Somente itens já produzidos aparecem aqui. Antes da primeira produção, seus cadastros e fichas permanecem na aba Produção, sem saldo físico."}
+            {view === "produzidos"
+              ? "Somente itens com produção registrada aparecem nesta aba. Antes disso, a ficha técnica fica em Produção."
+              : "Cada insumo fica cadastrado com saldo zero até a primeira entrada. Quantidade e unidade de compra são definidas individualmente em cada lote."}
           </p>
           <div className="flex gap-2">
             <div className="relative flex-1">
@@ -474,7 +484,7 @@ const StockTab = () => {
                 className="h-10 pl-9"
               />
             </div>
-            {view === "insumos" && <Button data-tooltip="Cadastre apenas o insumo-base teórico, com saldo zero. A unidade de compra é definida em cada lote." aria-label="Cadastrar insumo-base" onClick={() => { setMatItemType("insumo"); setNewMaterialOpen(true); }} size="icon" className="h-10 w-10 shrink-0">
+            {isCategoryView(view) && <Button data-tooltip="Cadastrar insumo teórico nesta categoria." aria-label="Cadastrar insumo" onClick={() => { setMatItemType("insumo"); setMatCategoria(view); setNewMaterialOpen(true); }} size="icon" className="h-10 w-10 shrink-0">
               <Plus className="h-4 w-4" />
             </Button>}
           </div>
@@ -502,10 +512,20 @@ const StockTab = () => {
                       {m.categoria ? `${m.categoria} · ` : ""}Custo médio: R$ {m.averageCost.toFixed(2)} / {m.unit}
                     </p>
                   </div>
-                  {view === "insumos" && <Button data-tooltip="Registre uma compra real deste insumo, com quantidade, unidade, custo e dados do lote." size="sm" variant="outline" onClick={() => openPurchase(m.id)}>
+                  {isCategoryView(view) && <Button data-tooltip="Registrar entrada deste insumo, com quantidade, unidade, custo e dados do lote." size="sm" variant="outline" onClick={() => openPurchase(m.id)}>
                     <Plus className="h-3.5 w-3.5 mr-1" /> Entrada
                   </Button>}
                 </div>
+                {isCategoryView(view) && (
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>Organizar em</span>
+                    <select aria-label={`Categoria de ${m.name}`} value={stockCategory(m.categoria, m.itemType)}
+                      onChange={event => void updateRawMaterialCategory(m.id, event.target.value)}
+                      className="h-8 rounded-md border border-border bg-background px-2 text-foreground">
+                      {STOCK_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                    </select>
+                  </label>
+                )}
                 <div className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
                   low ? "bg-destructive/10 text-destructive" : "bg-muted/50 text-foreground"
                 }`}>
@@ -518,7 +538,7 @@ const StockTab = () => {
             );
           })}
           {filteredMaterials.length === 0 && (
-            <p className="text-center text-muted-foreground py-8">{view === "produzidos" ? "Nenhum item produzido ainda. Use Produção para registrar o primeiro lote." : "Nenhum insumo-base cadastrado"}</p>
+            <p className="text-center text-muted-foreground py-8">{view === "produzidos" ? "Nenhum item produzido ainda. Use Produção para registrar o primeiro lote." : "Nenhum item cadastrado nesta categoria."}</p>
           )}
         </div>
       )}
@@ -670,8 +690,11 @@ const StockTab = () => {
               <Input type="number" value={matMinStock} onChange={(e) => setMatMinStock(e.target.value)} placeholder="0" />
             </div>
             <div className="space-y-2">
-              <Label className="text-sm text-muted-foreground">Categoria (opcional)</Label>
-              <Input value={matCategoria} onChange={(e) => setMatCategoria(e.target.value)} placeholder="Ex: carnes, bebidas, embalagens..." />
+              <Label className="text-sm text-muted-foreground">Categoria do estoque</Label>
+              <select aria-label="Categoria do estoque" value={matCategoria} onChange={e => setMatCategoria(e.target.value as StockCategory)}
+                className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm">
+                {STOCK_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
             </div>
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Tipo de item</Label>
