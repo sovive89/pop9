@@ -609,7 +609,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       {item?.id ? (
         /* O item já existe: agora a ficha pode transformar a descrição em
            necessidades de estoque e cadastrar insumos/receitas teóricos. */
-        <RecipeBuilder ref={recipeBuilderRef} menuItemId={item.id} disabled={saving || uploading || generating} />
+        <RecipeBuilder ref={recipeBuilderRef} menuItemId={item.id} menuItemName={name} disabled={saving || uploading || generating} />
       ) : (
         <p className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
           Salve o item do cardápio primeiro. Depois reabra-o para montar a ficha técnica, criar os insumos teóricos e definir as receitas de produção.
