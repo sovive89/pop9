@@ -1,4 +1,5 @@
 import {pickupLabel} from "@/utils/operationalLinks";
+import OperationControl from "@/components/OperationControl";
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { Wallet, Lock, ArrowLeft, LogOut } from "lucide-react";
@@ -74,6 +75,7 @@ export default function Cashier() {
         <Button variant="outline" onClick={() => void signOut()}><LogOut className="mr-2 h-4 w-4" />Sair</Button>
       </div>
     </header>
+    <OperationControl />
     <p className="text-sm text-muted-foreground">A mesa fica ocupada até a confirmação com sua senha. Pendências de pagamento exigem justificativa e ficam registradas no relatório de inadimplência.</p>
     {loading && <p role="status">Atualizando solicitações...</p>}
     {error && <div role="alert">Não foi possível consultar as comandas. <Button onClick={reload}>Tentar novamente</Button></div>}

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import OperationControl from "@/components/OperationControl";
 import { PAGE_HELP } from "@/lib/page-help";
 import { useNavigate, Navigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -252,6 +253,7 @@ const Admin = () => {
 
         <main className="flex-1 p-4">
           <div className={activeSection === "connections" ? "mx-auto max-w-6xl" : "mx-auto max-w-4xl"}>
+            <div className="mb-4"><OperationControl /></div>
             {activeSection === "menu" && <MenuTab />}
             {activeSection === "users" && <UsersTab />}
             {activeSection === "password" && <ResetPasswordTab />}
