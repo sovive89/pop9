@@ -1,6 +1,7 @@
 import { PAGE_HELP } from "@/lib/page-help";
 import { useState } from "react";
-import { Printer, Plus, Trash2, Tag as TagIcon } from "lucide-react";
+import { Printer, Plus, Trash2, Pencil, Tag as TagIcon } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -27,6 +28,7 @@ import {
   type PrinterTipo,
   type PrinterGatilho,
   type PrinterConnectionType,
+  type PrinterConfig,
 } from "@/hooks/usePrinterConfigs";
 
 const TIPO_OPTIONS: { value: PrinterTipo; label: string }[] = [
@@ -44,28 +46,50 @@ const PrintersTab = () => {
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
   const [tipo, setTipo] = useState<PrinterTipo>("termica");
-  const [gatilho, setGatilho] = useState<PrinterGatilho>("comanda_cozinha");
+  const [gatilhos, setGatilhos] = useState<PrinterGatilho[]>(["comanda_cozinha"]);
+  // null = nova impressora; id = editando uma existente.
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [connectionType, setConnectionType] = useState<PrinterConnectionType>("browser");
   const [deviceIdentifier, setDeviceIdentifier] = useState("");
 
   const resetForm = () => {
     setName("");
     setTipo("termica");
-    setGatilho("comanda_cozinha");
+    setGatilhos(["comanda_cozinha"]);
+    setEditingId(null);
     setConnectionType("browser");
     setDeviceIdentifier("");
   };
 
-  const handleCreate = async () => {
-    if (!name.trim()) return;
+  const openNew = () => {
+    resetForm();
+    setDialogOpen(true);
+  };
+
+  const openEdit = (p: PrinterConfig) => {
+    setEditingId(p.id);
+    setName(p.name);
+    setTipo(p.tipo);
+    setGatilhos(p.gatilhos);
+    setConnectionType(p.connectionType);
+    setDeviceIdentifier(p.deviceIdentifier ?? "");
+    setDialogOpen(true);
+  };
+
+  const toggleGatilho = (value: PrinterGatilho, checked: boolean) =>
+    setGatilhos((prev) => (checked ? [...prev.filter((g) => g !== value), value] : prev.filter((g) => g !== value)));
+
+  const handleSave = async () => {
+    if (!name.trim() || !gatilhos.length) return;
     setSaving(true);
-    const ok = await createPrinter({
+    const data = {
       name: name.trim(),
       tipo,
-      gatilho,
+      gatilhos,
       connectionType,
       deviceIdentifier: deviceIdentifier.trim() || null,
-    });
+    };
+    const ok = editingId ? await updatePrinter(editingId, data) : await createPrinter(data);
     setSaving(false);
     if (ok) {
       resetForm();
@@ -81,7 +105,8 @@ const PrintersTab = () => {
     <div className="space-y-4">
       <div className="rounded-xl border border-border bg-card p-4">
         <p className="text-xs text-muted-foreground leading-relaxed">
-          Cada gatilho (ex: "Comanda da cozinha") pode ter uma impressora associada. Hoje a
+          Cada impressora pode ter um ou mais gatilhos (ex.: a mesma térmica imprime a comanda
+          da cozinha e a conta da mesa), e um gatilho pode sair em mais de uma impressora. Hoje a
           execução real da impressão continua sendo o diálogo do navegador — o navegador não
           permite selecionar/lembrar uma impressora específica nem imprimir silenciosamente sem
           uma camada extra (QZ Tray ou WebUSB). O campo "Conexão" já existe pra quando isso for
@@ -91,7 +116,7 @@ const PrintersTab = () => {
 
       <div className="flex items-center justify-between">
         <h3 tabIndex={0} data-tooltip={PAGE_HELP["printers"]} className="text-sm font-semibold text-foreground">Impressoras cadastradas</h3>
-        <Button size="sm" onClick={() => setDialogOpen(true)}>
+        <Button size="sm" onClick={openNew}>
           <Plus className="h-4 w-4 mr-1" /> Nova impressora
         </Button>
       </div>
@@ -115,7 +140,7 @@ const PrintersTab = () => {
                   )}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {GATILHO_LABELS[p.gatilho]} · {CONNECTION_TYPE_LABELS[p.connectionType]}
+                  {p.gatilhos.map((g) => GATILHO_LABELS[g]).join(", ")} · {CONNECTION_TYPE_LABELS[p.connectionType]}
                   {p.deviceIdentifier && ` · ${p.deviceIdentifier}`}
                 </p>
               </div>
@@ -127,7 +152,10 @@ const PrintersTab = () => {
                 >
                   {p.active ? "Desativar" : "Ativar"}
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => deletePrinter(p.id)}>
+                <Button size="sm" variant="outline" aria-label={`Editar ${p.name}`} onClick={() => openEdit(p)}>
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button size="sm" variant="outline" aria-label={`Remover ${p.name}`} onClick={() => deletePrinter(p.id)}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
@@ -141,12 +169,12 @@ const PrintersTab = () => {
         )}
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Nova impressora</DialogTitle>
+            <DialogTitle>{editingId ? "Editar impressora" : "Nova impressora"}</DialogTitle>
             <DialogDescription>
-              Nome, tipo, gatilho (quando ela é usada) e conexão.
+              Nome, tipo, gatilhos (quando ela é usada) e conexão.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -166,15 +194,16 @@ const PrintersTab = () => {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label className="text-sm text-muted-foreground">Gatilho (quando imprime)</Label>
-              <Select value={gatilho} onValueChange={(v) => setGatilho(v as PrinterGatilho)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {GATILHO_OPTIONS.map(([value, label]) => (
-                    <SelectItem key={value} value={value}>{label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label className="text-sm text-muted-foreground">Gatilhos (quando imprime) — escolha um ou mais</Label>
+              <div className="space-y-2 rounded-lg border border-border p-3">
+                {GATILHO_OPTIONS.map(([value, label]) => (
+                  <label key={value} className="flex items-center gap-2 text-sm">
+                    <Checkbox checked={gatilhos.includes(value)} onCheckedChange={(c) => toggleGatilho(value, c === true)} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              {!gatilhos.length && <p className="text-xs text-destructive">Escolha pelo menos um gatilho.</p>}
             </div>
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Conexão</Label>
@@ -200,7 +229,7 @@ const PrintersTab = () => {
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
               Cancelar
             </Button>
-            <Button onClick={handleCreate} disabled={saving || !name.trim()}>
+            <Button onClick={handleSave} disabled={saving || !name.trim() || !gatilhos.length}>
               {saving ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>
