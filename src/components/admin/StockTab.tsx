@@ -32,6 +32,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useStockData, ProductionRecipeInput, ItemType, FichaTipo, alocarFefo } from "@/hooks/useStockData";
+import { STOCK_UNITS } from "@/lib/stockUnits";
 
 type SubView = "insumos" | "producao" | "fornecedores";
 
@@ -622,7 +623,10 @@ const StockTab = () => {
             </div>
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Unidade de medida</Label>
-              <Input value={matUnit} onChange={(e) => setMatUnit(e.target.value)} placeholder="kg, un, l, porção..." />
+              <select aria-label="Unidade de medida do novo insumo" className="h-10 rounded-md border border-border bg-background px-3 text-sm" value={matUnit} onChange={(e) => setMatUnit(e.target.value)}>
+                <option value="">Selecione...</option>
+                {STOCK_UNITS.map(unit => <option key={unit} value={unit}>{unit}</option>)}
+              </select>
             </div>
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Estoque mínimo (para alerta)</Label>

@@ -8,6 +8,7 @@ import { useStockData, type RawMaterial, type ItemType } from "@/hooks/useStockD
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import { toast } from "sonner";
 import MenuPrefixField from '@/components/admin/MenuPrefixField';
+import { STOCK_UNITS } from '@/lib/stockUnits';
 
 interface MaterialInput {
   key: string;
@@ -78,10 +79,12 @@ function MaterialFields({ input, materials, disabled, base = false, onChange, on
       </label>}
       <label className={labelClass} htmlFor={`${input.key}-unit`}>
         <span>Unidade de medida</span>
-        <Input id={`${input.key}-unit`} aria-label={`Unidade de medida do ${name.toLowerCase()}`}
-          data-tooltip={input.rawMaterialId ? "Use a unidade já cadastrada para este insumo. Converta a quantidade antes de preencher a ficha." : "Defina a unidade usada nesta ficha e no estoque: g, kg, ml, L ou un. Não é um lançamento de compra."}
-          disabled={disabled} readOnly={Boolean(input.rawMaterialId)} value={unit}
-          onChange={event => onChange({ newUnit: event.target.value })} placeholder="g, kg, ml, L, un" className="h-9 min-w-0 text-xs" />
+        <select id={`${input.key}-unit`} aria-label={`Unidade de medida do ${name.toLowerCase()}`}
+          data-tooltip={input.rawMaterialId ? "A unidade do insumo já cadastrado é fixa. A quantidade da ficha será descontada nessa unidade." : "Selecione uma unidade pré-definida para o novo insumo."}
+          disabled={disabled || Boolean(input.rawMaterialId)} value={unit}
+          onChange={event => onChange({ newUnit: event.target.value })} className="h-9 min-w-0 rounded-md border border-border bg-muted px-2 text-xs text-foreground">
+          {STOCK_UNITS.map(option => <option key={option} value={option}>{option}</option>)}
+        </select>
       </label>
       <label className={labelClass} htmlFor={`${input.key}-quantity`}>
         <span>{base ? "Quantidade na receita" : "Quantidade por item"}{unit ? ` (${unit})` : ""}</span>
