@@ -15,10 +15,15 @@ export function useUnitPrintMode(unitId?: string | null) {
   const load = useCallback(async () => {
     const request = ++latest.current;
     if (!unit) { setState({ unit: null, mode: "device", loaded: true }); return; }
-    const { data } = await supabase.from("business_units").select("print_mode" as "id").eq("id", unit).maybeSingle();
-    if (request !== latest.current) return;
-    const row = data as unknown as { print_mode?: string } | null;
-    setState({ unit, mode: row?.print_mode === "station" ? "station" : "device", loaded: true });
+    try {
+      const { data } = await supabase.from("business_units").select("print_mode" as "id").eq("id", unit).maybeSingle();
+      if (request !== latest.current) return;
+      const row = data as unknown as { print_mode?: string } | null;
+      setState({ unit, mode: row?.print_mode === "station" ? "station" : "device", loaded: true });
+    } catch {
+      // Falha de rede ou cliente indisponível: mantém o comportamento padrão.
+      if (request === latest.current) setState({ unit, mode: "device", loaded: true });
+    }
   }, [unit]);
   useEffect(() => {
     void load();

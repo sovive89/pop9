@@ -14,10 +14,15 @@ export function useUnitKds(unitId?: string | null) {
   const load = useCallback(async () => {
     const request = ++latest.current;
     if (!unit) { setState({ unit: null, enabled: true, loaded: true }); return; }
-    const { data, error } = await supabase.from("business_units").select("kds_enabled" as "id").eq("id", unit).maybeSingle();
-    if (request !== latest.current) return;
-    const row = data as unknown as { kds_enabled?: boolean } | null;
-    setState({ unit, enabled: Boolean(error) || row?.kds_enabled !== false, loaded: true });
+    try {
+      const { data, error } = await supabase.from("business_units").select("kds_enabled" as "id").eq("id", unit).maybeSingle();
+      if (request !== latest.current) return;
+      const row = data as unknown as { kds_enabled?: boolean } | null;
+      setState({ unit, enabled: Boolean(error) || row?.kds_enabled !== false, loaded: true });
+    } catch {
+      // Falha de rede ou cliente indisponível: mantém o comportamento padrão.
+      if (request === latest.current) setState({ unit, enabled: true, loaded: true });
+    }
   }, [unit]);
   useEffect(() => {
     void load();
