@@ -1264,6 +1264,8 @@ export type Database = {
           id: string
           menu_item_id: string
           quantity: number
+          display_quantity: number | null
+          display_unit: string | null
           raw_material_id: string
           transformacao: string
         }
@@ -1271,6 +1273,8 @@ export type Database = {
           id?: string
           menu_item_id: string
           quantity: number
+          display_quantity?: number | null
+          display_unit?: string | null
           raw_material_id: string
           transformacao?: string
         }
@@ -1278,6 +1282,8 @@ export type Database = {
           id?: string
           menu_item_id?: string
           quantity?: number
+          display_quantity?: number | null
+          display_unit?: string | null
           raw_material_id?: string
           transformacao?: string
         }
