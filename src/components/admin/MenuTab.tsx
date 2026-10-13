@@ -136,9 +136,12 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
           <PreviewIcon className="h-7 w-7 shrink-0" style={{ color: iconColor }} />
           <span className="text-sm font-medium text-foreground truncate">{label || "Nova categoria"}</span>
         </div>
-        <Input value={iconSearch} onChange={(e) => setIconSearch(e.target.value)} placeholder="Buscar ícone..." className="h-8 text-sm" />
-        <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-48 overflow-y-auto">
-          {CATEGORY_ICON_OPTIONS.filter((option) => (option.label + " " + option.name).toLowerCase().includes(iconSearch.toLowerCase())).map(({ name, label: iconLabel, Icon }) => (
+        <Input value={iconSearch} onChange={(e) => setIconSearch(e.target.value)} placeholder="Buscar ícone (ex.: suco, combo, açaí)..." className="h-8 text-sm" />
+        <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto">
+          {CATEGORY_ICON_OPTIONS.filter((option) => {
+            const plain = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+            return plain(`${option.label} ${option.name}`).includes(plain(iconSearch));
+          }).map(({ name, label: iconLabel, Icon }) => (
             <button key={name} type="button" title={iconLabel} aria-label={iconLabel} aria-pressed={iconName === name}
               onClick={() => { setIconName(name); setIconTouched(true); }}
               className={`flex flex-col items-center gap-1 rounded-lg border p-2 min-w-0 ${iconName === name ? "border-primary bg-primary/10" : "border-border hover:bg-muted"}`}>
