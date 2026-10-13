@@ -28,7 +28,8 @@ import {
   getItemUnitPrice,
   formatCurrency,
 } from "@/utils/orders";
-import { buildClientBillReceipt, buildTableBillReceipt, printReceipt } from "@/utils/thermal-print";
+import { buildClientBillReceipt, buildTableBillReceipt } from "@/utils/thermal-print";
+import { useConfiguredPrint } from "@/hooks/useConfiguredPrint";
 import type { ClientInfo } from "@/components/TableSessionPanel";
 import ReceiptPreviewModal from "@/components/ReceiptPreviewModal";
 
@@ -64,6 +65,7 @@ interface Props {
 }
 
 const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestCloseSession, onBack, closureRequested = false, serviceChargeEnabled = false }: Props) => {
+  const configuredPrint = useConfiguredPrint();
   const { businessUnitId } = useCurrentBusinessUnit();
   const [tab, setTab] = useState<Tab>("geral");
   const [serviceCharge, setServiceCharge] = useState(serviceChargeEnabled);
@@ -226,7 +228,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
 
   const handlePrintGeneral = () => {
     const html = buildTableBillReceipt(tableId, clients, orders, serviceCharge);
-    printReceipt(html);
+    configuredPrint(html, "conta_mesa");
     setReceiptPreviewTitle("Conta da Mesa");
     setReceiptPreviewHtml(html);
     toast.success("Conta da mesa enviada para impressão");
@@ -237,7 +239,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
     const order = orders.find((o) => o.clientId === clientId);
     if (!client || !order) return;
     const html = buildClientBillReceipt(tableId, client, order, serviceCharge);
-    printReceipt(html);
+    configuredPrint(html, "conta_individual");
     setReceiptPreviewTitle(`Conta — ${client.name.split(" ")[0]}`);
     setReceiptPreviewHtml(html);
     toast.success(`Conta de ${client.name.split(" ")[0]} enviada para impressão`);

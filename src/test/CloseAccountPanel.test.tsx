@@ -5,6 +5,7 @@ const mocks=vi.hoisted(()=>({payments:[] as {id:string;client_id:string;amount:n
 vi.mock("@/hooks/useCurrentBusinessUnit",()=>({useCurrentBusinessUnit:()=>({businessUnitId:"unit"})}));
 vi.mock("@/utils/thermal-print",()=>({buildClientBillReceipt:vi.fn(),buildTableBillReceipt:vi.fn(),printReceipt:vi.fn()}));
 vi.mock("@/components/ReceiptPreviewModal",()=>({default:()=>null}));
+vi.mock("@/hooks/useConfiguredPrint",()=>({useConfiguredPrint:()=>vi.fn()}));
 vi.mock("sonner",()=>({toast:{success:vi.fn(),error:mocks.error}}));
 vi.mock("framer-motion",()=>({motion:{div:({children,className}:HTMLAttributes<HTMLDivElement>&{children:ReactNode})=><div className={className}>{children}</div>},AnimatePresence:({children}:{children:ReactNode})=><>{children}</>}));
 vi.mock("@/integrations/supabase/client",()=>({supabase:{

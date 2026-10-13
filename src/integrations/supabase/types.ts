@@ -849,6 +849,7 @@ export type Database = {
           gatilhos: string[]
           id: string
           name: string
+          setor: string
           tipo: string
         }
         Insert: {
@@ -869,6 +870,7 @@ export type Database = {
           gatilhos?: string[]
           id?: string
           name: string
+          setor?: string
           tipo: string
         }
         Update: {
@@ -889,6 +891,7 @@ export type Database = {
           gatilhos?: string[]
           id?: string
           name?: string
+          setor?: string
           tipo?: string
         }
         Relationships: [
