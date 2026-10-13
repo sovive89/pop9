@@ -70,7 +70,7 @@ const Index = () => {
     // Sem unidade: explica o motivo em vez de pedir uma seleção que não aparece.
     const message = unitsLoading ? "Carregando unidades..."
       : unitsError ? "Não foi possível carregar suas unidades. Verifique a conexão e recarregue a página."
-      : units.length === 0 ? "Seu usuário ainda não está vinculado a nenhuma unidade. Peça a um administrador para liberar seu acesso em Admin → Usuários."
+      : units.length === 0 ? "Seu usuário não está vinculado a nenhuma unidade ativa. Peça a um administrador para liberar seu acesso (Admin → Usuários) ou reativar a unidade (Admin → Unidades)."
       : "Selecione uma unidade para iniciar.";
     return (
       <div className="space-y-4 p-6">
