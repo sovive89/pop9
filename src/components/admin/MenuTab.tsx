@@ -442,27 +442,10 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       if (!found) throw new Error("A IA não conseguiu sugerir. Detalhe melhor o nome.");
       let filled = 0;
       if (!description.trim() && found.description) { setDescription(found.description); filled++; }
-      if (!ingredients.some((i) => i.name.trim()) && found.ingredients.length) {
-        setIngredients(found.ingredients.map((ing, i) => ({ name: ing.name, removable: ing.removable, extra_price: ing.extraPrice || null, sort_order: i })));
-        filled++;
-      }
-      toast[filled ? "success" : "info"](filled ? "Sugestão aplicada nos campos vazios. Revise antes de salvar." : "Os campos já estavam preenchidos; nada foi alterado.");
+      toast[filled ? "success" : "info"](filled ? "Descrição sugerida e aplicada. Revise antes de salvar." : "A descrição já estava preenchida; nada foi alterado.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível sugerir");
     } finally { setSuggesting(false); }
-  };
-
-  const addIngredient = () => {
-    setIngredients([...ingredients, { name: "", removable: true, extra_price: null, sort_order: ingredients.length }]);
-  };
-
-  type IngredientPatch = Partial<Pick<DbIngredient, "name" | "extra_price" | "removable">>;
-  const updateIngredient = (idx: number, patch: IngredientPatch) => {
-    setIngredients((current) => current.map((ing, i) => i === idx ? { ...ing, ...patch } : ing));
-  };
-
-  const removeIngredient = (idx: number) => {
-    setIngredients(ingredients.filter((_, i) => i !== idx));
   };
 
   const addVariant = () => {
@@ -608,32 +591,11 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
               {generating ? "Gerando..." : imageUrl ? "Gerar outra" : "Gerar"}
             </Button>
           </div>
-          <p className="text-[11px] text-muted-foreground">{availableModels.length === 0 ? "Conecte Google ou OpenAI em Integrações → Inteligência Artificial para habilitar a geração nesta unidade." : "Usa nome, descrição e ingredientes do item. Cada geração tem custo na sua conta de IA."}</p>
+          <p className="text-[11px] text-muted-foreground">{availableModels.length === 0 ? "Conecte Google ou OpenAI em Integrações → Inteligência Artificial para habilitar a geração nesta unidade." : "Usa nome e descrição do item. Cada geração tem custo na sua conta de IA."}</p>
         </div>
       </div>
 
-      {/* Ingredients */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <label data-tooltip="Ingredientes exibidos ao cliente e opções de retirar ou adicionar. Os insumos e quantidades do estoque são definidos na ficha técnica." tabIndex={0} className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Ingredientes do cardápio</label>
-          <button data-tooltip="Adicione um ingrediente visível ao cliente. Para cadastrar insumos do estoque, use a ficha técnica abaixo." onClick={addIngredient} className="text-xs text-primary hover:underline flex items-center gap-1">
-            <Plus className="h-3 w-3" /> Adicionar
-          </button>
-        </div>
-        {ingredients.map((ing, idx) => (
-          <div key={idx} className="flex items-center gap-2 rounded-lg bg-secondary/30 p-2">
-            <Input value={ing.name} onChange={(e) => updateIngredient(idx, { name: e.target.value })} placeholder="Nome" className="h-8 text-xs flex-1" />
-            <Input type="number" step="0.01" value={ing.extra_price ?? ""} onChange={(e) => updateIngredient(idx, { extra_price: e.target.value ? parseFloat(e.target.value) : null })} placeholder="Extra R$" className="h-8 text-xs w-20" />
-            <label className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
-              <input type="checkbox" checked={ing.removable} onChange={(e) => updateIngredient(idx, { removable: e.target.checked })} />
-              Removível
-            </label>
-            <button data-tooltip="Retire este ingrediente da lista exibida ao cliente. A ficha técnica é editada separadamente." aria-label="Retire este ingrediente da lista exibida ao cliente. A ficha técnica é editada separadamente." onClick={() => removeIngredient(idx)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-3.5 w-3.5" /></button>
-          </div>
-        ))}
-      </div>
-
-      {/* Ficha técnica (recipe_items → raw_materials, separado dos ingredientes de exibição acima) */}
+      {/* A descrição é informada uma vez; a ficha abaixo cuida apenas do estoque. */}
       <RecipeBuilder ref={recipeBuilderRef} menuItemId={item?.id} disabled={saving || uploading || generating} />
 
       {/* Variants */}
