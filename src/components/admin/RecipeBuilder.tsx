@@ -86,7 +86,7 @@ function MaterialFields({ input, materials, disabled, base = false, onChange, on
 }
 
 const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, disabled = false }, ref) => {
-  const { rawMaterials, createRawMaterialRecord } = useStockData();
+  const { rawMaterials, createRawMaterialRecord, createRecipe } = useStockData();
   const { businessUnitId } = useCurrentBusinessUnit();
   const [rows, setRows] = useState<RecipeRow[]>([]);
   const [loaded, setLoaded] = useState(!menuItemId);
@@ -100,15 +100,26 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, disa
     let cancelled = false;
     setLoaded(false);
     setLoadError("");
-    void supabase.from("recipe_items").select("id, raw_material_id, quantity").eq("menu_item_id", menuItemId)
-      .then(({ data, error }) => {
+    void Promise.all([
+      supabase.from("recipe_items").select("id, raw_material_id, quantity").eq("menu_item_id", menuItemId),
+      supabase.from("menu_item_ingredients").select("id, name").eq("menu_item_id", menuItemId),
+    ]).then(([recipeResult, ingredientResult]) => {
         if (cancelled) return;
+        const error = recipeResult.error ?? ingredientResult.error;
         if (error) { setLoadError("Não foi possível carregar a ficha técnica: " + error.message); return; }
-        setRows((data ?? []).map(item => ({ ...emptyRow(), key: item.id, rawMaterialId: item.raw_material_id, quantity: String(item.quantity) })));
+        const recipeRows = (recipeResult.data ?? []).map(item => ({ ...emptyRow(), key: item.id, rawMaterialId: item.raw_material_id, quantity: String(item.quantity) }));
+        const linkedIds = new Set(recipeRows.map(row => row.rawMaterialId));
+        const ingredientRows = (ingredientResult.data ?? [])
+          .filter(ingredient => !rawMaterials.some(material => linkedIds.has(material.id) && material.name.trim().toLowerCase() === ingredient.name.trim().toLowerCase()))
+          .map(ingredient => {
+            const material = rawMaterials.find(item => item.name.trim().toLowerCase() === ingredient.name.trim().toLowerCase());
+            return { ...emptyRow(), key: `ingredient-${ingredient.id}`, rawMaterialId: material?.id ?? "", newName: material ? "" : ingredient.name, newUnit: material?.unit ?? "un" };
+          });
+        setRows([...recipeRows, ...ingredientRows]);
         setLoaded(true);
       });
     return () => { cancelled = true; };
-  }, [menuItemId, retry]);
+  }, [menuItemId, retry, rawMaterials]);
 
   const updateRow = (key: string, patch: Partial<RecipeRow>) =>
     setRows(previous => previous.map(row => row.key === key ? { ...row, ...patch } : row));
@@ -122,6 +133,8 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, disa
     const validMaterial = (input: MaterialInput) => (input.rawMaterialId || (input.newName.trim() && input.newUnit.trim())) && positive(input.quantity);
     for (const [index, row] of rows.entries()) {
       if (!validMaterial(row)) return fail(`Insumo ${index + 1}: informe nome, unidade de medida e quantidade maior que zero.`);
+      if (row.isProduced && (!positive(row.outputQuantity) || !row.subInputs.length || row.subInputs.some(input => !validMaterial(input))))
+        return fail(`Receita do insumo ${index + 1}: informe a quantidade de referência e os insumos-base com nome, unidade e quantidade maior que zero.`);
     }
     return true;
   };
@@ -140,6 +153,22 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, disa
       for (const row of rows) {
         const id = await resolve(row, row.isProduced ? "semiacabado" : "insumo", id => updateRow(row.key, { rawMaterialId: id }));
         if (!id) return false;
+        if (row.isProduced && row.rawMaterialId) {
+          await supabase.from("raw_materials").update({ tipo: "semiacabado" })
+            .eq("id", id).eq("business_unit_id", businessUnitId);
+        }
+        if (row.isProduced && !row.recipeCreated) {
+          const inputs: { rawMaterialId: string; quantity: number }[] = [];
+          for (const input of row.subInputs) {
+            const baseId = await resolve(input, "insumo", id => updateSubInput(row.key, input.key, { rawMaterialId: id }));
+            if (!baseId) return false;
+            inputs.push({ rawMaterialId: baseId, quantity: Number(input.quantity) });
+          }
+          const outputName = row.newName.trim() || rawMaterials.find(material => material.id === id)?.name || "Componente produzido";
+          if (!await createRecipe({ name: `Receita — ${outputName}`, outputRawMaterialId: id,
+            outputQuantity: Number(row.outputQuantity), shelfLifeDays: null, inputs })) return false;
+          updateRow(row.key, { recipeCreated: true });
+        }
         payload.push({ id: row.key, menu_item_id: targetMenuItemId, raw_material_id: id, quantity: Number(row.quantity) });
       }
       // Save before removing obsolete rows so a failed write does not erase the
@@ -183,16 +212,30 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, disa
         <MaterialFields input={row} materials={rawMaterials} disabled={disabled}
           onChange={patch => updateRow(row.key, { ...patch, ...(patch.rawMaterialId !== undefined ? { isProduced: false, recipeCreated: false, subInputs: [] } : {}) })}
           onRemove={() => setRows(previous => previous.filter(item => item.key !== row.key))} />
-        {!row.rawMaterialId && <label className="flex items-start gap-2 text-xs text-muted-foreground">
+        <label className="flex items-start gap-2 text-xs text-muted-foreground">
           <input type="checkbox" disabled={disabled} checked={row.isProduced} aria-label="É produzido: tem receita própria"
             data-tooltip="Ative para um insumo preparado na casa, como molho ou massa. Cadastre abaixo os insumos-base e as quantidades da receita."
             onChange={event => updateRow(row.key, { isProduced: event.target.checked,
               subInputs: event.target.checked && !row.subInputs.length ? [emptyInput()] : row.subInputs })} />
           É produzido: tem receita própria
-          </label>}
-        {row.isProduced && <p className="rounded-md border border-primary/20 bg-primary/5 p-2 text-xs text-muted-foreground">
-          Este componente será cadastrado como produzido. Monte a receita, o rendimento e os insumos-base em <strong>Estoque → Produção</strong>.
-        </p>}
+        </label>
+        {row.isProduced && <fieldset className="min-w-0 space-y-3 border-l-2 border-primary/30 pl-3" disabled={disabled || row.recipeCreated}>
+          <legend className="mb-2 text-xs font-medium text-foreground">Receita de {row.newName.trim() || "novo insumo"}</legend>
+          <label className={labelClass} htmlFor={`${row.key}-output`}>
+            <span>Quantidade de referência da receita ({unit})</span>
+            <Input id={`${row.key}-output`} aria-label="Quantidade de referência da receita" type="number" min="0.001" step="any"
+              data-tooltip="Quanto esta receita representa na unidade do insumo produzido. Ex.: receita para 1 kg de molho. Os insumos-base abaixo devem corresponder a essa quantidade; a produção real é lançada depois."
+              value={row.outputQuantity} onChange={event => updateRow(row.key, { outputQuantity: event.target.value })} className="h-9 min-w-0 text-xs sm:max-w-48" />
+          </label>
+          <p className="text-xs text-muted-foreground">Informe os insumos-base para {row.outputQuantity || "…"} {unit}. Você pode criar cada um aqui, mesmo sem estoque disponível.</p>
+          {row.subInputs.map(input => <MaterialFields key={input.key} input={input} materials={rawMaterials} base disabled={disabled || row.recipeCreated}
+            onChange={patch => updateSubInput(row.key, input.key, patch)}
+            onRemove={() => updateRow(row.key, { subInputs: row.subInputs.filter(item => item.key !== input.key) })} />)}
+          <Button type="button" variant="outline" size="sm" disabled={disabled || row.recipeCreated}
+            data-tooltip="Adicione um insumo-base à receita. Preencha nome, unidade de medida e quantidade; o novo insumo será cadastrado com saldo zero."
+            onClick={() => updateRow(row.key, { subInputs: [...row.subInputs, emptyInput()] })}><Plus className="h-3 w-3" /> Adicionar insumo-base</Button>
+          {row.recipeCreated && <p className="text-xs text-muted-foreground">Receita já cadastrada. Tente salvar o item novamente para concluir o vínculo.</p>}
+        </fieldset>}
       </div>;
     })}
     <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
