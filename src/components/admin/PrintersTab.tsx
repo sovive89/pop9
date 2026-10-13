@@ -352,6 +352,7 @@ const PrintersTab = () => {
             </div>
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Identificador do dispositivo (opcional)</Label>
+              <p className="text-xs text-muted-foreground">Nome para reconhecer a impressora (ex.: "Térmica Cozinha") ou o nome dela no Windows. Opcional; o print server usa o IP abaixo.</p>
               <Input
                 value={deviceIdentifier}
                 onChange={(e) => setDeviceIdentifier(e.target.value)}

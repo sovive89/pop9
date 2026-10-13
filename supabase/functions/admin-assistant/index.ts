@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.99.2';
 import { json, cors, uuid } from '../_shared/operational.ts';
-import { AGENT_PAGES, AGENT_TASK_RULES, TUTORIALS, CHAT_MODELS, canAccessAgentPage, findAgentPage, validateAgentPlan } from '../_shared/assistant-help.ts';
+import { AGENT_PAGES, AGENT_TASK_RULES, FIELD_GLOSSARY, TUTORIALS, CHAT_MODELS, canAccessAgentPage, findAgentPage, validateAgentPlan } from '../_shared/assistant-help.ts';
 import { decryptAIKey, parseModelJson, providerJson, textCompletion } from '../_shared/ai-text.ts';
 import type { AssistantDatabase } from '../_shared/assistant-database.ts';
 
@@ -64,7 +64,7 @@ Deno.serve(async(req)=>{
    return json({error:'Não foi possível iniciar esta tarefa. Envie uma nova solicitação.'},503);
   }reserved=true;
   const allowedPages=AGENT_PAGES.filter(target=>canAccessAgentPage(unitRoles,target)).map(({id,label,path,draftForm})=>({id,label,path,draftForm:draftForm??null}));
-  const system=AGENT_TASK_RULES+'\nUnidade autorizada: '+business.name+'\nTutoriais do produto: '+JSON.stringify(TUTORIALS)+'\nPágina atual validada: '+JSON.stringify({id:currentPage.id,label:currentPage.label,path:currentPage.path})+'\nRotas disponíveis para este papel: '+JSON.stringify(allowedPages);
+  const system=AGENT_TASK_RULES+'\nUnidade autorizada: '+business.name+'\nTutoriais do produto: '+JSON.stringify(TUTORIALS)+'\nGlossário de campos (use em action explain quando perguntarem o que é um campo): '+JSON.stringify(FIELD_GLOSSARY)+'\nPágina atual validada: '+JSON.stringify({id:currentPage.id,label:currentPage.label,path:currentPage.path})+'\nRotas disponíveis para este papel: '+JSON.stringify(allowedPages);
   const result=await textCompletion(model.provider,model.model,await decryptAIKey(credential.encrypted_key,credential.iv),system,[{role:'user',content:prompt.trim()}]);
   let parsedPlan:unknown;try{parsedPlan=parseModelJson(result.text);}catch{throw Error('A IA não devolveu um plano legível. Reformule a solicitação ou tente novamente com um único pedido.');}
   const plan=validateAgentPlan(parsedPlan,unitRoles,currentPage);
