@@ -13,6 +13,10 @@ export interface OrderItem {
   ingredientMods?: IngredientMod[];
   /** Setor gravado no pedido (slug de print_sectors). */
   destination?: string;
+  /** Itens vindos do mesmo combo compartilham este id (a conta agrupa por ele). */
+  comboGroupId?: string;
+  /** Nome do combo, para exibir na conta e no carrinho. */
+  comboName?: string;
 }
 
 export type OrderStatus = "pending" | "preparing" | "ready" | "delivered";

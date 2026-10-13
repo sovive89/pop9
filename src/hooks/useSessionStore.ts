@@ -429,6 +429,8 @@ export const useSessionStore = () => {
       quantity: item.quantity,
       observation: item.observation ?? null,
       ingredient_mods: item.ingredientMods ? JSON.parse(JSON.stringify(item.ingredientMods)) : [],
+      // Itens de combo: mesmo grupo e nome para a conta agrupar (colunas novas; null nos avulsos).
+      ...(item.comboGroupId ? { combo_group_id: item.comboGroupId, combo_name: item.comboName ?? null } : {}),
       // Provisório: o banco define o setor pela categoria do item (set_order_item_destination).
       destination: isKitchenItem(item.menuItemId) ? "kitchen" : "bar",
     }));

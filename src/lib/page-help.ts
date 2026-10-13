@@ -1,5 +1,6 @@
 /** Shared page descriptions for contextual help across the PWA. */
 export const PAGE_HELP: Record<string, string> = {
+  combos: "Combos: junte itens do cardápio (fixos ou à escolha do cliente), com preço fixo ou desconto, e itens grátis. No pedido, cada item vai para o seu setor e baixa estoque normalmente; o garçom pode retirar ingredientes, pôr extras e escolher variantes de cada item.",
   "/": "Acompanhe mesas, clientes e pedidos. Abra uma mesa para iniciar o atendimento ou consultar a conta.",
   "/login": "Entre com sua conta, cadastre-se ou solicite a recuperação de senha.",
   "/recuperar-senha": "Defina uma nova senha usando o link de recuperação enviado por e-mail.",
