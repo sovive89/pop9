@@ -25,6 +25,7 @@ jobs:
           node-version: "22"
       - run: npm ci
       - run: npm run check
+      - run: npm install --no-save electron@38 electron-builder@26
       - run: npm run build:windows
       - uses: actions/upload-artifact@v4
         with:
