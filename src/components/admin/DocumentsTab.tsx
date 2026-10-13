@@ -57,13 +57,23 @@ export default function DocumentsTab() {
     if(sheetBusy || (kind==="export" && !businessUnitId))return;
     const requestScope=scope;setSheetBusy(true);
     try{
-      const {templateFiles,exportFiles,zipFiles}=await import("@/utils/recipeSheets");
+      const {templateFiles,exportJsonFiles}=await import("@/utils/recipeSheets");
       if(activeScope.current!==requestScope)return;
-      const files=kind==="templates"?templateFiles():await exportFiles(businessUnitId!);
-      const bytes=await zipFiles(files);
-      if(activeScope.current!==requestScope)return;
-      downloadBlob(new Blob([bytes],{type:"application/zip"}),`${safeFileName(unitName||"pop9")}-${kind==="templates"?"modelos-fichas-tecnicas":"fichas-tecnicas"}.zip`);
-    }catch(error){if(activeScope.current===requestScope)toast.error(error instanceof Error?error.message:"Não foi possível gerar as planilhas.");}
+      if(kind==="templates"){
+        const files=templateFiles();
+        const {zipFiles}=await import("@/utils/recipeSheets");
+        const bytes=await zipFiles(files);
+        if(activeScope.current!==requestScope)return;
+        downloadBlob(new Blob([bytes],{type:"application/zip"}),`${safeFileName(unitName||"pop9")}-modelos-fichas-tecnicas.zip`);
+      }else{
+        const files=await exportJsonFiles(businessUnitId!);
+        if(activeScope.current!==requestScope)return;
+        for(const [name,content] of Object.entries(files)){
+          downloadBlob(new Blob([content],{type:"application/json;charset=utf-8"}),name);
+        }
+        toast.success(`${Object.keys(files).length} ficha(s) JSON exportada(s)`);
+      }
+    }catch(error){if(activeScope.current===requestScope)toast.error(error instanceof Error?error.message:"Não foi possível exportar as fichas.");}
     finally{setSheetBusy(false);}
   };
   const visibleItems=items.filter(item=>`${item.name} ${item.categoryLabel}`.toLocaleLowerCase("pt-BR").includes(search.toLocaleLowerCase("pt-BR")));
@@ -98,10 +108,10 @@ export default function DocumentsTab() {
     </section>
     <section className="space-y-4 rounded-xl border border-border bg-card p-5">
       <h3 className="flex items-center gap-2 font-semibold"><ClipboardList className="h-5 w-5 text-primary" />Fichas técnicas</h3>
-      <p className="text-sm text-muted-foreground">Planilhas no mesmo formato para os dois sentidos: baixe o modelo, preencha e envie em Cardápio → Importar com IA; ou exporte as fichas atuais para revisar, imprimir ou levar a outro sistema.</p>
+      <p className="text-sm text-muted-foreground">Exporte cada ficha atual diretamente em JSON, sem compactação. Os modelos de importação continuam disponíveis em ZIP.</p>
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" disabled={sheetBusy} data-tooltip="Modelos em branco com exemplos: fichas dos itens vendidos e receitas de preparos da casa." onClick={()=>void downloadSheets("templates")}><Download className="mr-2 h-4 w-4" />Baixar modelos (ZIP)</Button>
-        <Button variant="outline" disabled={sheetBusy || !businessUnitId} data-tooltip="Exporta itens, insumos e quantidades cadastrados nesta unidade." onClick={()=>void downloadSheets("export")}><FileText className="mr-2 h-4 w-4" />Exportar fichas atuais (ZIP)</Button>
+        <Button variant="outline" disabled={sheetBusy || !businessUnitId} data-tooltip="Exporta itens, insumos e quantidades cadastrados nesta unidade." onClick={()=>void downloadSheets("export")}><FileText className="mr-2 h-4 w-4" />Exportar fichas em JSON</Button>
         <Button disabled={!businessUnitId} data-tooltip="Descreva o item ou preparo e a IA monta a ficha técnica no formato de exportação." onClick={()=>setAiSheetOpen(true)}><Sparkles className="mr-2 h-4 w-4" />Criar ficha com IA</Button>
         <AiRecipeSheetDialog businessUnitId={businessUnitId} open={aiSheetOpen} onOpenChange={setAiSheetOpen} />
       </div>

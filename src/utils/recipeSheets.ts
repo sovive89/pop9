@@ -87,3 +87,37 @@ export async function zipFiles(files: Record<string, string>): Promise<Uint8Arra
   const { zipSync, strToU8 } = await import("fflate");
   return zipSync(Object.fromEntries(Object.entries(files).map(([name, text]) => [name, strToU8(text)])), { level: 6 });
 }
+
+
+/** Exporta cada ficha cadastrada como JSON independente, com referências entre fichas. */
+export async function exportJsonFiles(businessUnitId: string): Promise<Record<string,string>> {
+  const [{data:items,error:itemError},{data:recipes,error:recipeError}] = await Promise.all([
+    supabase.from("menu_items").select("id,name,description,price,category,recipe_items(raw_material_id,quantity,raw_materials(name,unit))")
+      .eq("business_unit_id",businessUnitId).order("name"),
+    supabase.from("production_recipes").select("id,name,tipo,output_quantity,output_raw_material_id,raw_materials(name,unit),production_recipe_inputs(raw_material_id,quantity,raw_materials(name,unit))")
+      .eq("business_unit_id",businessUnitId).eq("active",true).order("name")
+  ]);
+  if(itemError || recipeError)throw new Error("Falha ao carregar fichas técnicas.");
+  const byOutput=new Map((recipes??[]).map(r=>[r.output_raw_material_id,r]));
+  const files:Record<string,string>={};
+  const fileName=(type:string,name:string,id:string)=>`${type}-${name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-zA-Z0-9_-]+/g,"-").toLowerCase()}-${id.slice(0,8)}.json`;
+  for(const r of recipes??[]){
+    files[fileName("producao",r.name,r.id)]=JSON.stringify({
+      schema:"pop9.ficha.v1",tipo:r.tipo??"producao",id:r.id,business_unit_id:businessUnitId,nome:r.name,
+      saida:{insumo_id:r.output_raw_material_id,nome:r.raw_materials?.name??null,quantidade:Number(r.output_quantity),unidade:r.raw_materials?.unit??null},
+      componentes:(r.production_recipe_inputs??[]).map(i=>({tipo:"insumo",insumo_id:i.raw_material_id,nome:i.raw_materials?.name??null,quantidade:Number(i.quantity),unidade:i.raw_materials?.unit??null}))
+    },null,2);
+  }
+  for(const item of items??[]){
+    files[fileName("cardapio",item.name,item.id)]=JSON.stringify({
+      schema:"pop9.ficha.v1",tipo:"cardapio",id:item.id,business_unit_id:businessUnitId,nome:item.name,
+      descricao:item.description,preco:Number(item.price),categoria:item.category,
+      componentes:(item.recipe_items??[]).map(i=>{
+        const r=byOutput.get(i.raw_material_id);
+        return {tipo:r?"ficha_referenciada":"insumo",insumo_id:i.raw_material_id,nome:i.raw_materials?.name??null,
+          quantidade:Number(i.quantity),unidade:i.raw_materials?.unit??null,...(r?{ficha_id:r.id}: {})};
+      })
+    },null,2);
+  }
+  return files;
+}
