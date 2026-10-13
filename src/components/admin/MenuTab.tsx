@@ -294,6 +294,30 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   );
   const [saving, setSaving] = useState(false);
   const recipeBuilderRef = useRef<RecipeBuilderHandle>(null);
+  const [documentSheets,setDocumentSheets] = useState<{id:string;name:string}[]>([]);
+  const [documentPickerOpen,setDocumentPickerOpen] = useState(false);
+  const [documentPickerBusy,setDocumentPickerBusy] = useState(false);
+  const [selectedDocument,setSelectedDocument] = useState("");
+  const openDocumentPicker = async () => {
+    if (!businessUnitId) return;
+    setDocumentPickerBusy(true);
+    try {
+      const {data,error} = await supabase.from("menu_items").select("id,name")
+        .eq("business_unit_id",businessUnitId).order("name");
+      if(error) throw error;
+      setDocumentSheets((data??[]).filter(source=>source.id!==item?.id && source.id!==createdId));
+      setSelectedDocument("");
+      setDocumentPickerOpen(true);
+    }catch{toast.error("Não foi possível consultar as fichas de Documentos.");}
+    finally{setDocumentPickerBusy(false);}
+  };
+  const applyDocumentSheet = async () => {
+    if (!selectedDocument || !recipeBuilderRef.current) return;
+    setDocumentPickerBusy(true);
+    try{
+      if(await recipeBuilderRef.current.importFromMenuItem(selectedDocument)) setDocumentPickerOpen(false);
+    }finally{setDocumentPickerBusy(false);}
+  };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -424,7 +448,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     if (!item) setCreatedId(savedId);
     persistedImage.current = finalImage;
     setSavedStatus(status);
-    const recipeOk = item?.id ? await recipeBuilderRef.current?.commit(savedId) : true;
+    const recipeOk = recipeBuilderRef.current ? await recipeBuilderRef.current.commit(savedId) : true;
     setSaving(false);
     if (recipeOk === false) return;
 
@@ -606,15 +630,28 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
         </div>
       </div>
 
-      {item?.id ? (
-        /* O item já existe: agora a ficha pode transformar a descrição em
-           necessidades de estoque e cadastrar insumos/receitas teóricos. */
-        <RecipeBuilder ref={recipeBuilderRef} menuItemId={item.id} menuItemName={name} disabled={saving || uploading || generating} />
-      ) : (
-        <p className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
-          Salve o item do cardápio primeiro. Depois reabra-o para montar a ficha técnica, criar os insumos teóricos e definir as receitas de produção.
-        </p>
-      )}
+      <div className="space-y-2">
+        <Button type="button" variant="outline" disabled={saving || documentPickerBusy}
+          onClick={() => void openDocumentPicker()}>Puxar ficha de Documentos</Button>
+        <p className="text-xs text-muted-foreground">Selecione uma ficha técnica já salva nesta unidade. A importação só será vinculada após salvar o item.</p>
+        <RecipeBuilder ref={recipeBuilderRef} menuItemId={item?.id ?? createdId ?? undefined}
+          menuItemName={name} disabled={saving || uploading || generating} />
+      </div>
+      {documentPickerOpen && <div role="dialog" aria-label="Puxar ficha técnica de Documentos"
+        className="space-y-3 rounded-lg border border-border bg-card p-3">
+        <p className="text-sm font-semibold">Fichas técnicas da unidade</p>
+        <select aria-label="Selecionar ficha técnica" value={selectedDocument}
+          onChange={event=>setSelectedDocument(event.target.value)}
+          className="w-full rounded-md border bg-background p-2 text-sm">
+          <option value="">Selecione um item</option>
+          {documentSheets.map(source=><option key={source.id} value={source.id}>{source.name}</option>)}
+        </select>
+        <div className="flex gap-2">
+          <Button type="button" disabled={!selectedDocument || documentPickerBusy}
+            onClick={()=>void applyDocumentSheet()}>Carregar ficha</Button>
+          <Button type="button" variant="outline" onClick={()=>setDocumentPickerOpen(false)}>Cancelar</Button>
+        </div>
+      </div>}
 
       {/* Variants */}
       <div className="space-y-2">
