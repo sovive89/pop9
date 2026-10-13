@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
+import { useAuth } from "@/hooks/useAuth";
 
 export type PrinterTipo = "termica" | "etiqueta";
 export type PrinterGatilho =
@@ -12,11 +13,14 @@ export type PrinterGatilho =
   | "pedido_pronto"
   | "etiqueta_producao";
 export type PrinterConnectionType = "browser" | "qz_tray" | "webusb";
+export type PrinterSector = "cozinha" | "bar" | "caixa" | "expedicao" | "producao" | "geral";
+export const SECTOR_LABELS: Record<PrinterSector, string> = { cozinha: "Cozinha", bar: "Bar", caixa: "Caixa", expedicao: "Expedição", producao: "Produção", geral: "Geral" };
 
 export interface PrinterConfig {
   id: string;
   businessUnitId: string | null;
   name: string;
+  setor: PrinterSector;
   tipo: PrinterTipo;
   /** Gatilho principal (o primeiro da lista). Mantido para o código antigo. */
   gatilho: PrinterGatilho;
@@ -71,26 +75,40 @@ export const CONNECTION_TYPE_LABELS: Record<PrinterConnectionType, string> = {
   qz_tray: "QZ Tray",
   webusb: "WebUSB",
 };
+const EMPTY_PRINTERS: PrinterConfig[] = [];
 
 export const usePrinterConfigs = () => {
+  const { user } = useAuth();
   const { businessUnitId } = useCurrentBusinessUnit();
-  const [printers, setPrinters] = useState<PrinterConfig[]>([]);
-  const [loading, setLoading] = useState(true);
+  const scope = `${user?.id}:${businessUnitId}`;
+  const current = useRef(scope);current.current = scope;
+  const generation = useRef(0);
+  const [state, setState] = useState<{ scope: string; printers: PrinterConfig[]; error: boolean }>({ scope: "", printers: [], error: false });
+  const visible = Boolean(user && businessUnitId) && state.scope === scope;
+  const printers = visible ? state.printers : EMPTY_PRINTERS;
+  const loading = Boolean(user && businessUnitId) && !visible;
+  const error = visible && state.error;
 
   const loadPrinters = useCallback(async () => {
+    if (!user?.id || !businessUnitId) return;
+    const request = ++generation.current;
+    try {
     const { data, error } = await supabase
       .from("printer_configs")
       .select("*")
+      .eq("business_unit_id", businessUnitId)
       .order("name");
+    if (current.current !== scope || request !== generation.current) return;
     if (error) {
-      toast.error("Erro ao carregar impressoras");
+      setState({ scope, printers: [], error: true });
       return;
     }
-    setPrinters(
+    const mapped: PrinterConfig[] =
       (data ?? []).map((p) => ({
         id: p.id,
         businessUnitId: p.business_unit_id,
         name: p.name,
+        setor: (p.setor ?? "geral") as PrinterSector,
         tipo: p.tipo as PrinterTipo,
         gatilho: p.gatilho as PrinterGatilho,
         // Antes da migration de vários gatilhos, a lista não existe: usa o gatilho único.
@@ -104,22 +122,25 @@ export const usePrinterConfigs = () => {
         copies: p.copies ?? 1,
         autoCut: p.auto_cut ?? true,
         destinos: ((p.destinos?.length ? p.destinos : ["kitchen", "bar"]) as PrinterDestino[]),
-      }))
-    );
-  }, []);
+      }));
+    setState({ scope, printers: mapped, error: false });
+    } catch { if (current.current === scope && request === generation.current) setState({ scope, printers: [], error: true }); }
+  }, [businessUnitId, scope, user?.id]);
 
   useEffect(() => {
-    setLoading(true);
-    loadPrinters().finally(() => setLoading(false));
+    void loadPrinters();
   }, [loadPrinters]);
 
   const createPrinter = async (input: {
     name: string;
+    setor?: PrinterSector;
     tipo: PrinterTipo;
     gatilhos: PrinterGatilho[];
     connectionType: PrinterConnectionType;
     deviceIdentifier?: string | null;
   } & Partial<PrinterNetworkInput>) => {
+    if (!user || !businessUnitId) return false;
+    const requestScope = scope;
     const gatilhos = normalizeGatilhos(input.gatilhos);
     if (!gatilhos.length) {
       toast.error("Escolha pelo menos um gatilho");
@@ -127,6 +148,7 @@ export const usePrinterConfigs = () => {
     }
     const { error } = await supabase.from("printer_configs").insert({
       name: input.name,
+      setor: input.setor ?? "geral",
       tipo: input.tipo,
       gatilho: gatilhos[0],
       gatilhos,
@@ -135,6 +157,7 @@ export const usePrinterConfigs = () => {
       business_unit_id: businessUnitId,
       ...networkColumns(input),
     });
+    if (current.current !== requestScope) return false;
     if (error) {
       toast.error("Erro ao criar impressora: " + error.message);
       return false;
@@ -148,6 +171,7 @@ export const usePrinterConfigs = () => {
     id: string,
     input: Partial<{
       name: string;
+      setor: PrinterSector;
       tipo: PrinterTipo;
       gatilhos: PrinterGatilho[];
       connectionType: PrinterConnectionType;
@@ -155,6 +179,8 @@ export const usePrinterConfigs = () => {
       active: boolean;
     } & PrinterNetworkInput>
   ) => {
+    if (!user || !businessUnitId || !printers.some(printer => printer.id === id)) return false;
+    const requestScope = scope;
     const gatilhos = input.gatilhos !== undefined ? normalizeGatilhos(input.gatilhos) : undefined;
     if (gatilhos && !gatilhos.length) {
       toast.error("Escolha pelo menos um gatilho");
@@ -164,6 +190,7 @@ export const usePrinterConfigs = () => {
       .from("printer_configs")
       .update({
         ...(input.name !== undefined && { name: input.name }),
+        ...(input.setor !== undefined && { setor: input.setor }),
         ...(input.tipo !== undefined && { tipo: input.tipo }),
         ...(gatilhos && { gatilho: gatilhos[0], gatilhos }),
         ...(input.connectionType !== undefined && { connection_type: input.connectionType }),
@@ -171,7 +198,8 @@ export const usePrinterConfigs = () => {
         ...(input.active !== undefined && { active: input.active }),
         ...networkColumns(input),
       })
-      .eq("id", id);
+      .eq("id", id).eq("business_unit_id", businessUnitId);
+    if (current.current !== requestScope) return false;
     if (error) {
       toast.error("Erro ao atualizar impressora: " + error.message);
       return false;
@@ -181,7 +209,10 @@ export const usePrinterConfigs = () => {
   };
 
   const deletePrinter = async (id: string) => {
-    const { error } = await supabase.from("printer_configs").delete().eq("id", id);
+    if (!user || !businessUnitId || !printers.some(printer => printer.id === id)) return false;
+    const requestScope = scope;
+    const { error } = await supabase.from("printer_configs").delete().eq("id", id).eq("business_unit_id", businessUnitId);
+    if (current.current !== requestScope) return false;
     if (error) {
       toast.error("Erro ao remover impressora: " + error.message);
       return false;
@@ -205,6 +236,9 @@ export const usePrinterConfigs = () => {
   return {
     printers,
     loading,
+    error,
+    scope,
+    reload: loadPrinters,
     createPrinter,
     updatePrinter,
     deletePrinter,

@@ -1,11 +1,14 @@
 import { PAGE_HELP } from "@/lib/page-help";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Printer, Plus, Trash2, Pencil, Tag as TagIcon } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
+import { PRINTER_PRESETS, printerPreview } from "@/lib/printerPresets";
+import { printReceipt } from "@/utils/thermal-print";
 import {
   Select,
   SelectContent,
@@ -32,6 +35,8 @@ import {
   type PrinterDestino,
   DESTINO_LABELS,
   isValidHost,
+  SECTOR_LABELS,
+  type PrinterSector,
 } from "@/hooks/usePrinterConfigs";
 
 const TIPO_OPTIONS: { value: PrinterTipo; label: string }[] = [
@@ -43,11 +48,19 @@ const GATILHO_OPTIONS = Object.entries(GATILHO_LABELS) as [PrinterGatilho, strin
 const CONNECTION_OPTIONS = Object.entries(CONNECTION_TYPE_LABELS) as [PrinterConnectionType, string][];
 
 const PrintersTab = () => {
-  const { printers, loading, createPrinter, updatePrinter, deletePrinter } = usePrinterConfigs();
+  const { printers, loading, error, scope, reload, createPrinter, updatePrinter, deletePrinter } = usePrinterConfigs();
+  const { businessUnitId, units } = useCurrentBusinessUnit();
+  const unitName = units.find(unit => unit.id === businessUnitId)?.name ?? "";
+  const currentScope = useRef(scope);currentScope.current = scope;
+  const savingLock = useRef(false);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
+  const [setor, setSetor] = useState<PrinterSector>("cozinha");
+  const [preset, setPreset] = useState("cozinha");
+  const [previewGatilho, setPreviewGatilho] = useState<PrinterGatilho>("comanda_cozinha");
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [tipo, setTipo] = useState<PrinterTipo>("termica");
   const [gatilhos, setGatilhos] = useState<PrinterGatilho[]>(["comanda_cozinha"]);
   // null = nova impressora; id = editando uma existente.
@@ -60,10 +73,11 @@ const PrintersTab = () => {
   const [paperWidth, setPaperWidth] = useState(80);
   const [copies, setCopies] = useState(1);
   const [autoCut, setAutoCut] = useState(true);
-  const [destinos, setDestinos] = useState<PrinterDestino[]>(["kitchen", "bar"]);
+  const [destinos, setDestinos] = useState<PrinterDestino[]>(["kitchen"]);
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setName("");
+    setSetor("cozinha");setPreset("cozinha");setPreviewGatilho("comanda_cozinha");setPreviewOpen(false);
     setTipo("termica");
     setGatilhos(["comanda_cozinha"]);
     setEditingId(null);
@@ -74,7 +88,15 @@ const PrintersTab = () => {
     setPaperWidth(80);
     setCopies(1);
     setAutoCut(true);
-    setDestinos(["kitchen", "bar"]);
+    setDestinos(["kitchen"]);
+  }, []);
+  useEffect(() => { setDialogOpen(false);resetForm(); }, [scope, resetForm]);
+
+  const applyPreset = () => {
+    const model = PRINTER_PRESETS.find(option => option.id === preset);
+    if (!model) return;
+    setSetor(model.setor);setTipo(model.tipo);setGatilhos([...model.gatilhos]);setDestinos([...model.destinos]);setPaperWidth(model.paperWidth);setCopies(model.copies);setAutoCut(model.autoCut);setPreviewGatilho(model.gatilhos[0]);
+    if (!name.trim()) setName(`Impressora ${model.label}`);
   };
 
   const openNew = () => {
@@ -85,6 +107,7 @@ const PrintersTab = () => {
   const openEdit = (p: PrinterConfig) => {
     setEditingId(p.id);
     setName(p.name);
+    setSetor(p.setor);setPreset(PRINTER_PRESETS.some(option => option.id === p.setor) ? p.setor : "cozinha");setPreviewGatilho(p.gatilhos[0]);setPreviewOpen(false);
     setTipo(p.tipo);
     setGatilhos(p.gatilhos);
     setConnectionType(p.connectionType);
@@ -113,10 +136,12 @@ const PrintersTab = () => {
     setDestinos((prev) => (checked ? [...prev.filter((d) => d !== value), value] : prev.filter((d) => d !== value)));
 
   const handleSave = async () => {
-    if (!name.trim() || !gatilhos.length || networkError) return;
+    if (!name.trim() || !gatilhos.length || networkError || savingLock.current || !businessUnitId) return;
+    const requestScope = scope;savingLock.current = true;
     setSaving(true);
     const data = {
       name: name.trim(),
+      setor,
       tipo,
       gatilhos,
       connectionType,
@@ -128,23 +153,28 @@ const PrintersTab = () => {
       autoCut,
       destinos,
     };
+    try {
     const ok = editingId ? await updatePrinter(editingId, data) : await createPrinter(data);
-    setSaving(false);
-    if (ok) {
+    if (ok && currentScope.current === requestScope) {
       resetForm();
       setDialogOpen(false);
     }
+    } finally { savingLock.current = false;setSaving(false); }
   };
 
   if (loading) {
     return <p className="text-center text-muted-foreground py-10 text-sm">Carregando...</p>;
   }
+  if (error) return <div role="alert" className="space-y-3"><p>Não foi possível carregar as impressoras desta unidade.</p><Button variant="outline" onClick={()=>void reload()}>Tentar novamente</Button></div>;
+  if (!businessUnitId) return <p>Selecione uma unidade para configurar as impressoras.</p>;
+  const previewTrigger = gatilhos.includes(previewGatilho) ? previewGatilho : gatilhos[0];
+  const previewHtml = previewOpen && previewTrigger && destinos.length ? printerPreview(previewTrigger, destinos, unitName, paperWidth, copies) : "";
 
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-border bg-card p-4">
         <p className="text-xs text-muted-foreground leading-relaxed">
-          Cada impressora pode ter um ou mais gatilhos (ex.: a mesma térmica imprime a comanda
+          {unitName} · Comece com um modelo de Cozinha, Bar, Caixa ou Expedição e ajuste papel, cópias e conexão. Cada impressora pode ter um ou mais gatilhos (ex.: a mesma térmica imprime a comanda
           da cozinha e a conta da mesa), e um gatilho pode sair em mais de uma impressora. Sem
           o print server, a impressão usa o diálogo do navegador. Com o POP9 Print Server instalado
           num computador da loja e o IP da térmica preenchido abaixo, a comanda da cozinha/bar sai
@@ -178,7 +208,7 @@ const PrintersTab = () => {
                   )}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {p.gatilhos.map((g) => GATILHO_LABELS[g]).join(", ")} · {CONNECTION_TYPE_LABELS[p.connectionType]}
+                  {SECTOR_LABELS[p.setor]} · {p.gatilhos.map((g) => GATILHO_LABELS[g]).join(", ")} · {CONNECTION_TYPE_LABELS[p.connectionType]} · {p.paperWidth} mm · {p.copies} cópia(s)
                   {p.deviceIdentifier && ` · ${p.deviceIdentifier}`}
                   {p.host && ` · Rede ${p.host}:${p.port} (${p.destinos.map((d) => DESTINO_LABELS[d]).join(" + ")})`}
                 </p>
@@ -213,13 +243,15 @@ const PrintersTab = () => {
           <DialogHeader>
             <DialogTitle>{editingId ? "Editar impressora" : "Nova impressora"}</DialogTitle>
             <DialogDescription>
-              Nome, tipo, gatilhos (quando ela é usada) e conexão.
+              Aplique um modelo predefinido, confira a prévia e ajuste o equipamento.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            <div className="space-y-2 rounded-lg border p-3"><Label htmlFor="printer-preset">Modelo predefinido</Label><select id="printer-preset" className="w-full rounded-md border bg-background p-2 text-sm" value={preset} onChange={event=>setPreset(event.target.value)}>{PRINTER_PRESETS.map(option=><option key={option.id} value={option.id}>{option.label}</option>)}</select><p className="text-xs text-muted-foreground">{PRINTER_PRESETS.find(option=>option.id===preset)?.description}</p><Button type="button" variant="outline" disabled={saving} onClick={applyPreset}>Aplicar modelo</Button><p className="text-xs text-muted-foreground">Preenche tipo, impressões, destinos, papel, cópias e corte. A conexão e o endereço do equipamento são preservados.</p></div>
+            <div className="space-y-2"><Label htmlFor="printer-sector">Setor da impressora</Label><select id="printer-sector" value={setor} onChange={event=>setSetor(event.target.value as PrinterSector)} className="w-full rounded-md border bg-background p-2 text-sm">{Object.entries(SECTOR_LABELS).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
             <div className="space-y-2">
-              <Label className="text-sm text-muted-foreground">Nome</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Impressora do bar" />
+              <Label htmlFor="printer-name" className="text-sm text-muted-foreground">Nome</Label>
+              <Input id="printer-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Impressora do bar" />
             </div>
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Tipo</Label>
@@ -295,7 +327,7 @@ const PrintersTab = () => {
                   <Select value={String(copies)} onValueChange={(v) => setCopies(Number(v))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {[1, 2, 3].map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
+                      {[1, 2, 3, 4, 5].map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -315,6 +347,7 @@ const PrintersTab = () => {
               </div>
               {networkError && <p className="text-xs text-destructive">{networkError}</p>}
             </div>
+            <div className="space-y-3 rounded-lg border p-3"><Label htmlFor="printer-preview-model">Prévia da impressão</Label><select id="printer-preview-model" className="w-full rounded-md border bg-background p-2 text-sm" value={previewTrigger ?? ""} onChange={event=>setPreviewGatilho(event.target.value as PrinterGatilho)}>{gatilhos.map(value=><option key={value} value={value}>{GATILHO_LABELS[value]}</option>)}</select><Button type="button" variant="outline" disabled={!previewTrigger || !destinos.length || saving} onClick={()=>setPreviewOpen(value=>!value)}>{previewOpen ? "Ocultar prévia" : "Ver prévia"}</Button>{previewHtml && <><iframe title="Prévia do modelo de impressão" sandbox="" srcDoc={previewHtml} className="h-80 w-full rounded-md border bg-white" /><Button type="button" variant="outline" onClick={()=>printReceipt(previewHtml)}>Imprimir teste no navegador</Button></>}<p className="text-xs text-muted-foreground">Prévia com dados de exemplo, sem registrar pedidos ou pagamentos. O corte é aplicado pelo print server. Contas, avisos e etiquetas são impressos pelo navegador; o servidor automático atende comandas de cozinha/bar.</p></div>
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
