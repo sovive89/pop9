@@ -1,8 +1,11 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import FinanceTab from "@/components/admin/FinanceTab";
 
+class ResizeObserverStub { observe() {} unobserve() {} disconnect() {} }
+beforeAll(() => { vi.stubGlobal("ResizeObserver", ResizeObserverStub); });
+afterAll(() => { vi.unstubAllGlobals(); });
 afterEach(cleanup);
 
 describe("Financeiro", () => {
