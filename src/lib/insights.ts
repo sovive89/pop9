@@ -147,3 +147,25 @@ export function sampleData() {
   ];
   return { history, items };
 }
+
+export type WasteMovement = { rawMaterialId: string; name: string; unit: string; quantity: number; unitCost: number | null; motivo: string | null };
+export type WasteSummary = { rawMaterialId: string; name: string; unit: string; quantity: number; cost: number; events: number; topMotivo: string | null };
+
+/** Agrupa as perdas registradas por insumo: quantidade, valor perdido e motivo mais frequente. Ordena pelo maior prejuízo. */
+export function summarizeWaste(rows: WasteMovement[]): WasteSummary[] {
+  const map = new Map<string, WasteSummary & { motivos: Map<string, number> }>();
+  for (const r of rows) {
+    if (!Number.isFinite(r.quantity) || r.quantity <= 0) continue;
+    const cur = map.get(r.rawMaterialId) ?? { rawMaterialId: r.rawMaterialId, name: r.name, unit: r.unit, quantity: 0, cost: 0, events: 0, topMotivo: null, motivos: new Map() };
+    cur.quantity += r.quantity;
+    cur.cost += r.quantity * (r.unitCost ?? 0);
+    cur.events++;
+    const m = r.motivo?.trim();
+    if (m) cur.motivos.set(m, (cur.motivos.get(m) ?? 0) + 1);
+    map.set(r.rawMaterialId, cur);
+  }
+  return [...map.values()].map(({ motivos, ...s }) => ({
+    ...s, quantity: Math.round(s.quantity * 1000) / 1000, cost: Math.round(s.cost * 100) / 100,
+    topMotivo: [...motivos].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null,
+  })).sort((a, b) => b.cost - a.cost);
+}

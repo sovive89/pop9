@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { AlertTriangle, Banknote, Camera, Lightbulb, Trash2, TrendingUp } from "lucide-react";
 import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Input } from "@/components/ui/input";
+import WasteSection from "@/components/admin/WasteSection";
 import { PAGE_HELP } from "@/lib/page-help";
 import { breakEven, fixedCostPerUnit, monthlyFixedCosts, suggestPrice, type FixedCost } from "@/lib/finance";
 import { MENU_CLASS_LABEL, buildInsights, classifyMenu, forecastDaily, itemEconomics, sampleData, type MenuClass } from "@/lib/insights";
@@ -112,6 +113,8 @@ export default function FinanceTab() {
         <h2 tabIndex={0} data-tooltip={PAGE_HELP["finance"]} className="flex items-center gap-2 text-lg font-semibold"><Banknote className="h-5 w-5 text-primary" aria-hidden /> Financeiro</h2>
         <p role="status" className="mt-1 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm">Dados de amostra para demonstração. Nada aqui vem do seu banco nem altera preços ou estoque.</p>
       </div>
+
+      <WasteSection />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         {kpis.map((k) => (

@@ -65,3 +65,18 @@ describe("desperdício", () => {
     expect(list.some((i) => i.title.includes("desperdício"))).toBe(true);
   });
 });
+
+import { summarizeWaste } from "@/lib/insights";
+describe("perdas registradas", () => {
+  it("agrupa por insumo, soma o prejuízo e acha o motivo mais comum", () => {
+    const s = summarizeWaste([
+      { rawMaterialId: "a", name: "Tomate", unit: "g", quantity: 500, unitCost: 0.01, motivo: "Vencimento" },
+      { rawMaterialId: "a", name: "Tomate", unit: "g", quantity: 300, unitCost: 0.01, motivo: "Vencimento" },
+      { rawMaterialId: "a", name: "Tomate", unit: "g", quantity: 100, unitCost: 0.01, motivo: "Queda" },
+      { rawMaterialId: "b", name: "Bacon", unit: "g", quantity: 200, unitCost: 0.05, motivo: null },
+      { rawMaterialId: "c", name: "Inválido", unit: "g", quantity: -1, unitCost: 1, motivo: null },
+    ]);
+    expect(s.map((x) => x.name)).toEqual(["Bacon", "Tomate"]); // 10,00 > 9,00
+    expect(s[1]).toMatchObject({ quantity: 900, cost: 9, events: 3, topMotivo: "Vencimento" });
+  });
+});
