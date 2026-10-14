@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChefHat, Printer } from "lucide-react";
+import { Banknote, ChefHat, Contact, FolderOpen, Gift, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { PAGE_HELP } from "@/lib/page-help";
@@ -7,6 +7,14 @@ import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import { useUnitRoles } from "@/hooks/useUnitRoles";
 import { useUnitKds, setUnitKds } from "@/hooks/useUnitKds";
 import { useUnitPrintMode, setUnitPrintMode } from "@/hooks/useUnitPrintMode";
+import { useUnitModules, setUnitModule, type OptionalModule } from "@/hooks/useUnitModules";
+
+const OPTIONAL: { key: OptionalModule; icon: typeof ChefHat; title: string; on: string; off: string }[] = [
+  { key: "financeiro", icon: Banknote, title: "Financeiro", on: "Painel com CMV, margem, preço sugerido, custos fixos, previsão e insights.", off: "A seção Financeiro some do menu. Nenhum dado é apagado." },
+  { key: "combos", icon: Gift, title: "Combos", on: "Combos aparecem no menu do admin e no pedido do cliente.", off: "A seção Combos some do menu do admin. Os combos já criados continuam salvos." },
+  { key: "crm", icon: Contact, title: "CRM", on: "Consulta e organização dos clientes.", off: "A seção CRM some do menu. Os cadastros continuam salvos." },
+  { key: "documents", icon: FolderOpen, title: "Central de Documentos", on: "Exportação do cardápio, fichas e documentos.", off: "A seção Documentos some do menu. Os arquivos continuam salvos." },
+];
 
 type ModuleProps = {
   icon: typeof ChefHat; title: string; on: string; off: string; checked: boolean; disabled: boolean;
@@ -45,6 +53,7 @@ export default function SettingsTab() {
   const { businessUnitId, units } = useCurrentBusinessUnit();
   const kds = useUnitKds();
   const printMode = useUnitPrintMode();
+  const modules = useUnitModules();
   const { roles, loading: rolesLoading, error: rolesError } = useUnitRoles();
   const canEdit = !rolesLoading && !rolesError && roles.includes("admin");
   const unitName = units.find((u) => u.id === businessUnitId)?.name;
@@ -67,6 +76,10 @@ export default function SettingsTab() {
           on="Todo pedido (mesa, online e integrações como iFood e 99Food) entra numa fila e sai na Estação de impressão (/impressao) aberta no aparelho da impressora."
           off="A comanda imprime no navegador de quem envia o pedido. Pedidos online e de integrações não imprimem."
           onChange={(value) => setUnitPrintMode(businessUnitId, value ? "station" : "device")} />
+        {OPTIONAL.map((m) => (
+          <ModuleRow key={m.key} icon={m.icon} title={m.title} checked={modules.isEnabled(m.key)} disabled={!modules.loaded || !canEdit}
+            on={m.on} off={m.off} onChange={(value) => setUnitModule(businessUnitId, m.key, value)} />
+        ))}
       </div>
     </section>
   );

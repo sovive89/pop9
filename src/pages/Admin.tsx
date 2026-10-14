@@ -12,6 +12,7 @@ import {
   Package,
   Map,
   ChefHat,
+  Banknote,
   Settings,
   ToggleRight,
   Palette,
@@ -41,6 +42,8 @@ import BusinessUnitsTab from "@/components/admin/BusinessUnitsTab";
 import DocumentsTab from "@/components/admin/DocumentsTab";
 import SettingsTab from "@/components/admin/SettingsTab";
 import CombosTab from "@/components/admin/CombosTab";
+import FinanceTab from "@/components/admin/FinanceTab";
+import { useUnitModules, type OptionalModule } from "@/hooks/useUnitModules";
 import BrandTab from "@/components/admin/BrandTab";
 import {
   SidebarProvider,
@@ -59,7 +62,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-type SectionKey = "menu" | "combos" | "users" | "password" | "connections" | "hub" | "crm" | "stock" | "printers" | "qrcodes" | "units" | "documents" | "settings" | "brand";
+type SectionKey = "menu" | "combos" | "users" | "password" | "connections" | "hub" | "crm" | "stock" | "printers" | "qrcodes" | "units" | "documents" | "settings" | "brand" | "finance";
 
 const SECTIONS: { key: SectionKey; label: string; icon: LucideIcon }[] = [
   { key: "menu", label: "Cardápio", icon: UtensilsCrossed },
@@ -76,6 +79,7 @@ const SECTIONS: { key: SectionKey; label: string; icon: LucideIcon }[] = [
   { key: "units", label: "Unidades", icon: Building2 },
   { key: "settings", label: "Módulos", icon: ToggleRight },
   { key: "brand", label: "Marca", icon: Palette },
+  { key: "finance", label: "Financeiro", icon: Banknote },
 ];
 
 /**
@@ -96,7 +100,7 @@ function SectionMenuButton({
   const { isMobile, setOpenMobile } = useSidebar();
   const Icon = section.icon;
   const descriptions: Record<SectionKey, string> = {
-    menu: "Gerencie produtos e categorias do cardápio.", combos: "Monte combos com itens do cardápio e preço especial.", users: "Gerencie os acessos dos funcionários.", password: "Altere as credenciais de acesso.", connections: "Configure integrações externas.", hub: "Integração futura com o Pop9 Hub.", crm: "Consulte e organize os clientes.", stock: "Controle insumos e movimentações.", printers: "Cadastre impressoras e configure os gatilhos disponíveis.", documents: "Exporte o cardápio, baixe imagens e consulte os documentos do estabelecimento.", qrcodes: "Gerencie os códigos QR.", units: "Gerencie as unidades do estabelecimento.", settings: "Ative ou desative módulos da unidade, como o KDS da cozinha e a estação de impressão.", brand: "Logo, fundo e cores do cardápio que o cliente vê."
+    menu: "Gerencie produtos e categorias do cardápio.", combos: "Monte combos com itens do cardápio e preço especial.", users: "Gerencie os acessos dos funcionários.", password: "Altere as credenciais de acesso.", connections: "Configure integrações externas.", hub: "Integração futura com o Pop9 Hub.", crm: "Consulte e organize os clientes.", stock: "Controle insumos e movimentações.", printers: "Cadastre impressoras e configure os gatilhos disponíveis.", documents: "Exporte o cardápio, baixe imagens e consulte os documentos do estabelecimento.", qrcodes: "Gerencie os códigos QR.", units: "Gerencie as unidades do estabelecimento.", settings: "Ative ou desative módulos da unidade, como o KDS da cozinha e a estação de impressão.", brand: "Logo, fundo e cores do cardápio que o cliente vê.", finance: "Painel de CMV, margem, custos fixos, previsão e insights."
   };
 
   return (
@@ -123,10 +127,12 @@ const Admin = () => {
   const { businessUnitId } = useCurrentBusinessUnit();
   const isAdmin = roles.includes("admin");
   const navRoles = { attendant: isAdmin || roles.includes("attendant"), kitchen: isAdmin || roles.includes("kitchen"), admin: isAdmin };
+  const modules = useUnitModules();
+  const moduleOn = (key: string) => !(["financeiro", "combos", "crm", "documents"] as const).some((m) => (key === "finance" ? "financeiro" : key) === m && !modules.isEnabled(m as OptionalModule));
   const [showSettings, setShowSettings] = useState(false);
   const [searchParams,setSearchParams] = useSearchParams();
   const requestedSection=searchParams.get("sec");
-  const activeSection:SectionKey = SECTIONS.some(s=>s.key===requestedSection) ? requestedSection as SectionKey : "menu";
+  const activeSection:SectionKey = SECTIONS.some(s=>s.key===requestedSection) && moduleOn(requestedSection ?? "") ? requestedSection as SectionKey : "menu";
   const setActiveSection=(section:SectionKey)=>setSearchParams({sec:section});
 
   useEffect(() => {
@@ -168,7 +174,7 @@ const Admin = () => {
             <SidebarGroupLabel>Operação</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {SECTIONS.filter(section => ["menu", "combos", "stock", "crm", "documents"].includes(section.key)).map((section) => (
+                {SECTIONS.filter(section => ["menu", "combos", "stock", "crm", "documents", "finance"].includes(section.key) && moduleOn(section.key)).map((section) => (
                   <SectionMenuButton
                     key={section.key}
                     section={section}
@@ -268,6 +274,7 @@ const Admin = () => {
             {activeSection === "connections" && <ConnectionsTab />}
             {activeSection === "hub" && <Pop9HubTab />}
             {activeSection === "combos" && <CombosTab />}
+            {activeSection === "finance" && <FinanceTab />}
             {activeSection === "settings" && <SettingsTab />}
             {activeSection === "brand" && <BrandTab />}
           </div>
