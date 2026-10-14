@@ -21,5 +21,6 @@ export const PAGE_HELP: Record<string, string> = {
   qrcodes: "Gere e baixe os códigos QR para o acesso dos clientes ao estabelecimento e às mesas.",
   units: "Cadastre e organize as unidades do estabelecimento.",
   settings: "Ative ou desative módulos da unidade: KDS da cozinha e estação de impressão central.",
+  finance: "Financeiro: CMV e margem por item, preço sugerido por meta de CMV, taxas e canais, custos fixos e ponto de equilíbrio, com previsão de faturamento e insights. Hoje mostra dados de amostra; ligar aos dados reais é a próxima etapa.",
   brand: "Logo, imagem de fundo e cores do cardápio do cliente (/pedir). Não muda a estrutura das páginas nem o painel interno.",
 };
