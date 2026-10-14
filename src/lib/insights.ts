@@ -35,7 +35,36 @@ export function forecastDaily(history: number[], horizon = 14): ForecastPoint[] 
   });
 }
 
-export type MenuItemStat = { name: string; price: number; cost: number; units: number };
+export type MenuItemStat = {
+  name: string; price: number; cost: number; units: number;
+  category?: string; emoji?: string; imageUrl?: string;
+  /** unidades produzidas/compradas e perdidas (sobra, queda, vencimento) no mesmo período das vendas */
+  wasted?: number; wasteReason?: string;
+};
+
+export type ItemEconomics = {
+  revenue: number; cmv: number | null;
+  wasteRate: number; wasteCost: number;
+  /** CMV contando também o que foi perdido: custo de tudo o que foi produzido ÷ receita */
+  realCmv: number | null;
+  /** lucro por unidade vendida depois de pagar o desperdício */
+  realMargin: number;
+};
+
+/** Relaciona cardápio (preço), ficha (custo) e desperdício em números de um item. */
+export function itemEconomics(i: MenuItemStat): ItemEconomics {
+  const wasted = Number.isFinite(i.wasted) && (i.wasted ?? 0) > 0 ? i.wasted! : 0;
+  const made = i.units + wasted;
+  const revenue = i.price * i.units;
+  return {
+    revenue: Math.round(revenue * 100) / 100,
+    cmv: cmv(i.cost * i.units, revenue),
+    wasteRate: made > 0 ? Math.round((wasted / made) * 1000) / 1000 : 0,
+    wasteCost: Math.round(wasted * i.cost * 100) / 100,
+    realCmv: cmv(i.cost * made, revenue),
+    realMargin: i.units > 0 ? Math.round(((revenue - i.cost * made) / i.units) * 100) / 100 : 0,
+  };
+}
 export type MenuClass = "estrela" | "cavalo" | "quebra-cabeca" | "abacaxi";
 export const MENU_CLASS_LABEL: Record<MenuClass, string> = {
   estrela: "Estrela (vende muito, margem alta)",
@@ -79,6 +108,10 @@ export function buildInsights(input: {
     .forEach((r) => out.push({ level: "oportunidade", title: `Divulgue ${r.item.name}`, detail: `Margem de R$ ${r.margin.toFixed(2)} por unidade, mas vende pouco. Destaque no cardápio ou sugira no pedido.` }));
   rows.filter((r) => r.cls === "abacaxi").slice(0, 2)
     .forEach((r) => out.push({ level: "info", title: `Reveja ${r.item.name}`, detail: "Vende pouco e deixa pouca margem. Considere ajustar o preço, trocar a receita ou retirar do cardápio." }));
+  input.items.map((i) => ({ i, e: itemEconomics(i) })).filter((x) => x.e.wasteRate >= 0.08)
+    .sort((a, b) => b.e.wasteCost - a.e.wasteCost).slice(0, 2)
+    .forEach(({ i, e }) => out.push({ level: e.wasteRate >= 0.15 ? "alerta" : "atencao", title: `${i.name}: ${(e.wasteRate * 100).toFixed(0)}% de desperdício`,
+      detail: `R$ ${e.wasteCost.toFixed(0)} perdidos no período${i.wasteReason ? ` (${i.wasteReason})` : ""}. O CMV real sobe de ${((e.cmv ?? 0) * 100).toFixed(0)}% para ${((e.realCmv ?? 0) * 100).toFixed(0)}%.` }));
   if (input.forecast && input.history.length >= 14) {
     const h = input.forecast.length, next = input.forecast.reduce((s, p) => s + p.value, 0);
     const last = input.history.slice(-h).reduce((s, v) => s + v, 0);
@@ -103,14 +136,14 @@ export function sampleData() {
   const dow = [0.7, 0.75, 0.85, 0.95, 1.2, 1.5, 1.35];
   const history = Array.from({ length: 56 }, (_, i) => Math.round(2400 * dow[i % 7] * (1 + i * 0.004) * (0.92 + rnd() * 0.16)));
   const items: MenuItemStat[] = [
-    { name: "X-Burger", price: 32, cost: 9.8, units: 410 },
-    { name: "X-Bacon", price: 36, cost: 13.9, units: 380 },
-    { name: "Burger Duplo", price: 42, cost: 17.5, units: 120 },
-    { name: "Batata Frita", price: 22, cost: 4.2, units: 300 },
-    { name: "Onion Rings", price: 24, cost: 5.1, units: 70 },
-    { name: "Refrigerante", price: 7, cost: 2.6, units: 520 },
-    { name: "Suco Natural", price: 12, cost: 3.1, units: 90 },
-    { name: "Milk-shake", price: 18, cost: 9.5, units: 60 },
+    { name: "X-Burger", category: "Lanches", emoji: "🍔", price: 32, cost: 9.8, units: 410, wasted: 12, wasteReason: "sobra de chapa" },
+    { name: "X-Bacon", category: "Lanches", emoji: "🥓", price: 36, cost: 13.9, units: 380, wasted: 18, wasteReason: "bacon queimado" },
+    { name: "Burger Duplo", category: "Lanches", emoji: "🍔", price: 42, cost: 17.5, units: 120, wasted: 6 },
+    { name: "Batata Frita", category: "Porções", emoji: "🍟", price: 22, cost: 4.2, units: 300, wasted: 45, wasteReason: "óleo e sobra do balcão" },
+    { name: "Onion Rings", category: "Porções", emoji: "🧅", price: 24, cost: 5.1, units: 70, wasted: 14, wasteReason: "massa vencida" },
+    { name: "Refrigerante", category: "Bebidas", emoji: "🥤", price: 7, cost: 2.6, units: 520, wasted: 4 },
+    { name: "Suco Natural", category: "Bebidas", emoji: "🧃", price: 12, cost: 3.1, units: 90, wasted: 20, wasteReason: "fruta passada" },
+    { name: "Milk-shake", category: "Sobremesas", emoji: "🥤", price: 18, cost: 9.5, units: 60, wasted: 3 },
   ];
   return { history, items };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildInsights, classifyMenu, forecastDaily, sampleData } from "@/lib/insights";
+import { buildInsights, classifyMenu, forecastDaily, itemEconomics, sampleData } from "@/lib/insights";
 
 describe("previsão", () => {
   it("recusa histórico curto ou inválido", () => {
@@ -42,5 +42,26 @@ describe("insights com a amostra", () => {
     expect(list.length).toBeGreaterThan(2);
     expect(list.some((i) => i.title.startsWith("Previsão"))).toBe(true);
     expect(sampleData().history).toEqual(history); // determinística
+  });
+});
+
+describe("desperdício", () => {
+  it("relaciona preço, ficha e perda", () => {
+    const e = itemEconomics({ name: "A", price: 20, cost: 5, units: 90, wasted: 10 });
+    expect(e.wasteRate).toBe(0.1);
+    expect(e.wasteCost).toBe(50);
+    expect(e.cmv).toBe(0.25);
+    expect(e.realCmv).toBeCloseTo(0.2778, 3); // 5×100 ÷ 1800
+    expect(e.realMargin).toBeCloseTo(14.44, 2); // (1800 − 5×100) ÷ 90
+  });
+  it("sem perda não altera o CMV", () => {
+    const e = itemEconomics({ name: "B", price: 10, cost: 3, units: 10 });
+    expect(e.realCmv).toBe(e.cmv);
+    expect(e.wasteCost).toBe(0);
+  });
+  it("gera insight de desperdício alto", () => {
+    const { history, items } = sampleData();
+    const list = buildInsights({ items, targetCmv: 0.3, monthlyFixed: 1, forecast: null, history, breakEvenRevenue: null });
+    expect(list.some((i) => i.title.includes("desperdício"))).toBe(true);
   });
 });
