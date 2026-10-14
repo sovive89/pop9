@@ -57,6 +57,9 @@ const ITEM_TYPE_OPTIONS: { value: ItemType; label: string; hint: string }[] = [
   { value: "produto_acabado", label: "Produto acabado", hint: "produzido internamente, pronto para venda" },
   { value: "revenda", label: "Revenda", hint: "comprado pronto, vendido sem transformação" },
 ];
+/** Semiacabado e produto acabado nascem da produção; só insumo e revenda entram por compra. */
+const madeInHouse = (type: string) => type === "semiacabado" || type === "produto_acabado";
+
 const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   insumo: "Insumo",
   semiacabado: "Semiacabado",
@@ -457,7 +460,7 @@ const StockTab = () => {
                       )}
                       {m.isTheoretical && (
                         <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-700">
-                          Teórico · aguardando 1º lote
+                          {madeInHouse(m.itemType) ? "Teórico · aguardando 1ª produção" : "Teórico · aguardando 1º lote"}
                         </Badge>
                       )}
                     </p>
@@ -465,9 +468,17 @@ const StockTab = () => {
                       {m.categoria ? `${m.categoria} · ` : ""}Custo médio: R$ {m.averageCost.toFixed(2)} / {m.unit}
                     </p>
                   </div>
-                  <Button data-tooltip="Registre uma compra real deste insumo, com quantidade, custo e dados do lote." size="sm" variant="outline" onClick={() => openPurchase(m.id)}>
-                    <Plus className="h-3.5 w-3.5 mr-1" /> Entrada
-                  </Button>
+                  {madeInHouse(m.itemType) ? (
+                    // Feito na casa: o saldo entra pela produção (receita), nunca por compra.
+                    <Button data-tooltip="Item feito na casa: o saldo entra pela produção, a partir da receita, e não por compra." size="sm" variant="outline"
+                      onClick={() => { const recipe = recipes.find((r) => r.outputRawMaterialId === m.id); if (recipe) openProduce(recipe.id); else setView("producao"); }}>
+                      <Factory className="h-3.5 w-3.5 mr-1" /> Produzir
+                    </Button>
+                  ) : (
+                    <Button data-tooltip="Registre uma compra real deste insumo, com quantidade, custo e dados do lote." size="sm" variant="outline" onClick={() => openPurchase(m.id)}>
+                      <Plus className="h-3.5 w-3.5 mr-1" /> Entrada
+                    </Button>
+                  )}
                 </div>
                 <div className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
                   low ? "bg-destructive/10 text-destructive" : "bg-muted/50 text-foreground"
@@ -866,8 +877,9 @@ const StockTab = () => {
                   <Select value={inp.rawMaterialId} onValueChange={(v) => updateRecInput(idx, { rawMaterialId: v })}>
                     <SelectTrigger className="flex-1"><SelectValue placeholder="Insumo..." /></SelectTrigger>
                     <SelectContent>
-                      {rawMaterials.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                      {/* Entrada de receita: só insumo e semiacabado (revenda e produto acabado não entram em ficha). */}
+                      {rawMaterials.filter((m) => m.itemType === "insumo" || m.itemType === "semiacabado").map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.name} ({m.unit})</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

@@ -421,6 +421,7 @@ export type Database = {
       }
       menu_item_ingredients: {
         Row: {
+          extra_only: boolean
           extra_price: number | null
           id: string
           menu_item_id: string
@@ -429,6 +430,7 @@ export type Database = {
           sort_order: number
         }
         Insert: {
+          extra_only?: boolean
           extra_price?: number | null
           id?: string
           menu_item_id: string
@@ -437,6 +439,7 @@ export type Database = {
           sort_order?: number
         }
         Update: {
+          extra_only?: boolean
           extra_price?: number | null
           id?: string
           menu_item_id?: string
@@ -1261,24 +1264,39 @@ export type Database = {
       }
       recipe_items: {
         Row: {
+          display_name: string | null
+          extra_price: number | null
           id: string
           menu_item_id: string
+          only_as_extra: boolean
           quantity: number
           raw_material_id: string
+          removable: boolean
+          sort_order: number
           transformacao: string
         }
         Insert: {
+          display_name?: string | null
+          extra_price?: number | null
           id?: string
           menu_item_id: string
+          only_as_extra?: boolean
           quantity: number
           raw_material_id: string
+          removable?: boolean
+          sort_order?: number
           transformacao?: string
         }
         Update: {
+          display_name?: string | null
+          extra_price?: number | null
           id?: string
           menu_item_id?: string
+          only_as_extra?: boolean
           quantity?: number
           raw_material_id?: string
+          removable?: boolean
+          sort_order?: number
           transformacao?: string
         }
         Relationships: [
@@ -1949,6 +1967,11 @@ export type Database = {
     }
     Functions: {
       set_unit_operation: { Args: { p_unit: string; p_open: boolean }; Returns: Json }
+      // Migration 20261013180000_menu_stock_link: troca a unidade de insumo ainda sem uso.
+      set_raw_material_unit: {
+        Args: { p_material: string; p_unit: string; p_menu_item?: string | null }
+        Returns: undefined
+      }
       // Requires deployment of the versioned purchase-lot migrations.
       manage_purchase_lot: {
         Args: { p_lote_id: string; p_action: string; p_data?: Json }

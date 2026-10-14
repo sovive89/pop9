@@ -327,7 +327,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
           name: name.trim(),
           businessUnitId,
           description: description.trim() || undefined,
-          ingredients: ingredients.map((i) => i.name.trim()).filter(Boolean),
+          ingredients: (recipeBuilderRef.current?.ingredients() ?? ingredients).map((i) => i.name.trim()).filter(Boolean),
           model: aiModel,
           extra: aiExtra.trim() || undefined,
         },
@@ -387,12 +387,15 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       return;
     }
     setSaving(true);
-    // Primeiro o item do cardápio é salvo sem exigir a ficha técnica. A ficha
-    // é montada depois, ao reabrir o item já criado, quando a lista de
-    // ingredientes/necessidades estiver definida.
-    if (item?.id && recipeBuilderRef.current && !recipeBuilderRef.current.validate()) { setSaving(false); return; }
+    // Fluxo: descrição (ingredientes por vírgula) → linhas da ficha → insumo, transformação,
+    // unidade e quantidade. Linha sem quantidade fica pendente e não impede salvar o item.
+    const recipe = recipeBuilderRef.current;
+    recipe?.addFromDescription(description, true);
+    if (recipe && !recipe.validate()) { setSaving(false); return; }
     const finalImage = imageUrl.trim() || null;
-    const listedIngredients = ingredientsFromDescription(description, ingredients);
+    // O cliente vê o que a ficha marca como "Aparece no cardápio"; sem ficha carregada,
+    // mantém a lista atual (ou a da descrição) para não apagar nada.
+    const listedIngredients = recipe?.ingredients() ?? ingredientsFromDescription(description, ingredients);
     const savedId = await onSave(
       {
         ...(item
@@ -424,7 +427,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     if (!item) setCreatedId(savedId);
     persistedImage.current = finalImage;
     setSavedStatus(status);
-    const recipeOk = item?.id ? await recipeBuilderRef.current?.commit(savedId) : true;
+    const recipeOk = await recipeBuilderRef.current?.commit(savedId);
     setSaving(false);
     if (recipeOk === false) return;
 
@@ -525,14 +528,26 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
         <span className="text-[11px] text-muted-foreground">Preenche descrição e ingredientes vazios a partir do nome.</span>
       </div>
 
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">Descrição</label>
+      {/* Ao sair do campo, cada ingrediente da descrição vira uma linha da ficha (só na primeira vez). */}
+      <div className="space-y-1" onBlur={() => recipeBuilderRef.current?.addFromDescription(description, true)}>
+        <div className="flex items-center justify-between gap-2">
+          <label className="text-xs font-medium text-muted-foreground">Descrição</label>
+          <button type="button" className="flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-50"
+            disabled={saving}
+            data-tooltip="Monta o texto para o cliente a partir da ficha técnica, com as quantidades (ex.: bacon 30 g). Você ainda pode editar; mudar a descrição não altera a ficha."
+            onClick={() => {
+              const text = recipeBuilderRef.current?.describe() ?? "";
+              if (text) setDescription(text); else toast.error("Marque na ficha os ingredientes que aparecem no cardápio e informe as quantidades.");
+            }}>
+            <Sparkles className="h-3 w-3" /> Gerar descrição com quantidades
+          </button>
+        </div>
         <MenuPrefixField multiline label="Descrição do produto"
           value={description}
           onChange={setDescription} suggestions={catalog.suggestions.words}
           className="w-full rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
         />
-        <p className="text-[11px] text-muted-foreground">Para exibir ingredientes no cardápio, separe-os por vírgulas. Ex.: pão brioche, carne, queijo, molho especial.</p>
+        <p className="text-[11px] text-muted-foreground">Liste os ingredientes separados por vírgula (ex.: pão brioche, hambúrguer blend, bacon, molho especial). Ao sair do campo, cada um vira uma linha da ficha técnica abaixo. No fim, use “Gerar descrição com quantidades” para o texto do cliente.</p>
       </div>
 
       {/* Image Upload */}
@@ -606,15 +621,8 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
         </div>
       </div>
 
-      {item?.id ? (
-        /* O item já existe: agora a ficha pode transformar a descrição em
-           necessidades de estoque e cadastrar insumos/receitas teóricos. */
-        <RecipeBuilder ref={recipeBuilderRef} menuItemId={item.id} menuItemName={name} disabled={saving || uploading || generating} />
-      ) : (
-        <p className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
-          Salve o item do cardápio primeiro. Depois reabra-o para montar a ficha técnica, criar os insumos teóricos e definir as receitas de produção.
-        </p>
-      )}
+      {/* Ficha técnica: fonte única do que o item consome e do que o cliente vê. */}
+      <RecipeBuilder ref={recipeBuilderRef} menuItemId={item?.id} menuItemName={name} description={description} disabled={saving || uploading || generating} />
 
       {/* Variants */}
       <div className="space-y-2">

@@ -31,6 +31,8 @@ export interface DbIngredient {
   name: string;
   removable: boolean;
   extra_price: number | null;
+  /** Adicional que não faz parte do item padrão (só entra quando pedido). */
+  extra_only?: boolean;
   sort_order: number;
 }
 
@@ -152,7 +154,8 @@ export const useAdminData = () => {
           id: ing.id,
           name: ing.name,
           removable: ing.removable,
-          extra_price: ing.extra_price ? Number(ing.extra_price) : null,
+          extra_price: ing.extra_price != null ? Number(ing.extra_price) : null,
+          extra_only: Boolean((ing as { extra_only?: boolean }).extra_only),
           sort_order: ing.sort_order,
         })),
       variants: (variants ?? [])
@@ -269,42 +272,6 @@ export const useAdminData = () => {
     variants: Omit<DbVariant, "id">[];
   };
 
-  const ensureTheoreticalMaterials = async (ingredients: Omit<DbIngredient, "id">[]) => {
-    if (!businessUnitId || !ingredients.length) return;
-    for (const ingredient of ingredients) {
-      const name = ingredient.name.trim();
-      if (!name) continue;
-      const { data: existing, error: lookupError } = await supabase
-        .from("raw_materials")
-        .select("id")
-        .eq("business_unit_id", businessUnitId)
-        .ilike("name", name)
-        .limit(1);
-      if (lookupError) {
-        toast.error(`Cardápio salvo, mas não foi possível consultar o insumo “${name}”`);
-        continue;
-      }
-      if (existing?.length) continue;
-
-      const payload = {
-        name,
-        unit: "un",
-        tipo: "insumo" as const,
-        min_stock: 0,
-        current_stock: 0,
-        categoria: "Cardápio",
-        is_theoretical: true,
-        business_unit_id: businessUnitId,
-      } satisfies Database["public"]["Tables"]["raw_materials"]["Insert"];
-      let { error } = await supabase.from("raw_materials").insert(payload);
-      if (error && /is_theoretical|column .* does not exist|schema cache/i.test(error.message)) {
-        const { is_theoretical: _ignored, ...legacyPayload } = payload;
-        ({ error } = await supabase.from("raw_materials").insert(legacyPayload));
-      }
-      if (error) toast.error(`Cardápio salvo, mas o insumo “${name}” não foi criado no Estoque`);
-    }
-  };
-
   const saveMenuItem = async (input: MenuItemInput, isNew: boolean): Promise<MenuItemSaveResult> => {
     const { ingredients, variants, ...itemData } = input;
     let itemId = itemData.id;
@@ -357,13 +324,14 @@ export const useAdminData = () => {
           removable: ing.removable,
           extra_price: ing.extra_price,
           sort_order: idx,
+          // Só envia a coluna nova quando usada: banco sem a migration continua salvando.
+          ...(ingredients.some((i) => i.extra_only) ? { extra_only: Boolean(ing.extra_only) } : {}),
         }))
       );
       if (error) { toast.error("Erro ao salvar ingredientes"); return rollbackNew(); }
     }
-    // O cardápio é a primeira etapa: seus ingredientes já entram no Estoque
-    // como cadastros teóricos, sem criar lote, compra ou receita de produção.
-    await ensureTheoreticalMaterials(ingredients);
+    // Os insumos do Estoque nascem ao salvar a ficha técnica, já com unidade e tipo definidos
+    // (antes nasciam aqui, a partir do texto da descrição, sempre em "un").
 
     // Replace variants
     await supabase.from("menu_item_variants").delete().eq("menu_item_id", itemId);
