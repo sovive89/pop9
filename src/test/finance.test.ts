@@ -84,3 +84,35 @@ describe("ponto de equilíbrio", () => {
     expect(breakEvenMix(100, [])).toBeNull();
   });
 });
+
+import { allocateFixedByRevenue, fixedCostPerUnit, fixedCostRate, monthlyFixedCosts } from "@/lib/finance";
+
+describe("custos fixos", () => {
+  it("converte periodicidades para mensal e agrupa por categoria", () => {
+    const r = monthlyFixedCosts([
+      { name: "Aluguel", amount: 5000, period: "monthly", category: "aluguel" },
+      { name: "Contador", amount: 3600, period: "yearly", category: "contabilidade" }, // 300/mês
+      { name: "Sistema", amount: 900, period: "quarterly", category: "sistemas" },      // 300/mês
+      { name: "Gelo", amount: -1, period: "monthly" },
+    ]);
+    expect(r.total).toBe(5600);
+    expect(r.invalid).toBe(1);
+    expect(r.byCategory).toEqual({ aluguel: 5000, contabilidade: 300, sistemas: 300 });
+  });
+  it("rateio por unidade e peso no faturamento", () => {
+    expect(fixedCostPerUnit(6000, 1500)).toBe(4);
+    expect(fixedCostPerUnit(6000, 0)).toBeNull();
+    expect(fixedCostRate(6000, 30000)).toBe(0.2);
+  });
+  it("rateio por faturamento fecha com o total", () => {
+    const items = [{ name: "A", price: 30, units: 1000 }, { name: "B", price: 10, units: 3000 }];
+    const r = allocateFixedByRevenue(6000, items)!;
+    expect(r[0].fixedPerUnit * 1000 + r[1].fixedPerUnit * 3000).toBeCloseTo(6000, 1);
+    expect(r[0].fixedPerUnit).toBe(3); // 50% de 6000 ÷ 1000
+    expect(allocateFixedByRevenue(100, [])).toBeNull();
+  });
+  it("alimenta o preço sugerido", () => {
+    const fixed = fixedCostPerUnit(6000, 1500)!; // 4,00
+    expect(suggestPrice({ cost: 10, fixedPerUnit: fixed, targetProfit: 0.2 })!.price).toBe(17.5); // 14 ÷ 0,8
+  });
+});

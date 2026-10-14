@@ -156,3 +156,55 @@ export function breakEvenMix(
   const units = Math.ceil(fixedCosts / avgContribution);
   return { units, revenue: round(units * avgPrice), contributionRate: round(avgContribution / avgPrice, 4) };
 }
+
+// ─── Custos fixos ────────────────────────────────────────────────────────────
+
+export type FixedCost = {
+  name: string;
+  amount: number;
+  /** periodicidade em que o valor é pago; tudo é convertido para mensal */
+  period: "weekly" | "monthly" | "quarterly" | "yearly";
+  category?: "aluguel" | "folha" | "energia" | "agua" | "gas" | "internet" | "contabilidade" | "marketing" | "sistemas" | "outros";
+};
+
+const PERIODS_PER_MONTH: Record<FixedCost["period"], number> = { weekly: 52 / 12, monthly: 1, quarterly: 1 / 3, yearly: 1 / 12 };
+
+/** Total mensal dos custos fixos, com cada lançamento convertido para mês. Lançamentos inválidos são contados à parte. */
+export function monthlyFixedCosts(costs: FixedCost[]): { total: number; invalid: number; byCategory: Record<string, number> } {
+  let total = 0, invalid = 0;
+  const byCategory: Record<string, number> = {};
+  for (const c of costs) {
+    if (!fin(c.amount) || c.amount < 0 || !(c.period in PERIODS_PER_MONTH)) { invalid++; continue; }
+    const monthly = c.amount * PERIODS_PER_MONTH[c.period];
+    total += monthly;
+    const k = c.category ?? "outros";
+    byCategory[k] = round((byCategory[k] ?? 0) + monthly);
+  }
+  return { total: round(total), invalid, byCategory };
+}
+
+/** Rateio por unidade vendida = custos fixos do mês ÷ volume mensal esperado. Alimenta `fixedPerUnit` de suggestPrice. */
+export function fixedCostPerUnit(monthlyFixed: number, expectedUnitsPerMonth: number): number | null {
+  if (!fin(monthlyFixed) || monthlyFixed < 0 || !fin(expectedUnitsPerMonth) || expectedUnitsPerMonth <= 0) return null;
+  return round(monthlyFixed / expectedUnitsPerMonth, 4);
+}
+
+/** Peso dos custos fixos no faturamento (ex.: 0.28 = 28%). Útil como dedução percentual alternativa ao rateio por unidade. */
+export function fixedCostRate(monthlyFixed: number, monthlyRevenue: number): number | null {
+  if (!fin(monthlyFixed) || monthlyFixed < 0 || !fin(monthlyRevenue) || monthlyRevenue <= 0) return null;
+  return round(monthlyFixed / monthlyRevenue, 4);
+}
+
+/** Rateia o custo fixo entre itens pela participação no faturamento esperado (unidades × preço). Devolve R$ por unidade de cada item. */
+export function allocateFixedByRevenue(
+  monthlyFixed: number,
+  items: { name: string; price: number; units: number }[],
+): { name: string; fixedPerUnit: number }[] | null {
+  if (!fin(monthlyFixed) || monthlyFixed < 0) return null;
+  const rev = items.reduce((a, i) => a + (fin(i.price) && fin(i.units) && i.price > 0 && i.units > 0 ? i.price * i.units : 0), 0);
+  if (rev <= 0) return null;
+  return items.map((i) => ({
+    name: i.name,
+    fixedPerUnit: fin(i.price) && fin(i.units) && i.price > 0 && i.units > 0 ? round((monthlyFixed * ((i.price * i.units) / rev)) / i.units, 4) : 0,
+  }));
+}
