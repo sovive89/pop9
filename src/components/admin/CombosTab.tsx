@@ -10,6 +10,7 @@ import { useUnitRoles } from "@/hooks/useUnitRoles";
 import { deleteCombo, saveCombo, useCombos } from "@/hooks/useCombos";
 import { comboListPrice, comboPrice, defaultChoice, isReadyCombo, type Combo, type ComboMenuItem, type ComboPricingMode } from "@/lib/combos";
 import { formatCurrency } from "@/utils/orders";
+import BuildRuleCard from "@/components/admin/BuildRuleCard";
 
 const emptyCombo = (choices = false): Combo => ({
   id: "", name: "", description: null, pricingMode: "fixed", price: 0, discount: 0, active: true,
@@ -229,6 +230,7 @@ export default function CombosTab() {
           <Button variant="outline" onClick={() => { setNewWithChoices(true); setEditing(emptyCombo(true)); }}>Combo com escolhas</Button>
         </div>}
       </div>
+      <BuildRuleCard unit={businessUnitId} canEdit={canEdit} categories={categories.map((c) => c.label)} eligibleCount={selectableMenuItems.length} />
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {menuError && <p role="alert" className="text-sm text-destructive">{menuError}</p>}
       {canEdit && editing && !loading && !error && !menuLoading && !menuError && <ComboEditor key={`${businessUnitId}:${editing.id || "new"}`} initial={editing} initialChoices={!editing.id && newWithChoices} menu={menuItems} categories={categories} unit={businessUnitId} sortOrder={editing.id ? combos.findIndex((c) => c.id === editing.id) : combos.length}
