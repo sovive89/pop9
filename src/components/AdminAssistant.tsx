@@ -2,6 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {useLocation,useNavigate} from 'react-router-dom';
 import {BookOpen,Loader2,Navigation,Sparkles} from 'lucide-react';
 import {useAuth} from '@/hooks/useAuth';
+import {useUnitModules} from '@/hooks/useUnitModules';
 import {useUnitRoles} from '@/hooks/useUnitRoles';
 import {useCurrentBusinessUnit} from '@/hooks/useCurrentBusinessUnit';
 import {supabase} from '@/integrations/supabase/client';
@@ -26,14 +27,15 @@ const roleLabels:Record<string,string>={admin:'Administrador',attendant:'Atenden
 const guidedFields=[{key:'name',label:'Nome do produto',hint:'Ex.: Burger PØP9'},{key:'category',label:'Categoria e tipo',hint:'Ex.: hambúrguer, bebida, sobremesa'},{key:'description',label:'Descrição comercial',hint:'Características e apresentação'},{key:'portion',label:'Porção e rendimento',hint:'Ex.: 1 unidade de 350 g'},{key:'ingredients',label:'Ingredientes e quantidades',hint:'Um por linha; inclua unidade de medida'},{key:'preparation',label:'Modo de preparo e pré-preparos',hint:'Etapas, perdas e conservação, se aplicável'},{key:'price',label:'Preço de venda',hint:'Valor informado por você ou “a definir”'},{key:'extras',label:'Variações e adicionais',hint:'Opcionais e restrições'},{key:'image',label:'Orientações para fotografia',hint:'Montagem e elementos em destaque'}] as const;
 
 export default function AdminAssistant(){
- const {user}=useAuth();const {roles,loading:rolesLoading}=useUnitRoles();const {businessUnitId,units,loading:unitsLoading}=useCurrentBusinessUnit();
+ const {user}=useAuth();const {roles,loading:rolesLoading}=useUnitRoles();
+ const {loaded:modulesLoaded,isEnabled}=useUnitModules();const {businessUnitId,units,loading:unitsLoading}=useCurrentBusinessUnit();
  const location=useLocation(),navigate=useNavigate();
  const pagePath=location.pathname+location.search;const currentPage=findAgentPage(pagePath);
  const unitScope=`${user?.id??''}:${businessUnitId??''}`;
  const scope=`${unitScope}:${pagePath}:${roles.slice().sort().join(',')}`;
  const current=useRef(scope);current.current=scope;
  const generation=useRef({scope,version:0});if(generation.current.scope!==scope)generation.current={scope,version:generation.current.version+1};
- const allowed=Boolean(user&&businessUnitId&&!unitsLoading&&!rolesLoading&&canAccessAgentPage(roles,currentPage));
+ const allowed=Boolean(user&&businessUnitId&&!unitsLoading&&!rolesLoading&&modulesLoaded&&isEnabled('assistente')&&canAccessAgentPage(roles,currentPage));
  const accessibleTutorials=TUTORIALS.filter(t=>canAccessAgentPage(roles,findAgentPage(t.page)));
  const [open,setOpen]=useState(false);const [tab,setTab]=useState<'task'|'tutorials'|'guided'>('task');
  const canUseMenuDraft=canAccessAgentPage(roles,AGENT_PAGES.find(page=>page.id==='menu'));
