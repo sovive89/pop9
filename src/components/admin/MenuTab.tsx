@@ -219,6 +219,7 @@ const CategoryEditor = ({ category, existingKeys = [], onSave, onCancel }: Categ
 // ── Menu Item Editor ──
 interface MenuEditorProps {
   item?: DbMenuItem;
+  classificationSchemaSupported: boolean;
   initialDraft?: MenuImportItem | null;
   initialImage?: File | null;
   categories: DbMenuCategory[];
@@ -226,7 +227,7 @@ interface MenuEditorProps {
   onCancel: () => void;
 }
 
-const MenuItemEditor = ({ item, initialDraft, initialImage, categories, onSave, onCancel }: MenuEditorProps) => {
+const MenuItemEditor = ({ item, classificationSchemaSupported, initialDraft, initialImage, categories, onSave, onCancel }: MenuEditorProps) => {
   // Stable across network retries; the atomic RPC never leaves a partial item.
   const newItemId = useRef(crypto.randomUUID());
   const isNew = !item;
@@ -249,6 +250,13 @@ const MenuItemEditor = ({ item, initialDraft, initialImage, categories, onSave, 
   const [price, setPrice] = useState(item?.price?.toString() ?? initialDraft?.price?.toString() ?? "");
   const categorySuggestion = initialDraft && categories.some(row => row.key === initialDraft.category) ? initialDraft.category : categories[0]?.key ?? "";
   const [category, setCategory] = useState(item?.category ?? categorySuggestion);
+  const [itemKind, setItemKind] = useState<DbMenuItem["item_kind"]>(item?.item_kind ?? "regular");
+  const [comboEligible, setComboEligible] = useState(item?.combo_eligible ?? true);
+  const [destinationOverride, setDestinationOverride] = useState(item?.destination ?? "");
+  const { sectors } = usePrintSectors();
+  const categoryDestination = categories.find((c) => c.key === category)?.destination ?? null;
+  const effectiveDestination = destinationOverride || categoryDestination || undefined;
+  const destinationOptions = sectors.filter((sector) => sector.slug !== "cashier" && (sector.active || sector.slug === destinationOverride));
   const [description, setDescription] = useState(item?.description ?? initialDraft?.description ?? "");
   const initialRecipeDraft = useMemo(() => initialDraft?.recipe.map(recipeDraftFromImport), [initialDraft]);
   const [imageUrl, setImageUrl] = useState(item?.image_url ?? "");
@@ -485,6 +493,9 @@ const MenuItemEditor = ({ item, initialDraft, initialImage, categories, onSave, 
         name: name.trim(),
         price: Number(price),
         category,
+        item_kind: itemKind,
+        combo_eligible: comboEligible,
+        destination: destinationOverride.trim() || null,
         description: description.trim() || null,
         image_url: finalImage,
         active,
@@ -502,9 +513,10 @@ const MenuItemEditor = ({ item, initialDraft, initialImage, categories, onSave, 
 
     // Exporta a cópia exata (categoria, ficha, insumos teóricos sem lotes) para as unidades marcadas.
     if (exportTo.length && businessUnitId) {
-      const { data: result, error } = await supabase.rpc("export_menu_item_to_units", {
-        p_source_unit: businessUnitId, p_item_id: savedId, p_target_units: exportTo,
-      });
+      const exportArgs = { p_source_unit: businessUnitId, p_item_id: savedId, p_target_units: exportTo };
+      const { data: result, error } = classificationSchemaSupported
+        ? await supabase.rpc("export_menu_item_to_units_with_classification", exportArgs)
+        : await supabase.rpc("export_menu_item_to_units", exportArgs);
       if (error) toast.error("Item salvo, mas a exportação falhou: " + error.message);
       else {
         const rows = (result ?? []) as { unit_id: string; ok: boolean; error?: string }[];
@@ -576,6 +588,15 @@ const MenuItemEditor = ({ item, initialDraft, initialImage, categories, onSave, 
           <MenuPrefixField label="Buscar categoria pelo início" placeholder="Digite o início da categoria" value={categorySearch} onChange={setCategorySearch} mode="whole" suggestions={catalog.suggestions.categories}
             onPick={suggestion => { const found = catalog.categories.find(row => row.id === suggestion.id); if (found) setCategory(found.key); setCategorySearch(''); }} />
         </div>
+        <div className="space-y-1">
+          <label htmlFor="menu-item-destination" className="text-xs font-medium text-muted-foreground">Setor de preparo</label>
+          <select id="menu-item-destination" aria-label="Setor de preparo" value={destinationOverride} onChange={event => setDestinationOverride(event.target.value)}
+            className="w-full h-9 rounded-md border border-border bg-muted px-3 text-sm text-foreground">
+            <option value="">Usar setor da categoria ({sectorName(sectors, categoryDestination) || "não definido"})</option>
+            {destinationOptions.map((sector) => <option key={sector.slug} value={sector.slug}>{sector.name}</option>)}
+          </select>
+          <p className="text-[11px] text-muted-foreground">O item herda o setor da categoria por padrão. O setor controla o encaminhamento; a baixa direta ou produção é definida separadamente na ficha técnica.</p>
+        </div>
       </div>
 
       <div className="space-y-1">
@@ -602,6 +623,31 @@ const MenuItemEditor = ({ item, initialDraft, initialImage, categories, onSave, 
           </label>
         </div>
       </div>
+
+      <fieldset disabled={!classificationSchemaSupported} className="space-y-3 rounded-lg border border-border p-3 disabled:opacity-70">
+        <legend className="px-1 text-xs font-semibold text-muted-foreground">Tipo e combos</legend>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="space-y-1 text-xs font-medium text-muted-foreground">Classificação do item
+            <select aria-label="Classificação do item" value={itemKind}
+              onChange={(event) => {
+                const next = event.target.value as DbMenuItem["item_kind"];
+                setItemKind(next);
+                setComboEligible(next === "regular");
+              }}
+              className="mt-1 h-9 w-full rounded-md border border-border bg-muted px-3 text-sm text-foreground">
+              <option value="regular">Normal</option>
+              <option value="special">Especial</option>
+              <option value="seasonal">Sazonal</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-2 self-end pb-2 text-sm text-foreground">
+            <input type="checkbox" checked={comboEligible} onChange={(event) => setComboEligible(event.target.checked)} className="rounded" />
+            Permitir em combos
+          </label>
+        </div>
+        <p className="text-[11px] text-muted-foreground">O preço acima é o preço vigente. Itens especiais e sazonais começam fora dos combos; um administrador pode liberar explicitamente.</p>
+        {!classificationSchemaSupported && <p role="status" className="text-xs text-amber-700">Classificação indisponível: aguarde a migration do banco antes de usar estes campos.</p>}
+      </fieldset>
 
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" size="sm" variant="outline" disabled={suggesting || !name.trim() || !businessUnitId}
@@ -710,7 +756,7 @@ const MenuItemEditor = ({ item, initialDraft, initialImage, categories, onSave, 
           onClick={() => void openDocumentPicker()}>Puxar ficha de Documentos</Button>
         <p className="text-xs text-muted-foreground">Selecione uma ficha técnica já salva nesta unidade. A importação só será vinculada após salvar o item.</p>
         <RecipeBuilder ref={recipeBuilderRef} menuItemId={item?.id} initialDraft={initialRecipeDraft}
-          menuItemName={name} disabled={saving || uploading || generating} />
+          menuItemName={name} destination={effectiveDestination} disabled={saving || uploading || generating} />
       </div>
       {documentPickerOpen && <div role="dialog" aria-label="Puxar ficha técnica de Documentos"
         className="space-y-3 rounded-lg border border-border bg-card p-3">
@@ -784,7 +830,7 @@ const MenuItemEditor = ({ item, initialDraft, initialImage, categories, onSave, 
 const UnitMenuTab = () => {
   const { sectors } = usePrintSectors();
   const { businessUnitId } = useCurrentBusinessUnit();
-  const { menuItems, categories, loadingMenu, loadingCategories, saveMenuItem, deleteMenuItem, saveCategory, deleteCategory, refreshMenu, refreshCategories } = useAdminData();
+  const { menuItems, categories, loadingMenu, loadingCategories, classificationSchemaSupported, saveMenuItem, deleteMenuItem, saveCategory, deleteCategory, refreshMenu, refreshCategories } = useAdminData();
   const [searchParams, setSearchParams] = useSearchParams();
   const importOpen = searchParams.get("import") === "1";
   const setImportOpen = (value: boolean) => setSearchParams(previous => {
@@ -813,6 +859,7 @@ const UnitMenuTab = () => {
     return (
       <MenuItemEditor
         item={editingItem ?? undefined}
+        classificationSchemaSupported={classificationSchemaSupported}
         initialDraft={editingItem ? null : initialAiDraft}
         initialImage={editingItem ? null : initialAiPhoto}
         categories={categories}

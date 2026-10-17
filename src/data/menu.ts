@@ -9,6 +9,9 @@ export interface MenuItem {
   name: string;
   price: number;
   category: MenuCategory;
+  itemKind?: "regular" | "special" | "seasonal";
+  comboEligible?: boolean;
+  destination?: string | null;
   description?: string;
   imageUrl?: string;
   ingredients?: Ingredient[];
@@ -34,13 +37,13 @@ export const categoryLabels: Record<MenuCategory, string> = {
 /** Check if a menu item ID belongs to the kitchen */
 export const isKitchenItem = (menuItemId: string): boolean => {
   const item = menuItems.find((m) => m.id === menuItemId);
-  return item ? kitchenCategories.includes(item.category) : true;
+  return item ? (item.destination ? item.destination === "kitchen" : kitchenCategories.includes(item.category)) : true;
 };
 
 /** Check if a menu item ID belongs to the bar */
 export const isBarItem = (menuItemId: string): boolean => {
   const item = menuItems.find((m) => m.id === menuItemId);
-  return item ? barCategories.includes(item.category) : false;
+  return item ? (item.destination ? item.destination === "bar" : barCategories.includes(item.category)) : false;
 };
 
 export const menuItems: MenuItem[] = [

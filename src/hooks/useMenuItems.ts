@@ -9,6 +9,8 @@ import {
   barCategories as staticBarCategories,
   categoryLabels as staticCategoryLabels,
 } from "@/data/menu";
+import { resolveMenuItemDestination } from "@/lib/menuDestination";
+import { isMissingMenuItemOptionalColumn } from "@/lib/menuItemSchemaCompatibility";
 
 interface DbCategory {
   key: string;
@@ -17,6 +19,63 @@ interface DbCategory {
   sort_order: number;
   icon_name: string | null;
   icon_color: string | null;
+}
+
+interface DbMenuItemRow {
+  id: string;
+  name: string;
+  price: number;
+  category: string;
+  destination?: string | null;
+  item_kind?: "regular" | "special" | "seasonal";
+  combo_eligible?: boolean;
+  description: string | null;
+  image_url: string | null;
+  sort_order: number;
+}
+
+async function loadPublishedMenuItems(unitId: string) {
+  const scoped = (columns: "all" | "destination" | "classification" | "legacy") => {
+    const base = supabase.from("menu_items");
+    const filtered = (columns: string) => base.select(columns)
+      .eq("active", true)
+      .eq("status", "published")
+      .eq("business_unit_id", unitId)
+      .order("sort_order");
+    switch (columns) {
+      case "all": return filtered("id, name, price, category, destination, item_kind, combo_eligible, description, image_url, sort_order");
+      case "destination": return filtered("id, name, price, category, destination, description, image_url, sort_order");
+      case "classification": return filtered("id, name, price, category, item_kind, combo_eligible, description, image_url, sort_order");
+      case "legacy": return filtered("id, name, price, category, description, image_url, sort_order");
+    }
+  };
+
+  const currentSchema = await scoped("all");
+  if (!currentSchema.error) {
+    return { data: currentSchema.data as unknown as DbMenuItemRow[] | null, error: null, classificationSupported: true };
+  }
+  if (!isMissingMenuItemOptionalColumn(currentSchema.error, ["destination", "item_kind", "combo_eligible"])) {
+    return { data: null, error: currentSchema.error, classificationSupported: false };
+  }
+
+  const destinationSchema = await scoped("destination");
+  if (!destinationSchema.error) {
+    return { data: destinationSchema.data as unknown as DbMenuItemRow[] | null, error: null, classificationSupported: false };
+  }
+  if (!isMissingMenuItemOptionalColumn(destinationSchema.error, ["destination", "item_kind", "combo_eligible"])) {
+    return { data: null, error: destinationSchema.error, classificationSupported: false };
+  }
+
+  const classificationSchema = await scoped("classification");
+  if (!classificationSchema.error) {
+    return { data: classificationSchema.data as unknown as DbMenuItemRow[] | null, error: null, classificationSupported: true };
+  }
+  if (!isMissingMenuItemOptionalColumn(classificationSchema.error, ["destination", "item_kind", "combo_eligible"])) {
+    return { data: null, error: classificationSchema.error, classificationSupported: false };
+  }
+
+  const legacySchema = await scoped("legacy");
+  return { data: legacySchema.data as unknown as DbMenuItemRow[] | null, error: legacySchema.error, classificationSupported: false };
 }
 
 /**
@@ -29,10 +88,12 @@ export const useMenuItems = () => {
   const [dbCategories, setDbCategories] = useState<DbCategory[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [classificationSchemaSupported, setClassificationSchemaSupported] = useState(false);
 
   const load = useCallback(async () => {
     try {
       setError(null);
+      setClassificationSchemaSupported(false);
       const unitId = businessUnitId;
       if (!unitId) {
         setItems([]);
@@ -51,12 +112,13 @@ export const useMenuItems = () => {
       setDbCategories(cats ?? []);
 
       const [itemsRes, ingredientsRes, variantsRes] = await Promise.all([
-        supabase.from("menu_items").select("id, name, price, category, description, image_url, sort_order").eq("active", true).eq("status", "published").eq("business_unit_id",unitId).order("sort_order"),
+        loadPublishedMenuItems(unitId),
         supabase.from("menu_item_ingredients").select("menu_item_id, name, removable, extra_price, sort_order").order("sort_order"),
         supabase.from("menu_item_variants").select("menu_item_id, name, sort_order").order("sort_order"),
       ]);
 
       const { data: dbItems, error: iErr } = itemsRes;
+      setClassificationSchemaSupported(itemsRes.classificationSupported);
 
       // Fallback estático só em erro; lista vazia (ex.: tudo em rascunho) é
       // cardápio vazio de verdade, não motivo pra mostrar itens fictícios.
@@ -72,6 +134,9 @@ export const useMenuItems = () => {
         name: item.name,
         price: Number(item.price),
         category: item.category as MenuCategory,
+        destination: item.destination ?? null,
+        itemKind: item.item_kind ?? "regular",
+        comboEligible: item.combo_eligible ?? true,
         description: item.description ?? undefined,
         imageUrl: item.image_url ?? undefined,
         ingredients: (dbIngredients ?? [])
@@ -97,6 +162,7 @@ export const useMenuItems = () => {
   useEffect(() => {
     if (unitLoading) return;
     setLoading(true);
+    setClassificationSchemaSupported(false);
     load();
   }, [load, unitLoading]);
 
@@ -118,18 +184,22 @@ export const useMenuItems = () => {
   const isKitchenItem = useCallback(
     (menuItemId: string): boolean => {
       const item = items.find((m) => m.id === menuItemId);
-      return item ? kitchenCategories.includes(item.category) : true;
+      if (!item) return true;
+      const destination = resolveMenuItemDestination(item.destination, dbCategories?.find((c) => c.key === item.category)?.destination);
+      return destination ? destination === "kitchen" : kitchenCategories.includes(item.category);
     },
-    [items, kitchenCategories]
+    [items, dbCategories, kitchenCategories]
   );
 
   const isBarItem = useCallback(
     (menuItemId: string): boolean => {
       const item = items.find((m) => m.id === menuItemId);
-      return item ? barCategories.includes(item.category) : false;
+      if (!item) return false;
+      const destination = resolveMenuItemDestination(item.destination, dbCategories?.find((c) => c.key === item.category)?.destination);
+      return destination ? destination === "bar" : barCategories.includes(item.category);
     },
-    [items, barCategories]
+    [items, dbCategories, barCategories]
   );
 
-  return { menuItems: items, loading, error, categories: dbCategories ?? [], isKitchenItem, isBarItem, categoryLabels };
+  return { menuItems: items, loading, error, categories: dbCategories ?? [], isKitchenItem, isBarItem, categoryLabels, classificationSchemaSupported };
 };
