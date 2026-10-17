@@ -506,8 +506,7 @@ const MenuItemEditor = ({ item, classificationSchemaSupported, initialDraft, ini
       },
       isNew
     );
-    setSaving(false);
-    if (typeof savedId !== "string") return;
+    if (typeof savedId !== "string") { setSaving(false); return; }
     persistedImage.current = finalImage;
     setSavedStatus(status);
 
@@ -526,6 +525,7 @@ const MenuItemEditor = ({ item, classificationSchemaSupported, initialDraft, ini
         rows.filter((r) => !r.ok).forEach((r) => toast.error(`${name(r.unit_id)}: ${r.error}`));
       }
     }
+    setSaving(false);
 
     // Salvo: apaga a foto antiga (se foi trocada) e as tentativas descartadas.
     const stale = [item?.image_url, ...sessionImages.current].filter((u) => u && u !== finalImage);
