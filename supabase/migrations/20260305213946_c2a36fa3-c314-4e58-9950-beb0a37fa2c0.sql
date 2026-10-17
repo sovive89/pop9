@@ -1,10 +1,12 @@
 -- Add missing role for existing user
 INSERT INTO public.user_roles (user_id, role)
-VALUES ('2e8dc8f8-72d4-43e8-8fbe-d0787ff1621f', 'admin')
+SELECT id, 'admin'::public.app_role FROM auth.users
+WHERE id = '2e8dc8f8-72d4-43e8-8fbe-d0787ff1621f'
 ON CONFLICT (user_id, role) DO NOTHING;
 
 INSERT INTO public.user_roles (user_id, role)
-VALUES ('2e8dc8f8-72d4-43e8-8fbe-d0787ff1621f', 'attendant')
+SELECT id, 'attendant'::public.app_role FROM auth.users
+WHERE id = '2e8dc8f8-72d4-43e8-8fbe-d0787ff1621f'
 ON CONFLICT (user_id, role) DO NOTHING;
 
 -- Create trigger for new users
