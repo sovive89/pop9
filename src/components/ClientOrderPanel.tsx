@@ -24,6 +24,8 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { type MenuCategory, type MenuItem } from "@/data/menu";
 import { useMenuItems } from "@/hooks/useMenuItems";
+import { useCombos } from "@/hooks/useCombos";
+import ComboBuilder from "@/components/ComboBuilder";
 import { getCategoryIcon, safeCategoryColor } from "@/utils/categoryIcons";
 import {
   type ClientOrder,
@@ -61,7 +63,7 @@ interface Props {
   onBack: () => void;
 }
 
-type View = "menu" | "cart" | "orders" | "item-detail";
+type View = "menu" | "cart" | "orders" | "item-detail" | "combos";
 
 const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder, onBack }: Props) => {
   const { menuItems, categories: dbCategories, categoryLabels, loading: menuLoading, error: menuError } = useMenuItems();
@@ -71,6 +73,9 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
   const [itemObservation, setItemObservation] = useState("");
   const [ingredientMods, setIngredientMods] = useState<IngredientMod[]>([]);
   const [meatPoint, setMeatPoint] = useState<string | null>(null);
+  // Variante escolhida (sabor, molho...). Obrigatória quando o item tem variantes.
+  const [variant, setVariant] = useState<string | null>(null);
+  const { combos } = useCombos();
   // Index of cart entry being edited (null = adding new)
   const [editingCartIndex, setEditingCartIndex] = useState<number | null>(null);
   // Search
@@ -115,6 +120,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
     setItemObservation("");
     setIngredientMods([]);
     setMeatPoint(null);
+    setVariant(null);
     setEditingCartIndex(null);
     setView("item-detail");
   };
@@ -134,6 +140,9 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
     // Remove structured parts from observation to get manual text
     let manualObs = obs;
     if (foundPoint) manualObs = manualObs.replace(foundPoint, "");
+    const foundVariant = (menuItem.variants ?? []).find((v) => obs.split(" | ").includes(v)) ?? null;
+    setVariant(foundVariant);
+    if (foundVariant) manualObs = manualObs.split(" | ").filter((part) => part !== foundVariant).join(" | ");
     // Remove ingredient mod text
     const removed = (entry.ingredientMods ?? []).filter((m) => m.action === "remove").map((m) => m.name);
     const extras = (entry.ingredientMods ?? []).filter((m) => m.action === "extra").map((m) => m.name);
@@ -182,6 +191,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
 
   const buildObservationText = (): string => {
     const parts: string[] = [];
+    if (variant) parts.push(variant);
     const removed = ingredientMods.filter((m) => m.action === "remove").map((m) => m.name);
     const extraNames = [...new Set(ingredientMods.filter((m) => m.action === "extra").map((m) => m.name))];
     const extraWithQty = extraNames.map((name) => {
@@ -198,7 +208,10 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
   const handleDuplicateLastOrder = () => {
     if (order.orders.length === 0) return;
     const last = order.orders[order.orders.length - 1];
-    onUpdateOrder({ ...order, cart: [...order.cart, ...last.items.map((i) => ({ ...i, quantity: 1 }))] });
+    // Combos repetidos ganham um grupo novo (não se misturam com o pedido anterior).
+    const groups = new Map<string, string>();
+    const regroup = (id?: string) => { if (!id) return undefined; if (!groups.has(id)) groups.set(id, crypto.randomUUID()); return groups.get(id); };
+    onUpdateOrder({ ...order, cart: [...order.cart, ...last.items.map((i) => ({ ...i, quantity: 1, comboGroupId: regroup(i.comboGroupId) }))] });
     toast.success("Último pedido duplicado no carrinho");
     setView("cart");
   };
@@ -206,14 +219,18 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
   // Add or update cart entry from item-detail
   const handleConfirmItem = () => {
     if (!selectedItem) return;
+    if (selectedItem.variants?.length && !variant) { toast.error("Escolha uma opção de " + selectedItem.name); return; }
     const obs = buildObservationText() || undefined;
+    // Item de combo mantém o preço repartido do combo; só os extras somam.
+    const editingCombo = editingCartIndex !== null ? order.cart[editingCartIndex] : null;
     const entry: OrderItem = {
       menuItemId: selectedItem.id,
       name: selectedItem.name,
-      price: selectedItem.price,
+      price: editingCombo?.comboGroupId ? editingCombo.price : selectedItem.price,
       quantity: 1,
       observation: obs,
       ingredientMods: ingredientMods.length > 0 ? [...ingredientMods] : undefined,
+      ...(editingCombo?.comboGroupId ? { comboGroupId: editingCombo.comboGroupId, comboName: editingCombo.comboName } : {}),
     };
 
     let newCart: OrderItem[];
@@ -232,13 +249,24 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
 
   // Remove a cart entry by index
   const handleRemoveCartEntry = (index: number) => {
-    const newCart = order.cart.filter((_, idx) => idx !== index);
+    // Item de combo sai com o combo inteiro (o desconto não fica num item solto).
+    const group = order.cart[index]?.comboGroupId;
+    const newCart = order.cart.filter((item, idx) => (group ? item.comboGroupId !== group : idx !== index));
     onUpdateOrder({ ...order, cart: newCart });
+    if (group) toast.success(`${order.cart[index].comboName ?? "Combo"} removido`);
   };
 
   // Duplicate a cart entry (add another identical unit)
   const handleDuplicateCartEntry = (index: number) => {
     const entry = order.cart[index];
+    if (entry.comboGroupId) {
+      // Duplicar item de combo duplica o combo inteiro, com grupo novo.
+      const id = crypto.randomUUID();
+      const copy = order.cart.filter((i) => i.comboGroupId === entry.comboGroupId).map((i) => ({ ...i, comboGroupId: id }));
+      onUpdateOrder({ ...order, cart: [...order.cart, ...copy] });
+      toast.success(`+1 ${entry.comboName ?? "combo"}`);
+      return;
+    }
     const newCart = [...order.cart, { ...entry }];
     onUpdateOrder({ ...order, cart: newCart });
     toast.success(`+1 ${entry.name}`);
@@ -313,12 +341,20 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
 
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar — categories */}
-        {(view === "menu" || view === "item-detail") && (
+        {(view === "menu" || view === "item-detail" || view === "combos") && (
           <motion.aside
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             className="w-16 sm:w-20 border-r border-border bg-card/50 flex flex-col items-center py-3 gap-1 shrink-0 overflow-y-auto"
           >
+            {combos.some((c) => c.active) && (
+              <button data-tooltip="Combos do cardápio." aria-label="Combos"
+                onClick={() => setView("combos")}
+                className={`flex flex-col items-center gap-1 rounded-xl px-2 py-2.5 w-full transition-colors ${view === "combos" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"}`}>
+                <Package className="h-5 w-5" />
+                <span className="text-[9px] font-medium leading-tight text-center">Combos</span>
+              </button>
+            )}
             {categories.map((cat) => {
               const dbCategory = dbCategories.find((c) => c.key === cat);
               const Icon = getCategoryIcon(dbCategory?.icon_name, dbCategory?.label ?? cat);
@@ -329,7 +365,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                   key={cat}
                   onClick={() => {
                     setActiveCategory(cat);
-                    if (view === "item-detail") setView("menu");
+                    if (view === "item-detail" || view === "combos") setView("menu");
                   }}
                   className={`flex flex-col items-center gap-1 rounded-xl px-2 py-2.5 w-full transition-colors ${
                     isActive
@@ -350,7 +386,18 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
         {/* Main content */}
         <div className="flex-1 overflow-y-auto">
           <AnimatePresence mode="wait">
-            {view === "item-detail" && selectedItem ? (
+            {view === "combos" ? (
+              <ComboBuilder
+                combos={combos}
+                menuItems={menuItems}
+                onBack={() => setView("menu")}
+                onAdd={(lines) => {
+                  onUpdateOrder({ ...order, cart: [...order.cart, ...lines] });
+                  toast.success(`${lines[0]?.comboName ?? "Combo"} adicionado — personalize os itens no carrinho`);
+                  setView("cart");
+                }}
+              />
+            ) : view === "item-detail" && selectedItem ? (
               /* Item detail */
               <motion.div
                 key="detail"
@@ -387,6 +434,21 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                     )}
                     <p className="text-xl font-bold text-primary mt-2">{formatCurrency(selectedItem.price)}</p>
                   </div>
+
+                  {/* Variante (sabor, molho...) */}
+                  {selectedItem.variants && selectedItem.variants.length > 0 && (
+                    <div className="space-y-1.5">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Escolha uma opção</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedItem.variants.map((v) => (
+                          <button key={v} aria-pressed={variant === v} onClick={() => setVariant(variant === v ? null : v)}
+                            className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${variant === v ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground hover:border-primary/50"}`}>
+                            {v}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Ingredients +/- */}
                   {selectedItem.ingredients && selectedItem.ingredients.length > 0 && (
@@ -491,7 +553,8 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                     const extrasTotal = ingredientMods
                       .filter((m) => m.action === "extra" && m.extraPrice)
                       .reduce((s, m) => s + (m.extraPrice ?? 0), 0);
-                    const unitPrice = selectedItem.price + extrasTotal;
+                    const editingEntry = editingCartIndex !== null ? order.cart[editingCartIndex] : null;
+                    const unitPrice = (editingEntry?.comboGroupId ? editingEntry.price : selectedItem.price) + extrasTotal;
                     return (
                       <Button data-tooltip="Adicione este item ao carrinho ou salve a edição com as opções selecionadas." className="w-full gap-2" onClick={handleConfirmItem}>
                         {editingCartIndex !== null ? (
@@ -551,6 +614,9 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                           <div className="flex items-center gap-3">
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium text-foreground truncate">{item.name}</p>
+                              {item.comboName && (
+                                <p className="text-[10px] font-semibold text-primary mt-0.5 truncate">🍱 {item.comboName}</p>
+                              )}
                               {modSummary && (
                                 <p className="text-[10px] text-primary/80 mt-0.5 truncate">
                                   {modSummary}

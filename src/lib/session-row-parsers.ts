@@ -164,6 +164,8 @@ export const parseSessionOrderItemRow = (value: unknown): OrderItem | null => {
     quantity,
     observation: observation ?? undefined,
     ingredientMods: parseIngredientMods(record.ingredient_mods),
+    ...(typeof record.combo_group_id === "string" ? { comboGroupId: record.combo_group_id } : {}),
+    ...(typeof record.combo_name === "string" ? { comboName: record.combo_name } : {}),
   };
 };
 

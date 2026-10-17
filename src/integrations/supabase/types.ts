@@ -14,6 +14,12 @@ export type Database = {
   }
   public: {
     Tables: {
+      operation_periods: {
+        Row: { id: string; business_unit_id: string; opened_at: string; opened_by: string | null; closed_at: string | null; closed_by: string | null }
+        Insert: { id?: string; business_unit_id: string; opened_at?: string; opened_by?: string | null; closed_at?: string | null; closed_by?: string | null }
+        Update: { closed_at?: string | null; closed_by?: string | null }
+        Relationships: [{ foreignKeyName: "operation_periods_business_unit_id_fkey"; columns: ["business_unit_id"]; isOneToOne: false; referencedRelation: "business_units"; referencedColumns: ["id"] }]
+      }
       // Verified in public schema; types only, never expose credential rows to UI.
       ai_provider_credentials: {
         Row: { id: string; business_unit_id: string; provider: string; encrypted_key: string; iv: string; status: string; validated_at: string | null; created_at: string; updated_at: string }
@@ -827,35 +833,65 @@ export type Database = {
       printer_configs: {
         Row: {
           active: boolean
+          auto_cut: boolean
+          copies: number
+          destinos: string[]
+          encoding: string
+          host: string | null
+          paper_width: number
+          port: number
+          transport: string
           business_unit_id: string | null
           connection_type: string
           created_at: string
           device_identifier: string | null
           gatilho: string
+          gatilhos: string[]
           id: string
           name: string
+          setor: string
           tipo: string
         }
         Insert: {
           active?: boolean
+          auto_cut?: boolean
+          copies?: number
+          destinos?: string[]
+          encoding?: string
+          host?: string | null
+          paper_width?: number
+          port?: number
+          transport?: string
           business_unit_id?: string | null
           connection_type?: string
           created_at?: string
           device_identifier?: string | null
           gatilho: string
+          gatilhos?: string[]
           id?: string
           name: string
+          setor?: string
           tipo: string
         }
         Update: {
           active?: boolean
+          auto_cut?: boolean
+          copies?: number
+          destinos?: string[]
+          encoding?: string
+          host?: string | null
+          paper_width?: number
+          port?: number
+          transport?: string
           business_unit_id?: string | null
           connection_type?: string
           created_at?: string
           device_identifier?: string | null
           gatilho?: string
+          gatilhos?: string[]
           id?: string
           name?: string
+          setor?: string
           tipo?: string
         }
         Relationships: [
@@ -1174,6 +1210,7 @@ export type Database = {
           current_stock: number
           id: string
           is_produced: boolean
+          is_theoretical: boolean
           min_stock: number
           name: string
           tipo: Database["public"]["Enums"]["item_tipo"]
@@ -1183,12 +1220,13 @@ export type Database = {
         Insert: {
           active?: boolean
           average_cost?: number
-          business_unit_id: string
+          business_unit_id?: string
           categoria?: string | null
           created_at?: string
           current_stock?: number
           id?: string
           is_produced?: boolean
+          is_theoretical?: boolean
           min_stock?: number
           name: string
           tipo?: Database["public"]["Enums"]["item_tipo"]
@@ -1204,6 +1242,7 @@ export type Database = {
           current_stock?: number
           id?: string
           is_produced?: boolean
+          is_theoretical?: boolean
           min_stock?: number
           name?: string
           tipo?: Database["public"]["Enums"]["item_tipo"]
@@ -1225,19 +1264,28 @@ export type Database = {
           id: string
           menu_item_id: string
           quantity: number
+          display_quantity: number | null
+          display_unit: string | null
           raw_material_id: string
+          transformacao: string
         }
         Insert: {
           id?: string
           menu_item_id: string
           quantity: number
+          display_quantity?: number | null
+          display_unit?: string | null
           raw_material_id: string
+          transformacao?: string
         }
         Update: {
           id?: string
           menu_item_id?: string
           quantity?: number
+          display_quantity?: number | null
+          display_unit?: string | null
           raw_material_id?: string
+          transformacao?: string
         }
         Relationships: [
           {
@@ -1266,6 +1314,53 @@ export type Database = {
             columns: ["raw_material_id"]
             isOneToOne: false
             referencedRelation: "raw_materials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      technical_documents: {
+        Row: {
+          business_unit_id: string
+          created_at: string
+          document: Json
+          document_type: string
+          entity_id: string
+          entity_type: string
+          id: string
+          revision: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          business_unit_id: string
+          created_at?: string
+          document?: Json
+          document_type: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          revision?: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          business_unit_id?: string
+          created_at?: string
+          document?: Json
+          document_type?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          revision?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "technical_documents_business_unit_id_fkey"
+            columns: ["business_unit_id"]
+            isOneToOne: false
+            referencedRelation: "business_units"
             referencedColumns: ["id"]
           },
         ]
@@ -1766,6 +1861,10 @@ export type Database = {
       }
     }
     Views: {
+      stock_lot_balances: {
+        Row: Database["public"]["Tables"]["lotes"]["Row"] & { quantidade_restante: number }
+        Relationships: []
+      }
       client_balances: {
         Row: {
           client_id: string | null
@@ -1859,6 +1958,13 @@ export type Database = {
       }
     }
     Functions: {
+      repair_material_purchase_unit: { Args: { p_raw: string; p_display_unit: string }; Returns: string }
+      save_stock_preparation: { Args: { p_unit: string; p_data: Json }; Returns: string }
+      save_menu_item_with_recipe: { Args: { p_unit: string; p_item_id: string; p_data: Json }; Returns: string }
+      create_stock_recipe: { Args: { p_unit: string; p_recipe_id: string; p_data: Json }; Returns: string }
+      register_stock_purchase: { Args: { p_unit: string; p_lote_id: string; p_data: Json }; Returns: string }
+      produce_stock_batch: { Args: { p_unit: string; p_batch_id: string; p_data: Json }; Returns: string }
+      set_unit_operation: { Args: { p_unit: string; p_open: boolean }; Returns: Json }
       // Requires deployment of the versioned purchase-lot migrations.
       manage_purchase_lot: {
         Args: { p_lote_id: string; p_action: string; p_data?: Json }

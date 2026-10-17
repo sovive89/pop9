@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import type { ClientInfo, TableSession } from "@/components/TableSessionPanel";
 import type { ClientOrder, PlacedOrder, OrderItem } from "@/utils/orders";
 import { buildKitchenReceipts, printReceipt } from "@/utils/thermal-print";
+import { useUnitPrintMode } from "@/hooks/useUnitPrintMode";
 import { fetchActiveSessionsWithOriginFallback } from "@/hooks/sessionQueries";
 import type { SessionsQueryClient } from "@/hooks/sessionQueries";
 import {
@@ -33,6 +34,7 @@ interface SessionData {
 export const useSessionStore = () => {
   const { user, loading: authLoading } = useAuth();
   const { businessUnitId } = useCurrentBusinessUnit();
+  const printMode = useUnitPrintMode();
   const scope = `${user?.id ?? ""}:${businessUnitId ?? ""}`;
   const currentScope = useRef(scope);
   currentScope.current = scope;
@@ -427,10 +429,13 @@ export const useSessionStore = () => {
       quantity: item.quantity,
       observation: item.observation ?? null,
       ingredient_mods: item.ingredientMods ? JSON.parse(JSON.stringify(item.ingredientMods)) : [],
+      // Itens de combo: mesmo grupo e nome para a conta agrupar (colunas novas; null nos avulsos).
+      ...(item.comboGroupId ? { combo_group_id: item.comboGroupId, combo_name: item.comboName ?? null } : {}),
+      // Provisório: o banco define o setor pela categoria do item (set_order_item_destination).
       destination: isKitchenItem(item.menuItemId) ? "kitchen" : "bar",
     }));
 
-    const { error: iErr } = await supabase.from("order_items").insert(itemsToInsert);
+    const { data: savedItems, error: iErr } = await supabase.from("order_items").insert(itemsToInsert).select("destination");
 
     if (iErr) {
       toast.error("Erro ao salvar itens do pedido");
@@ -464,8 +469,14 @@ export const useSessionStore = () => {
     // Comandas = só neste gatilho. Conta da mesa / conta individual = só por comando (botão Imprimir).
     const clientInfo = sessions[tableNumber]?.session.clients.find((c) => c.id === clientId);
     const clientName = clientInfo?.name ?? "Cliente";
-    const kitchenReceipts = buildKitchenReceipts(tableNumber, clientName, cartItems, order.id);
-    kitchenReceipts.forEach((html) => printReceipt(html));
+    // Com a Estação de impressão ativa, a comanda sai pela fila central (gatilho no banco);
+    // imprimir aqui também duplicaria o papel.
+    if (printMode.mode !== "station") {
+      // Setor que o banco gravou (mesma ordem do insert); sem retorno, vale o cálculo antigo.
+      const withSectors = cartItems.map((item, i) => ({ ...item, destination: savedItems?.[i]?.destination ?? undefined }));
+      const kitchenReceipts = buildKitchenReceipts(tableNumber, clientName, withSectors, order.id);
+      kitchenReceipts.forEach((html) => printReceipt(html));
+    }
 
     toast.success("Pedido enviado!");
   };

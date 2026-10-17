@@ -1,10 +1,13 @@
 import { PAGE_HELP } from "@/lib/page-help";
+import OperationControl from "@/components/OperationControl";
 import { useState, useEffect, useMemo } from "react";
 import { useUnitRoles } from "@/hooks/useUnitRoles";
+import { useUnitKds } from "@/hooks/useUnitKds";
+import { useUnitPrintMode } from "@/hooks/useUnitPrintMode";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import { useAuth } from "@/hooks/useAuth";
 import { Navigate, useNavigate } from "react-router-dom";
-import { Flame, LogOut, Settings, Map, ClipboardList, ChefHat, Bell, Package, Wallet } from "lucide-react";
+import { Flame, LogOut, Settings, Map, ClipboardList, ChefHat, Bell, Package, Wallet, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import TableMap from "@/components/TableMap";
@@ -18,7 +21,9 @@ const Index = () => {
   const navigate = useNavigate();
   const { sessions } = useSessionStore();
   const { roles: unitRoles, loading: rolesLoading, error: rolesError } = useUnitRoles();
-  const { businessUnitId } = useCurrentBusinessUnit();
+  const kds = useUnitKds();
+  const printMode = useUnitPrintMode();
+  const { businessUnitId, units, loading: unitsLoading, error: unitsError } = useCurrentBusinessUnit();
   const roles = { admin: unitRoles.includes("admin"), attendant: unitRoles.includes("attendant"), kitchen: unitRoles.includes("kitchen"), cashier: unitRoles.includes("cashier") };
   const [profileName, setProfileName] = useState("");
   const [tab, setTab] = useState<"mesas" | "pedidos">("mesas");
@@ -62,7 +67,24 @@ const Index = () => {
   }
 
   if (rolesError) return <p role="alert" className="p-6">Não foi possível verificar suas permissões. Recarregue a página.</p>;
-  if (!businessUnitId) return <p className="p-6">Selecione uma unidade para iniciar.</p>;
+  if (!businessUnitId) {
+    // Sem unidade: explica o motivo em vez de pedir uma seleção que não aparece.
+    const message = unitsLoading ? "Carregando unidades..."
+      : unitsError ? "Não foi possível carregar suas unidades. Verifique a conexão e recarregue a página."
+      : units.length === 0 ? "Seu usuário não está vinculado a nenhuma unidade ativa. Peça a um administrador para liberar seu acesso (Admin → Usuários) ou reativar a unidade (Admin → Unidades)."
+      : "Selecione uma unidade para iniciar.";
+    return (
+      <div className="space-y-4 p-6">
+        <p role={unitsError ? "alert" : "status"}>{message}</p>
+        {!unitsLoading && (unitsError || units.length === 0) && (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => window.location.reload()}>Recarregar</Button>
+            <Button variant="outline" onClick={() => void signOut()}>Sair</Button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (!roles.admin && !roles.attendant) {
     return <Navigate to={roles.cashier ? "/caixa" : roles.kitchen ? "/cozinha" : "/login"} replace />;
@@ -70,13 +92,14 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <div className="sticky top-0 z-10">
       {/* Header */}
       <motion.header
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="sticky top-0 z-10 border-b border-border bg-card/80 backdrop-blur-md px-4 py-3"
+        className="border-b border-border bg-card/80 backdrop-blur-md px-4 py-3"
       >
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
               <Flame className="h-5 w-5 text-primary-foreground" />
@@ -116,7 +139,7 @@ const Index = () => {
               )}
             </AnimatePresence>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
             {profileName && (
               <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={()=>navigate("/pedidos-online")}>Pedidos online</Button>
@@ -141,7 +164,7 @@ const Index = () => {
                     <span className="hidden sm:inline">Atendimento</span>
                   </Button>
                 )}
-                {(roles.kitchen || roles.admin) && (
+                {(roles.kitchen || roles.admin) && kds.loaded && kds.enabled && (
                   <Button data-tooltip="Abra a cozinha e acompanhe o preparo dos pedidos."
                     variant="outline"
                     size="sm"
@@ -152,6 +175,7 @@ const Index = () => {
                     <span className="hidden sm:inline">Cozinha</span>
                   </Button>
                 )}
+                {printMode.mode === "station" && <Button variant="outline" size="sm" data-tooltip="Abra a Estação de impressão no aparelho ligado à impressora." onClick={() => navigate("/impressao")}><Printer className="mr-1.5 h-4 w-4" />Impressão</Button>}
                 {(roles.cashier || roles.admin) && <Button variant="outline" size="sm" onClick={() => navigate("/caixa")}><Wallet className="mr-1.5 h-4 w-4" />Caixa</Button>}
                 {roles.admin && (
                   <Button data-tooltip="Abra a administração do estabelecimento."
@@ -180,7 +204,7 @@ const Index = () => {
       </motion.header>
 
       {/* Tab bar */}
-      <div className="sticky top-[65px] z-10 border-b border-border bg-card/80 backdrop-blur-md">
+      <div className="border-b border-border bg-card/80 backdrop-blur-md">
         <div className="mx-auto max-w-7xl flex">
           {([
             { key: "mesas" as const, label: "Mesas", icon: Map },
@@ -202,8 +226,11 @@ const Index = () => {
         </div>
       </div>
 
+      </div>
+
       {/* Content */}
       <main className="mx-auto max-w-7xl p-4 pb-6">
+        <div className="mb-4"><OperationControl /></div>
         {tab === "mesas" ? <TableMap /> : <ActiveOrdersPanel />}
       </main>
     </div>

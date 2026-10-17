@@ -13,6 +13,7 @@ import Login from "./pages/Login";
 import AuthCallback from "./pages/AuthCallback";
 import RecuperarSenha from "./pages/RecuperarSenha";
 import Kitchen from "./pages/Kitchen";
+import PrintStation from "./pages/PrintStation";
 import Admin from "./pages/Admin";
 import Cashier from "./pages/Cashier";
 import Delinquency from "./pages/Delinquency";
@@ -49,6 +50,7 @@ const App = () => (
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/recuperar-senha" element={<RecuperarSenha />} />
           <Route path="/cozinha" element={<Kitchen />} />
+          <Route path="/impressao" element={<PrintStation />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/caixa" element={<Cashier />} />
           <Route path="/inadimplencia" element={<Delinquency />} />

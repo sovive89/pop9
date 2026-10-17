@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { formatCurrency } from "@/utils/orders";
 import { CATEGORY_ICON_OPTIONS, CATEGORY_COLORS, getCategoryIcon, safeCategoryColor, suggestCategoryIcon } from "@/utils/categoryIcons";
 import { toast } from "sonner";
+import type { MenuRecipeDraft } from "@/lib/recipeDraft";
 import RecipeBuilder, { type RecipeBuilderHandle } from "@/components/admin/RecipeBuilder";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import { useSearchParams } from "react-router-dom";
@@ -15,6 +16,7 @@ import MenuPrefixField from '@/components/admin/MenuPrefixField';
 import { useMenuSuggestionCatalog } from '@/hooks/useMenuSuggestionCatalog';
 import { useAuth } from '@/hooks/useAuth';
 import { useUnitRoles } from '@/hooks/useUnitRoles';
+import { usePrintSectors, sectorName } from '@/hooks/usePrintSectors';
 
 // ── Image Upload Helper ──
 // O nome do arquivo é gerado aqui (não depende do ID do item, que só existe
@@ -59,21 +61,45 @@ type MenuItemInput = Omit<DbMenuItem, "id" | "sku" | "sort_order" | "ingredients
   sort_order?: number;
   ingredients: Omit<DbIngredient, "id">[];
   variants: Omit<DbVariant, "id">[];
+  recipe: MenuRecipeDraft[];
 };
-type MenuItemSaveResult = string | false | { failedId: string };
+type MenuItemSaveResult = string | false;
 
 // ── Category Editor ──
 interface CategoryEditorProps {
   category?: DbMenuCategory;
+  /** Chaves já usadas na unidade, para gerar uma chave nova sem repetir. */
+  existingKeys?: string[];
   onSave: (cat: CategoryInput, isNew: boolean) => Promise<boolean>;
   onCancel: () => void;
 }
 
-const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => {
+/** Chave interna gerada a partir do nome: "Bebidas Quentes" → "bebidas_quentes". */
+const categoryKeyFrom = (label: string, taken: string[] = []) => {
+  const base = label.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40) || "categoria";
+  let candidate = base;
+  for (let n = 2; taken.includes(candidate); n++) candidate = `${base}_${n}`;
+  return candidate;
+};
+
+const ingredientsFromDescription = (description: string, fallback: Omit<DbIngredient, "id">[]) => {
+  const names = description.split(",").map(value => value.trim()).filter(Boolean);
+  if (names.length < 2) return fallback;
+  return names.map((name, sort_order) => ({ name, removable: false, extra_price: null, sort_order }));
+};
+
+const CategoryEditor = ({ category, existingKeys = [], onSave, onCancel }: CategoryEditorProps) => {
   const isNew = !category;
-  const [key, setKey] = useState(category?.key ?? "");
   const [label, setLabel] = useState(category?.label ?? "");
+  // Categorias novas recebem uma sugestão legível; categorias existentes
+  // preservam a chave atual para não quebrar os itens já vinculados.
+  const [key, setKey] = useState(category?.key ?? categoryKeyFrom(category?.label ?? "", existingKeys));
+  const [keyTouched, setKeyTouched] = useState(!isNew);
   const [destination, setDestination] = useState(category?.destination ?? "kitchen");
+  const [sectorTouched, setSectorTouched] = useState(!isNew);
+  const { activeSectors } = usePrintSectors();
+  // Mantém o setor atual na lista mesmo se desativado, para não trocar sem querer ao editar.
+  const sectorOptions = activeSectors.some((s) => s.slug === destination) ? activeSectors : [...activeSectors, { slug: destination, name: destination, active: false }];
   const [sortOrder, setSortOrder] = useState(category?.sort_order?.toString() ?? "0");
   const [saving, setSaving] = useState(false);
   const [iconName, setIconName] = useState(category?.icon_name ?? suggestCategoryIcon(category?.label ?? ""));
@@ -83,13 +109,16 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
   const PreviewIcon = getCategoryIcon(iconName, label);
 
   const handleSave = async () => {
-    if (!key.trim() || !label.trim()) {
-      toast.error("Chave e nome são obrigatórios");
+    if (!label.trim()) {
+      toast.error("Informe o nome da categoria");
       return;
     }
     setSaving(true);
+    const normalizedKey = key.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
+    const finalKey = isNew ? categoryKeyFrom(normalizedKey || label, existingKeys) : key;
     const ok = await onSave(
-      { id: category?.id, key: key.trim().toLowerCase(), label: label.trim(), icon_name: iconName, icon_color: iconColor, destination, sort_order: parseInt(sortOrder) || 0 },
+      { id: category?.id, key: finalKey, label: label.trim(), icon_name: iconName, icon_color: iconColor, destination, sort_order: parseInt(sortOrder) || 0 },
       isNew
     );
     setSaving(false);
@@ -102,27 +131,38 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
         <h3 className="text-sm font-semibold text-foreground">{isNew ? "Nova Categoria" : "Editar Categoria"}</h3>
         <button data-tooltip="Feche a edição sem salvar as alterações pendentes." aria-label="Feche a edição sem salvar as alterações pendentes." onClick={onCancel} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">Chave (slug)</label>
-          <Input value={key} onChange={(e) => setKey(e.target.value)} disabled={!isNew} placeholder="ex: salads" className="h-8 text-sm" />
-        </div>
+      <div className="grid grid-cols-1 gap-3">
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Nome</label>
-          <Input value={label} onChange={(e) => { setLabel(e.target.value); if (!iconTouched) setIconName(suggestCategoryIcon(e.target.value)); }} placeholder="ex: Saladas" className="h-8 text-sm" />
+          <Input value={label} onChange={(e) => {
+            setLabel(e.target.value);
+            if (isNew && !keyTouched) setKey(categoryKeyFrom(e.target.value, existingKeys));
+            if (!iconTouched) setIconName(suggestCategoryIcon(e.target.value));
+            // Setor sugerido pelo nome (bebidas → Bar) enquanto o admin não escolheu outro.
+            if (isNew && !sectorTouched) setDestination(/bebida|drink|suco|refri|cerveja|chopp|vinho|cafe|café|agua|água|dose|caipir/i.test(e.target.value) ? "bar" : "kitchen");
+          }} placeholder="ex: Saladas" className="h-8 text-sm" />
         </div>
+      </div>
+      <div className="space-y-1">
+        <label htmlFor="category-key" className="text-xs font-medium text-muted-foreground">Chave (slug)</label>
+        <Input id="category-key" value={key} disabled={!isNew}
+          onChange={(e) => { setKey(e.target.value); setKeyTouched(true); }}
+          placeholder="ex: saladas" className="h-8 font-mono text-sm" />
+        <p className="text-[10px] text-muted-foreground">
+          Identificador interno sugerido automaticamente a partir do nome. Sem acentos ou espaços; ajuste se necessário.
+        </p>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">Destino</label>
-          <select data-tooltip="Defina se os pedidos desta categoria serão encaminhados à cozinha ou ao bar." aria-label="Defina se os pedidos desta categoria serão encaminhados à cozinha ou ao bar." value={destination} onChange={(e) => setDestination(e.target.value)} className="w-full h-8 rounded-md border border-border bg-muted px-3 text-sm text-foreground">
-            <option value="kitchen">Cozinha</option>
-            <option value="bar">Bar</option>
+          <label className="text-xs font-medium text-muted-foreground">Setor</label>
+          <select data-tooltip="Setor que recebe os pedidos desta categoria (crie novos em Impressoras)." aria-label="Setor que recebe os pedidos desta categoria." value={destination} onChange={(e) => { setDestination(e.target.value); setSectorTouched(true); }} className="w-full h-8 rounded-md border border-border bg-muted px-3 text-sm text-foreground">
+            {sectorOptions.map((s) => <option key={s.slug} value={s.slug}>{s.name}</option>)}
           </select>
         </div>
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Ordem</label>
           <Input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-8 text-sm" />
+          <p className="text-[10px] text-muted-foreground">Posição na lista: menor aparece primeiro (0 antes de 1).</p>
         </div>
       </div>
       <div className="space-y-2">
@@ -131,9 +171,12 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
           <PreviewIcon className="h-7 w-7 shrink-0" style={{ color: iconColor }} />
           <span className="text-sm font-medium text-foreground truncate">{label || "Nova categoria"}</span>
         </div>
-        <Input value={iconSearch} onChange={(e) => setIconSearch(e.target.value)} placeholder="Buscar ícone..." className="h-8 text-sm" />
-        <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-48 overflow-y-auto">
-          {CATEGORY_ICON_OPTIONS.filter((option) => (option.label + " " + option.name).toLowerCase().includes(iconSearch.toLowerCase())).map(({ name, label: iconLabel, Icon }) => (
+        <Input value={iconSearch} onChange={(e) => setIconSearch(e.target.value)} placeholder="Buscar ícone (ex.: suco, combo, açaí)..." className="h-8 text-sm" />
+        <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto">
+          {CATEGORY_ICON_OPTIONS.filter((option) => {
+            const plain = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+            return plain(`${option.label} ${option.name}`).includes(plain(iconSearch));
+          }).map(({ name, label: iconLabel, Icon }) => (
             <button key={name} type="button" title={iconLabel} aria-label={iconLabel} aria-pressed={iconName === name}
               onClick={() => { setIconName(name); setIconTouched(true); }}
               className={`flex flex-col items-center gap-1 rounded-lg border p-2 min-w-0 ${iconName === name ? "border-primary bg-primary/10" : "border-border hover:bg-muted"}`}>
@@ -170,15 +213,13 @@ interface MenuEditorProps {
 }
 
 const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps) => {
-  // Se o item novo já foi criado mas um passo seguinte (ficha técnica) falhou,
-  // guardamos o ID para que "salvar de novo" atualize em vez de duplicar.
-  const [createdId, setCreatedId] = useState<string | null>(null);
-  const isNew = !item && !createdId;
+  // Stable across network retries; the atomic RPC never leaves a partial item.
+  const newItemId = useRef(crypto.randomUUID());
+  const isNew = !item;
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Imagens enviadas/geradas nesta edição; as não usadas são apagadas ao fechar.
   const sessionImages = useRef<string[]>([]);
-  // Imagem já gravada no item (save ok, mas um passo seguinte falhou):
-  // não pode ser apagada ao cancelar, senão a URL do item fica quebrada.
+  // Imagem já gravada no item; o acervo permanece disponível para reutilização.
   const persistedImage = useRef<string | null>(null);
   // Editor fechado: upload/geração que terminar depois disso é apagado na hora.
   const closed = useRef(false);
@@ -218,8 +259,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   };
   const [sortOrder, setSortOrder] = useState(item?.sort_order?.toString() ?? "0");
   const [active, setActive] = useState(item?.active ?? true);
-  // Status já gravado no banco (não o do item aberto): muda assim que um save
-  // passa, mesmo que um passo seguinte (ficha técnica) falhe e o editor continue aberto.
+  // Status confirmado pela gravação atômica do item e da ficha.
   const [savedStatus, setSavedStatus] = useState(item?.status);
   const isPublished = savedStatus === "published";
   const [uploading, setUploading] = useState(false);
@@ -253,6 +293,30 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   );
   const [saving, setSaving] = useState(false);
   const recipeBuilderRef = useRef<RecipeBuilderHandle>(null);
+  const [documentSheets,setDocumentSheets] = useState<{id:string;name:string}[]>([]);
+  const [documentPickerOpen,setDocumentPickerOpen] = useState(false);
+  const [documentPickerBusy,setDocumentPickerBusy] = useState(false);
+  const [selectedDocument,setSelectedDocument] = useState("");
+  const openDocumentPicker = async () => {
+    if (!businessUnitId) return;
+    setDocumentPickerBusy(true);
+    try {
+      const {data,error} = await supabase.from("menu_items").select("id,name")
+        .eq("business_unit_id",businessUnitId).order("name");
+      if(error) throw error;
+      setDocumentSheets((data??[]).filter(source=>source.id!==item?.id && source.id!==newItemId.current));
+      setSelectedDocument("");
+      setDocumentPickerOpen(true);
+    }catch{toast.error("Não foi possível consultar as fichas de Documentos.");}
+    finally{setDocumentPickerBusy(false);}
+  };
+  const applyDocumentSheet = async () => {
+    if (!selectedDocument || !recipeBuilderRef.current) return;
+    setDocumentPickerBusy(true);
+    try{
+      if(await recipeBuilderRef.current.importFromMenuItem(selectedDocument)) setDocumentPickerOpen(false);
+    }finally{setDocumentPickerBusy(false);}
+  };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -341,47 +405,42 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   // ID, SKU e ordem inicial são definidos pelo banco (trigger + defaults).
   // O status muda pela ação escolhida: "Salvar rascunho" ou "Publicar".
   const handleSave = async (status: "draft" | "published") => {
-    if (!name.trim() || !price) {
-      toast.error("Nome e preço são obrigatórios");
+    if (!name.trim() || !price || !Number.isFinite(Number(price)) || Number(price) < 0 || (status === "published" && Number(price) <= 0)) {
+      toast.error("Informe nome e preço válido; para publicar, o preço deve ser maior que zero");
+      return;
+    }
+    if (status === "published" && !recipeBuilderRef.current) {
+      toast.error("Aguarde a ficha técnica carregar antes de publicar.");
       return;
     }
     setSaving(true);
+    // Um rascunho pode começar sem ficha. As linhas preenchidas e a publicação
+    // são gravadas junto com o item, sem uma segunda etapa de escrita.
     if (recipeBuilderRef.current && !recipeBuilderRef.current.validate()) { setSaving(false); return; }
     const finalImage = imageUrl.trim() || null;
+    const listedIngredients = ingredientsFromDescription(description, ingredients);
     const savedId = await onSave(
       {
         ...(item
           ? { id: item.id, sort_order: parseInt(sortOrder) || 0 }
-          : createdId ? { id: createdId } : {}),
+          : { id: newItemId.current }),
         name: name.trim(),
-        price: parseFloat(price),
+        price: Number(price),
         category,
         description: description.trim() || null,
         image_url: finalImage,
         active,
         status,
-        ingredients,
+        ingredients: listedIngredients,
         variants,
+        recipe: recipeBuilderRef.current?.getDraft() ?? [],
       },
       isNew
     );
-    if (typeof savedId !== "string") {
-      // Item novo ficou no banco sem conseguir desfazer: próxima tentativa atualiza ele.
-      if (savedId) {
-        if (!item) setCreatedId(savedId.failedId);
-        // A linha existe e já aponta para esta foto/status: Cancelar não pode apagá-la.
-        persistedImage.current = finalImage;
-        setSavedStatus(status);
-      }
-      setSaving(false);
-      return;
-    }
-    if (!item) setCreatedId(savedId);
+    setSaving(false);
+    if (typeof savedId !== "string") return;
     persistedImage.current = finalImage;
     setSavedStatus(status);
-    const recipeOk = await recipeBuilderRef.current?.commit(savedId);
-    setSaving(false);
-    if (recipeOk === false) return;
 
     // Salvo: apaga a foto antiga (se foi trocada) e as tentativas descartadas.
     const stale = [item?.image_url, ...sessionImages.current].filter((u) => u && u !== finalImage);
@@ -391,17 +450,26 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     onCancel();
   };
 
-  const addIngredient = () => {
-    setIngredients([...ingredients, { name: "", removable: true, extra_price: null, sort_order: ingredients.length }]);
-  };
-
-  type IngredientPatch = Partial<Pick<DbIngredient, "name" | "extra_price" | "removable">>;
-  const updateIngredient = (idx: number, patch: IngredientPatch) => {
-    setIngredients((current) => current.map((ing, i) => i === idx ? { ...ing, ...patch } : ing));
-  };
-
-  const removeIngredient = (idx: number) => {
-    setIngredients(ingredients.filter((_, i) => i !== idx));
+  // Sugestão por IA: usa o modo "criar ficha" e aproveita só o que estiver vazio.
+  const [suggesting, setSuggesting] = useState(false);
+  const suggestWithAi = async () => {
+    if (!businessUnitId || !name.trim()) return;
+    setSuggesting(true);
+    try {
+      const { listImportModels, extractMenuDraft } = await import("@/lib/menuImport");
+      const { models, warning } = await listImportModels(businessUnitId);
+      if (!models.length) throw new Error(warning || "Conecte a IA em Conexões desta unidade.");
+      const catLabel = categories.find((c) => c.key === category)?.label ?? "";
+      const { draft } = await extractMenuDraft({ businessUnitId, model: models[0].id, files: [], mode: "create",
+        text: `${name.trim()}${catLabel ? ` (categoria ${catLabel})` : ""}${description.trim() ? `. ${description.trim()}` : ""}` });
+      const found = draft.items[0];
+      if (!found) throw new Error("A IA não conseguiu sugerir. Detalhe melhor o nome.");
+      let filled = 0;
+      if (!description.trim() && found.description) { setDescription(found.description); filled++; }
+      toast[filled ? "success" : "info"](filled ? "Descrição sugerida e aplicada. Revise antes de salvar." : "A descrição já estava preenchida; nada foi alterado.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível sugerir");
+    } finally { setSuggesting(false); }
   };
 
   const addVariant = () => {
@@ -421,7 +489,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
 
       {item && (
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          <span>SKU: <span className="font-mono text-foreground">{item.sku ?? "—"}</span></span>
+          <span data-tooltip="Código interno único do produto, gerado automaticamente. Usado em relatórios, importação e integrações; não precisa preencher.">SKU (código interno): <span className="font-mono text-foreground">{item.sku ?? "—"}</span></span>
           <span>Status: <span className="text-foreground">{isPublished ? "Publicado" : "Rascunho"}</span></span>
         </div>
       )}
@@ -449,8 +517,9 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
         </div>
         {item && (
           <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Ordem</label>
+            <label className="text-xs font-medium text-muted-foreground" data-tooltip="Posição do item na categoria: menor aparece primeiro.">Ordem</label>
             <Input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-9" />
+            <p className="text-[10px] text-muted-foreground">Menor aparece primeiro.</p>
           </div>
         )}
         <div className="flex items-end">
@@ -461,6 +530,15 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" size="sm" variant="outline" disabled={suggesting || !name.trim() || !businessUnitId}
+          data-tooltip="A IA sugere descrição e ingredientes a partir do nome. Só preenche campos vazios; revise antes de salvar."
+          onClick={() => void suggestWithAi()}>
+          <Sparkles className="mr-1 h-4 w-4" />{suggesting ? "Sugerindo..." : "Sugerir com IA"}
+        </Button>
+        <span className="text-[11px] text-muted-foreground">Preenche descrição e ingredientes vazios a partir do nome.</span>
+      </div>
+
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">Descrição</label>
         <MenuPrefixField multiline label="Descrição do produto"
@@ -468,6 +546,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
           onChange={setDescription} suggestions={catalog.suggestions.words}
           className="w-full rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
         />
+        <p className="text-[11px] text-muted-foreground">Para exibir ingredientes no cardápio, separe-os por vírgulas. Ex.: pão brioche, carne, queijo, molho especial.</p>
       </div>
 
       {/* Image Upload */}
@@ -537,33 +616,32 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
               {generating ? "Gerando..." : imageUrl ? "Gerar outra" : "Gerar"}
             </Button>
           </div>
-          <p className="text-[11px] text-muted-foreground">{availableModels.length === 0 ? "Conecte Google ou OpenAI em Integrações → Inteligência Artificial para habilitar a geração nesta unidade." : "Usa nome, descrição e ingredientes do item. Cada geração tem custo na sua conta de IA."}</p>
+          <p className="text-[11px] text-muted-foreground">{availableModels.length === 0 ? "Conecte Google ou OpenAI em Integrações → Inteligência Artificial para habilitar a geração nesta unidade." : "Usa nome e descrição do item. Cada geração tem custo na sua conta de IA."}</p>
         </div>
       </div>
 
-      {/* Ingredients */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <label data-tooltip="Ingredientes exibidos ao cliente e opções de retirar ou adicionar. Os insumos e quantidades do estoque são definidos na ficha técnica." tabIndex={0} className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Ingredientes do cardápio</label>
-          <button data-tooltip="Adicione um ingrediente visível ao cliente. Para cadastrar insumos do estoque, use a ficha técnica abaixo." onClick={addIngredient} className="text-xs text-primary hover:underline flex items-center gap-1">
-            <Plus className="h-3 w-3" /> Adicionar
-          </button>
-        </div>
-        {ingredients.map((ing, idx) => (
-          <div key={idx} className="flex items-center gap-2 rounded-lg bg-secondary/30 p-2">
-            <Input value={ing.name} onChange={(e) => updateIngredient(idx, { name: e.target.value })} placeholder="Nome" className="h-8 text-xs flex-1" />
-            <Input type="number" step="0.01" value={ing.extra_price ?? ""} onChange={(e) => updateIngredient(idx, { extra_price: e.target.value ? parseFloat(e.target.value) : null })} placeholder="Extra R$" className="h-8 text-xs w-20" />
-            <label className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
-              <input type="checkbox" checked={ing.removable} onChange={(e) => updateIngredient(idx, { removable: e.target.checked })} />
-              Removível
-            </label>
-            <button data-tooltip="Retire este ingrediente da lista exibida ao cliente. A ficha técnica é editada separadamente." aria-label="Retire este ingrediente da lista exibida ao cliente. A ficha técnica é editada separadamente." onClick={() => removeIngredient(idx)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-3.5 w-3.5" /></button>
-          </div>
-        ))}
+        <Button type="button" variant="outline" disabled={saving || documentPickerBusy}
+          onClick={() => void openDocumentPicker()}>Puxar ficha de Documentos</Button>
+        <p className="text-xs text-muted-foreground">Selecione uma ficha técnica já salva nesta unidade. A importação só será vinculada após salvar o item.</p>
+        <RecipeBuilder ref={recipeBuilderRef} menuItemId={item?.id}
+          menuItemName={name} disabled={saving || uploading || generating} />
       </div>
-
-      {/* Ficha técnica (recipe_items → raw_materials, separado dos ingredientes de exibição acima) */}
-      <RecipeBuilder ref={recipeBuilderRef} menuItemId={item?.id} disabled={saving || uploading || generating} />
+      {documentPickerOpen && <div role="dialog" aria-label="Puxar ficha técnica de Documentos"
+        className="space-y-3 rounded-lg border border-border bg-card p-3">
+        <p className="text-sm font-semibold">Fichas técnicas da unidade</p>
+        <select aria-label="Selecionar ficha técnica" value={selectedDocument}
+          onChange={event=>setSelectedDocument(event.target.value)}
+          className="w-full rounded-md border bg-background p-2 text-sm">
+          <option value="">Selecione um item</option>
+          {documentSheets.map(source=><option key={source.id} value={source.id}>{source.name}</option>)}
+        </select>
+        <div className="flex gap-2">
+          <Button type="button" disabled={!selectedDocument || documentPickerBusy}
+            onClick={()=>void applyDocumentSheet()}>Carregar ficha</Button>
+          <Button type="button" variant="outline" onClick={()=>setDocumentPickerOpen(false)}>Cancelar</Button>
+        </div>
+      </div>}
 
       {/* Variants */}
       <div className="space-y-2">
@@ -605,6 +683,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
 
 // ── Menu Tab ──
 const UnitMenuTab = () => {
+  const { sectors } = usePrintSectors();
   const { menuItems, categories, loadingMenu, loadingCategories, saveMenuItem, deleteMenuItem, saveCategory, deleteCategory, refreshMenu, refreshCategories } = useAdminData();
   const [searchParams, setSearchParams] = useSearchParams();
   const importOpen = searchParams.get("import") === "1";
@@ -664,6 +743,7 @@ const UnitMenuTab = () => {
           {(creatingCategory || editingCategory) && (
             <CategoryEditor
               category={editingCategory ?? undefined}
+              existingKeys={categories.map((c) => c.key)}
               onSave={saveCategory}
               onCancel={() => { setEditingCategory(null); setCreatingCategory(false); }}
             />
@@ -676,7 +756,7 @@ const UnitMenuTab = () => {
                 <span className="flex-1 min-w-0 text-sm font-medium text-foreground truncate">{cat.label}</span>
                 <span className="hidden sm:inline text-xs text-muted-foreground truncate">{cat.key}</span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
-                  {cat.destination === "kitchen" ? "Cozinha" : "Bar"}
+                  {sectorName(sectors, cat.destination)}
                 </span>
                 <button data-tooltip="Edite o nome, o ícone e a cor desta categoria." aria-label="Edite o nome, o ícone e a cor desta categoria." onClick={() => setEditingCategory(cat)} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground">
                   <Pencil className="h-3.5 w-3.5" />

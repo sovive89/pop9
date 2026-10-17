@@ -1,3 +1,6 @@
+import { supabase } from "@/integrations/supabase/client";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
+import { toast } from "sonner";
 import { useState, useMemo } from "react";
 import {
   Flame,
@@ -32,8 +35,12 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useStockData, ProductionRecipeInput, ItemType, FichaTipo, alocarFefo } from "@/hooks/useStockData";
+import { STOCK_UNITS } from "@/lib/stockUnits";
+import { STOCK_CATEGORIES, stockCategory, type StockCategory } from "@/lib/stockCategories";
 
-type SubView = "insumos" | "producao" | "fornecedores";
+import StockOCRDialog, { type StockOCRItem } from "./StockOCRDialog";
+
+type SubView = StockCategory | "produzidos" | "producao" | "fornecedores";
 
 const STATUS_LABELS: Record<string, string> = {
   valido: "Válido",
@@ -69,7 +76,9 @@ const FICHA_TIPO_OPTIONS: { value: FichaTipo; label: string }[] = [
   { value: "porcionamento", label: "Porcionamento" },
 ];
 
-const StockTab = () => {
+const UnitStockTab = () => {
+  const { businessUnitId } = useCurrentBusinessUnit();
+  const [removingMaterial,setRemovingMaterial] = useState<string | null>(null);
   const {
     rawMaterials,
     suppliers,
@@ -79,18 +88,46 @@ const StockTab = () => {
     lotes,
     loading,
     createRawMaterial,
+    refreshAll,
+    updateRawMaterialCategory,
     registerPurchase,
     managePurchaseLot,
     createSupplier,
     createRecipe,
     produceBatch,
+    error: stockError,
   } = useStockData();
 
+  const removeMaterialCard = async (id:string,name:string) => {
+    if(!businessUnitId || removingMaterial || !window.confirm(`Remover o card de "${name}" do estoque? O histórico será preservado.`)) return;
+    setRemovingMaterial(id);
+    try {
+      const checks = await Promise.all([
+        supabase.from("recipe_items").select("id").eq("raw_material_id",id).limit(1),
+        supabase.from("production_recipe_inputs").select("id").eq("raw_material_id",id).limit(1),
+        supabase.from("production_recipes").select("id").eq("output_raw_material_id",id).limit(1),
+        supabase.from("lotes").select("id").eq("raw_material_id",id).limit(1),
+        supabase.from("stock_movements").select("id").eq("raw_material_id",id).limit(1),
+      ]);
+      if(checks.some(result=>result.error)) throw new Error("Não foi possível verificar os vínculos do insumo.");
+      if(checks.some(result=>(result.data?.length??0)>0)) {
+        toast.error("Insumo vinculado a fichas, lotes ou movimentações. Remova os vínculos ativos antes de arquivar; o histórico não será apagado.");
+        return;
+      }
+      const {error} = await supabase.from("raw_materials").update({active:false})
+        .eq("id",id).eq("business_unit_id",businessUnitId);
+      if(error) throw error;
+      toast.success("Card de insumo removido. Cadastro arquivado sem excluir o histórico.");
+      await refreshAll();
+    }catch(error){toast.error(error instanceof Error?error.message:"Não foi possível remover o card.");}
+    finally{setRemovingMaterial(null);}
+  };
   const [view, setView] = useState<SubView>("insumos");
   const [search, setSearch] = useState("");
 
   const [newMaterialOpen, setNewMaterialOpen] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [ocrOpen, setOCROpen] = useState(false);
   const [purchaseTarget, setPurchaseTarget] = useState<string | null>(null);
   const [editingLotId, setEditingLotId] = useState<string | null>(null);
   const [newSupplierOpen, setNewSupplierOpen] = useState(false);
@@ -101,7 +138,7 @@ const StockTab = () => {
   const [matName, setMatName] = useState("");
   const [matUnit, setMatUnit] = useState("");
   const [matItemType, setMatItemType] = useState<ItemType>("insumo");
-  const [matCategoria, setMatCategoria] = useState("");
+  const [matCategoria, setMatCategoria] = useState<StockCategory>("insumos");
   const [matMinStock, setMatMinStock] = useState("");
 
   const [pQuantity, setPQuantity] = useState("");
@@ -110,10 +147,8 @@ const StockTab = () => {
   const [pPurchaseUnit, setPPurchaseUnit] = useState("");
   const [pConversion, setPConversion] = useState("1");
   const [pSupplierId, setPSupplierId] = useState<string>("");
-  const [pIsBox, setPIsBox] = useState(false);
-  const [pBoxCount, setPBoxCount] = useState("");
-  const [pUnitsPerBox, setPUnitsPerBox] = useState("");
   const [pValidade, setPValidade] = useState("");
+  const [pDataEntrada, setPDataEntrada] = useState(() => new Date().toLocaleDateString("en-CA"));
   const [pNumeroLote, setPNumeroLote] = useState("");
 
   const [supName, setSupName] = useState("");
@@ -137,8 +172,8 @@ const StockTab = () => {
 
   // Prévia do FEFO: de qual(is) lote(s) cada insumo do "Produzir Lote" vai
   // sair, antes de confirmar. Puramente informativo — quem decide de
-  // verdade, na hora de salvar, é a mesma função (alocarFefo) rodando
-  // dentro de produceBatch, com os mesmos dados.
+  // verdade, na hora de salvar, é o banco, com saldo atualizado e bloqueio
+  // dos insumos. A prévia pode mudar se outro pedido consumir esses lotes.
   const fefoPreview = useMemo(() => {
     const preview: Record<string, ReturnType<typeof alocarFefo>> = {};
     prodInputs.forEach((inp) => {
@@ -153,15 +188,28 @@ const StockTab = () => {
     [rawMaterials]
   );
 
-  const filteredMaterials = rawMaterials.filter((m) =>
-    m.name.toLowerCase().includes(search.toLowerCase())
+  // Um preparo só pertence ao estoque físico após sua primeira produção
+  // (ou quando existir um lote de origem produção). Antes, sua receita fica em Produção.
+  const isProducedMaterial = (m: (typeof rawMaterials)[number]) =>
+    m.isProduced || m.itemType === "semiacabado" || m.itemType === "produto_acabado";
+  const hasProductionHistory = (id: string) =>
+    lotes.some(l => l.rawMaterialId === id && l.origem === "producao") ||
+    labels.some(label => label.productName === materialsById[id]?.name);
+  const isCategoryView = (value: SubView): value is StockCategory =>
+    STOCK_CATEGORIES.some(category => category.value === value);
+  const filteredMaterials = rawMaterials.filter(m =>
+    m.name.toLowerCase().includes(search.toLowerCase()) &&
+    (view === "produzidos"
+      ? isProducedMaterial(m) && hasProductionHistory(m.id)
+      : isCategoryView(view) && !isProducedMaterial(m) &&
+        stockCategory(m.categoria, m.itemType) === view)
   );
 
   const resetMaterialForm = () => {
     setMatName("");
     setMatUnit("");
     setMatItemType("insumo");
-    setMatCategoria("");
+    setMatCategoria("insumos");
     setMatMinStock("");
   };
 
@@ -172,13 +220,29 @@ const StockTab = () => {
     setPPurchaseUnit("");
     setPConversion("1");
     setPSupplierId("");
-    setPIsBox(false);
-    setPBoxCount("");
-    setPUnitsPerBox("");
     setPValidade("");
+    setPDataEntrada(new Date().toLocaleDateString("en-CA"));
     setPNumeroLote("");
     setPurchaseTarget(null);
     setEditingLotId(null);
+  };
+
+  const reviewOCRItem = (item: StockOCRItem, materialId: string, mode: "documento" | "produtos") => {
+    resetPurchaseForm();
+    setPurchaseTarget(materialId);
+    const unit = materialsById[materialId]?.unit ?? "";
+    setPPurchaseUnit(unit);
+    // Foto de geladeira não distingue mercadoria nova: quantidade sempre digitada na conferência.
+    const detectedUnit = item.unidade.trim().toLowerCase();
+    const sameUnit = detectedUnit === unit.toLowerCase();
+    if (mode === "documento" && sameUnit) {
+      setPQuantity(item.quantidade && item.quantidade > 0 ? String(item.quantidade) : "");
+      setPUnitCost(item.valorUnitario != null ? String(item.valorUnitario) : "");
+    }
+    setPNumeroLote(item.lote ?? "");
+    setPValidade(item.validade ?? "");
+    setOCROpen(false);
+    setPurchaseOpen(true);
   };
 
   const resetSupplierForm = () => {
@@ -237,9 +301,6 @@ const StockTab = () => {
     setPUnitCost(previous?.custoTotal != null && previous?.quantidadeCompra
       ? String(previous.custoTotal / previous.quantidadeCompra) : "");
     setPSupplierId(previous?.fornecedorId || "");
-    setPIsBox(previous?.caixas != null);
-    setPBoxCount(previous?.caixas != null ? String(previous.caixas) : "");
-    setPUnitsPerBox(previous?.conteudoPorCaixa != null ? String(previous.conteudoPorCaixa) : "");
     setPValidade(previous?.validade || "");
     setPNumeroLote(""); // Never reuse the previous lot identifier.
     setEditingLotId(null);
@@ -259,20 +320,26 @@ const StockTab = () => {
     setPUnitCost(cost == null ? "" : String(cost / (lot.quantidadeCompra ?? lot.quantidadeEntrada)));
     setPSupplierId(lot.fornecedorId || "");
     setPValidade(lot.validade || "");
+    setPDataEntrada(lot.dataEntrada.slice(0, 10));
     setPNumeroLote(lot.numeroLote);
-    setPIsBox(lot.caixas != null);
-    setPBoxCount(lot.caixas == null ? "" : String(lot.caixas));
-    setPUnitsPerBox(lot.conteudoPorCaixa == null ? "" : String(lot.conteudoPorCaixa));
     setPurchaseOpen(true);
   };
+
+  const purchaseBaseUnit = purchaseTarget ? materialsById[purchaseTarget]?.unit || "" : "";
+  const samePurchaseUnit = pPurchaseUnit === purchaseBaseUnit;
+  const automaticConversions: Record<string, number> = { "kg:g": 1000, "g:kg": 0.001, "L:ml": 1000, "ml:L": 0.001 };
+  const automaticConversion = samePurchaseUnit ? 1 : automaticConversions[`${pPurchaseUnit}:${purchaseBaseUnit}`];
+  const requiresManualConversion = Boolean(pPurchaseUnit && purchaseBaseUnit && automaticConversion === undefined);
+  const crossDimension = (["kg", "g"].includes(pPurchaseUnit) && ["un", "L", "ml"].includes(purchaseBaseUnit)) ||
+    (["L", "ml"].includes(pPurchaseUnit) && ["un", "kg", "g"].includes(purchaseBaseUnit)) ||
+    (pPurchaseUnit === "un" && ["kg", "g", "L", "ml"].includes(purchaseBaseUnit));
 
   const handleRegisterPurchase = async () => {
     if (!purchaseTarget || !pQuantity || !pPurchaseUnit.trim()) return;
     const purchaseQuantity = Number(pQuantity);
-    const conversionFactor = Number(pConversion);
+    const conversionFactor = automaticConversion ?? Number(pConversion);
     if (!Number.isFinite(purchaseQuantity) || purchaseQuantity <= 0 ||
         !Number.isFinite(conversionFactor) || conversionFactor <= 0) return;
-    if (pIsBox && (!(Number(pBoxCount) > 0) || !(Number(pUnitsPerBox) > 0))) return;
     const normalizedQuantity = purchaseQuantity * conversionFactor;
     const totalCost = pTotalCost === "" ? null : Number(pTotalCost);
     if (totalCost !== null && (!Number.isFinite(totalCost) || totalCost < 0)) return;
@@ -286,8 +353,9 @@ const StockTab = () => {
           fornecedor_id: pSupplierId || null,
           validade: pValidade || null,
           numero_lote: pNumeroLote.trim(),
-          caixas: pIsBox ? Number(pBoxCount) : null,
-          conteudo_por_caixa: pIsBox ? Number(pUnitsPerBox) : null,
+          // Preserve historical packaging details when editing an existing lot.
+          caixas: lotes.find(l => l.id === editingLotId)?.caixas ?? null,
+          conteudo_por_caixa: lotes.find(l => l.id === editingLotId)?.conteudoPorCaixa ?? null,
         })
       : await registerPurchase({
       rawMaterialId: purchaseTarget,
@@ -298,9 +366,8 @@ const StockTab = () => {
       totalCost,
       unitCost: totalCost === null ? null : totalCost / normalizedQuantity,
       supplierId: pSupplierId || null,
-      boxCount: pIsBox ? Number(pBoxCount) : undefined,
-      unitsPerBox: pIsBox ? Number(pUnitsPerBox) : undefined,
       validade: pValidade || null,
+      dataEntrada: pDataEntrada,
       numeroLote: pNumeroLote.trim() || null,
     });
     setSaving(false);
@@ -352,14 +419,39 @@ const StockTab = () => {
 
   const openProduce = (recipeId: string) => {
     const recipe = recipes.find((r) => r.id === recipeId);
+    if (!recipe || !recipe.active) return;
     setProdRecipeId(recipeId);
     setProdQuantity(recipe ? String(recipe.outputQuantity) : "");
     setProdInputs(recipe ? recipe.inputs.map((i) => ({ rawMaterialId: i.rawMaterialId, quantityUsed: i.quantity })) : []);
     setProduceOpen(true);
   };
 
+  const selectedProductionRecipe = recipes.find((recipe) => recipe.id === prodRecipeId);
+  const outputUnit = selectedProductionRecipe ? materialsById[selectedProductionRecipe.outputRawMaterialId]?.unit : "";
+  const outputQuantity = Number(prodQuantity);
+  const invalidProductionQuantity = !Number.isFinite(outputQuantity) || outputQuantity <= 0;
+  const insufficientInputs = prodInputs.filter((input) => {
+    const material = materialsById[input.rawMaterialId];
+    return !material || !Number.isFinite(input.quantityUsed) || input.quantityUsed <= 0 ||
+      input.quantityUsed > material.currentStock;
+  });
+  const handleProductionQuantityChange = (value: string) => {
+    setProdQuantity(value);
+    const recipe = selectedProductionRecipe;
+    const quantity = Number(value);
+    if (!recipe || !Number.isFinite(quantity) || quantity <= 0 || recipe.outputQuantity <= 0) {
+      setProdInputs([]);
+      return;
+    }
+    const factor = quantity / recipe.outputQuantity;
+    setProdInputs(recipe.inputs.map((input) => ({
+      rawMaterialId: input.rawMaterialId,
+      quantityUsed: Number((input.quantity * factor).toFixed(6)),
+    })));
+  };
+
   const handleProduceBatch = async () => {
-    if (!prodRecipeId || !prodQuantity) return;
+    if (!prodRecipeId || invalidProductionQuantity || !prodInputs.length || insufficientInputs.length) return;
     setSaving(true);
     const ok = await produceBatch({
       recipeId: prodRecipeId,
@@ -374,6 +466,11 @@ const StockTab = () => {
     }
   };
 
+  if (stockError) return <div role="alert" className="space-y-3 rounded-lg border border-destructive p-4">
+    <p>Não foi possível carregar o estoque desta unidade.</p>
+    <Button variant="outline" onClick={() => void refreshAll()}>Tentar novamente</Button>
+  </div>;
+
   if (loading) {
     return (
       <div className="flex justify-center py-12">
@@ -384,6 +481,8 @@ const StockTab = () => {
 
   return (
     <div className="space-y-4">
+      <Button variant="outline" onClick={() => setOCROpen(true)}>Entrada por foto ou nota</Button>
+      {businessUnitId && <StockOCRDialog open={ocrOpen} onOpenChange={setOCROpen} businessUnitId={businessUnitId} materials={rawMaterials} onReview={reviewOCRItem} />}
       {alerts.length > 0 && (
         <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3">
           <div className="flex items-center gap-2 text-destructive text-sm font-medium mb-2">
@@ -400,29 +499,41 @@ const StockTab = () => {
         </div>
       )}
 
-      <div className="flex gap-1 rounded-xl border border-border bg-muted/30 p-1">
-        {[
-          { key: "insumos" as const, label: "Insumos", icon: Package },
+      <div className="grid grid-cols-3 gap-1 rounded-xl border border-border bg-muted/30 p-1" role="tablist" aria-label="Áreas operacionais">
+        {([
+          { key: "insumos" as const, label: "Estoque", icon: Package },
           { key: "producao" as const, label: "Produção", icon: Factory },
           { key: "fornecedores" as const, label: "Fornecedores", icon: Truck },
-        ].map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
+        ]).map(({ key, label, icon: Icon }) => {
+          const selected = key === "insumos" ? isCategoryView(view) || view === "produzidos" : view === key;
+          return <button key={key} type="button" role="tab" aria-selected={selected}
             onClick={() => setView(key)}
-            className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs sm:text-sm font-medium transition-colors ${
-              view === key
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted"
-            }`}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </button>
-        ))}
+            className={`flex min-w-0 items-center justify-center gap-1 rounded-lg px-2 py-2.5 text-xs font-medium sm:text-sm ${selected
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:bg-muted"}`}>
+            <Icon className="h-4 w-4 shrink-0" /><span className="truncate">{label}</span>
+          </button>;
+        })}
       </div>
 
-      {view === "insumos" && (
+      {(isCategoryView(view) || view === "produzidos") && (
+        <div className="space-y-2">
+          <label className="block text-xs font-medium text-muted-foreground" htmlFor="stock-category-filter">Categoria</label>
+          <select id="stock-category-filter" value={view} onChange={event => setView(event.target.value as SubView)}
+            className="h-10 w-full rounded-lg border border-border bg-card px-3 text-sm text-foreground">
+            {STOCK_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            <option value="produzidos">Itens produzidos</option>
+          </select>
+        </div>
+      )}
+
+      {(isCategoryView(view) || view === "produzidos") && (
         <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            {view === "produzidos"
+              ? "Somente itens com produção registrada aparecem nesta aba. Antes disso, a ficha técnica fica em Produção."
+              : "Cada insumo fica cadastrado com saldo zero até a primeira entrada. Quantidade e unidade de compra são definidas individualmente em cada lote."}
+          </p>
           <div className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -433,9 +544,9 @@ const StockTab = () => {
                 className="h-10 pl-9"
               />
             </div>
-            <Button data-tooltip="Cadastre um insumo teórico, com saldo zero. Registre a compra ou produção depois." aria-label="Cadastre um insumo teórico, com saldo zero. Registre a compra ou produção depois." onClick={() => setNewMaterialOpen(true)} size="icon" className="h-10 w-10 shrink-0">
+            {isCategoryView(view) && <Button data-tooltip="Cadastrar insumo teórico nesta categoria." aria-label="Cadastrar insumo" onClick={() => { setMatItemType("insumo"); setMatCategoria(view); setNewMaterialOpen(true); }} size="icon" className="h-10 w-10 shrink-0">
               <Plus className="h-4 w-4" />
-            </Button>
+            </Button>}
           </div>
 
           {filteredMaterials.map((m) => {
@@ -451,15 +562,54 @@ const StockTab = () => {
                           {ITEM_TYPE_LABELS[m.itemType]}
                         </Badge>
                       )}
+                      {m.isTheoretical && (
+                        <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-700">
+                          Teórico · aguardando 1º lote
+                        </Badge>
+                      )}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {m.categoria ? `${m.categoria} · ` : ""}Custo médio: R$ {m.averageCost.toFixed(2)} / {m.unit}
                     </p>
                   </div>
-                  <Button data-tooltip="Registre uma compra real deste insumo, com quantidade, custo e dados do lote." size="sm" variant="outline" onClick={() => openPurchase(m.id)}>
+                  {isCategoryView(view) && <Button type="button" size="icon" variant="ghost"
+                    aria-label={`Remover card de ${m.name}`} title="Remover card do estoque"
+                    disabled={removingMaterial!==null}
+                    onClick={()=>void removeMaterialCard(m.id,m.name)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>}
+                  {isCategoryView(view) && <Button data-tooltip="Registrar entrada deste insumo, com quantidade, unidade, custo e dados do lote." size="sm" variant="outline" onClick={() => openPurchase(m.id)}>
                     <Plus className="h-3.5 w-3.5 mr-1" /> Entrada
-                  </Button>
+                  </Button>}
                 </div>
+                {lotes.some(l => l.rawMaterialId === m.id) && (
+                  <details className="rounded-lg border border-border p-3 text-sm">
+                    <summary className="cursor-pointer font-medium">Histórico de lotes ({lotes.filter(l => l.rawMaterialId === m.id).length})</summary>
+                    <div className="mt-3 space-y-2">
+                      {lotes.filter(l => l.rawMaterialId === m.id).sort((a, b) => b.dataEntrada.localeCompare(a.dataEntrada)).map(lot => (
+                        <div key={lot.id} className="rounded-md bg-muted/40 p-3 space-y-1">
+                          <div className="flex justify-between gap-2"><strong>{lot.numeroLote}</strong><span>{lot.dataEntrada.slice(0, 10)}</span></div>
+                          <p>Entrada: {lot.quantidadeCompra ?? lot.quantidadeEntrada} {lot.unidadeCompra || m.unit} · Saldo: {lot.quantidadeRestante} {m.unit}</p>
+                          <p>Validade: {lot.validade || "Não informada"} · Custo do lote: {lot.custoTotal == null ? "Não informado" : lot.custoTotal.toLocaleString("pt-BR", {style: "currency", currency: "BRL"})}</p>
+                          {lot.origem === "compra" && <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={() => openEditLot(lot)}>Abrir / editar</Button>
+                            <Button size="sm" variant="destructive" onClick={async () => { if (window.confirm(`Cancelar o lote ${lot.numeroLote}? A operação preservará o histórico.`)) await managePurchaseLot(lot.id, "cancel"); }}>Cancelar</Button>
+                          </div>}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+                {isCategoryView(view) && (
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>Organizar em</span>
+                    <select aria-label={`Categoria de ${m.name}`} value={stockCategory(m.categoria, m.itemType)}
+                      onChange={event => void updateRawMaterialCategory(m.id, event.target.value)}
+                      className="h-8 rounded-md border border-border bg-background px-2 text-foreground">
+                      {STOCK_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                    </select>
+                  </label>
+                )}
                 <div className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
                   low ? "bg-destructive/10 text-destructive" : "bg-muted/50 text-foreground"
                 }`}>
@@ -472,7 +622,7 @@ const StockTab = () => {
             );
           })}
           {filteredMaterials.length === 0 && (
-            <p className="text-center text-muted-foreground py-8">Nenhum insumo cadastrado</p>
+            <p className="text-center text-muted-foreground py-8">{view === "produzidos" ? "Nenhum item produzido ainda. Use Produção para registrar o primeiro lote." : "Nenhum item cadastrado nesta categoria."}</p>
           )}
         </div>
       )}
@@ -481,7 +631,7 @@ const StockTab = () => {
         <div className="space-y-5">
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-foreground">Receitas de produção</h3>
+              <div className="flex items-center gap-2"><h3 className="text-sm font-semibold text-foreground">Receitas de produção</h3><Button size="sm" onClick={() => openProduce(recipes.find(r => r.active)?.id ?? "")} disabled={!recipes.some(r => r.active)}><Factory className="h-3.5 w-3.5 mr-1" /> Produzir</Button></div>
               <Button data-tooltip="Cadastre uma receita de produção e os insumos necessários, sem produzir um lote." size="sm" variant="outline" onClick={() => setNewRecipeOpen(true)}>
                 <Plus className="h-3.5 w-3.5 mr-1" /> Nova receita
               </Button>
@@ -614,15 +764,21 @@ const StockTab = () => {
             </div>
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Unidade de medida</Label>
-              <Input value={matUnit} onChange={(e) => setMatUnit(e.target.value)} placeholder="kg, un, l, porção..." />
+              <select aria-label="Unidade de medida do novo insumo" className="h-10 rounded-md border border-border bg-background px-3 text-sm" value={matUnit} onChange={(e) => setMatUnit(e.target.value)}>
+                <option value="">Selecione...</option>
+                {STOCK_UNITS.map(unit => <option key={unit} value={unit}>{unit}</option>)}
+              </select>
             </div>
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Estoque mínimo (para alerta)</Label>
               <Input type="number" value={matMinStock} onChange={(e) => setMatMinStock(e.target.value)} placeholder="0" />
             </div>
             <div className="space-y-2">
-              <Label className="text-sm text-muted-foreground">Categoria (opcional)</Label>
-              <Input value={matCategoria} onChange={(e) => setMatCategoria(e.target.value)} placeholder="Ex: carnes, bebidas, embalagens..." />
+              <Label className="text-sm text-muted-foreground">Categoria do estoque</Label>
+              <select aria-label="Categoria do estoque" value={matCategoria} onChange={e => setMatCategoria(e.target.value as StockCategory)}
+                className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm">
+                {STOCK_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
             </div>
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Tipo de item</Label>
@@ -676,7 +832,7 @@ const StockTab = () => {
                 }}>
                   <SelectTrigger><SelectValue placeholder="Escolha..." /></SelectTrigger>
                   <SelectContent>
-                    {[...new Set([purchaseTarget ? materialsById[purchaseTarget]?.unit : "", "kg", "g", "L", "ml", "un", "caixa", "pacote", "saco"].filter(Boolean))].map((u) => (
+                    {[...new Set([purchaseTarget ? materialsById[purchaseTarget]?.unit : "", "kg", "g", "L", "ml", "un", "pé", "ramo", "maço", "cabeça", "cacho", "bandeja", "caixa", "pacote", "saco", "fardo", "galão", "botijão", "dúzia", "garrafa", "lata", "pote", "frasco", "rolo"].filter(Boolean))].map((u) => (
                       <SelectItem key={u} value={u!}>{u}</SelectItem>
                     ))}
                   </SelectContent>
@@ -700,16 +856,6 @@ const StockTab = () => {
                 Para caixa, pacote ou unidade sem equivalência conhecida, informe a conversão; o sistema não estima pesos.
               </p>
             </div>
-            <button data-tooltip="Informe a embalagem em caixas e a conversão para a unidade do estoque." type="button" onClick={() => setPIsBox((v) => !v)}
-              className="w-full flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm">
-              <Package className="h-4 w-4" /> {pIsBox ? "✓ " : ""}Detalhar embalagem em caixas (opcional)
-            </button>
-            {pIsBox && <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2"><Label>Nº de caixas</Label>
-                <Input type="number" min="0" step="any" value={pBoxCount} onChange={(e) => setPBoxCount(e.target.value)} /></div>
-              <div className="space-y-2"><Label>Conteúdo por caixa</Label>
-                <Input type="number" min="0" step="any" value={pUnitsPerBox} onChange={(e) => setPUnitsPerBox(e.target.value)} /></div>
-            </div>}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Custo unitário (R$/{pPurchaseUnit || "un"})</Label>
@@ -737,6 +883,10 @@ const StockTab = () => {
                 </SelectContent>
               </Select>
             </div>
+            {!editingLotId && <div className="space-y-2 border-t border-border pt-3">
+              <Label>Data de entrada do lote</Label>
+              <Input type="date" value={pDataEntrada} max={new Date().toLocaleDateString("en-CA")} onChange={(e) => setPDataEntrada(e.target.value)} />
+            </div>}
             <div className="grid grid-cols-2 gap-3 border-t border-border pt-3">
               <div className="space-y-2">
                 <Label className="text-sm text-muted-foreground flex items-center gap-1">
@@ -752,7 +902,7 @@ const StockTab = () => {
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setPurchaseOpen(false)} disabled={saving}>Cancelar</Button>
-            <Button data-tooltip="Salve os dados da compra ou da correção do lote e atualize o estoque real." onClick={handleRegisterPurchase} disabled={saving || !(Number(pQuantity) > 0) || !(Number(pConversion) > 0) || !pPurchaseUnit}>
+            <Button data-tooltip="Salve os dados da compra ou da correção do lote e atualize o estoque real." onClick={handleRegisterPurchase} disabled={saving || !(Number(pQuantity) > 0) || !((automaticConversion ?? Number(pConversion)) > 0) || !pPurchaseUnit}>
               {saving ? "Aguarde..." : editingLotId ? "Salvar alterações" : "Registrar"}
             </Button>
           </DialogFooter>
@@ -809,7 +959,7 @@ const StockTab = () => {
                   <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                   <SelectContent>
                     {rawMaterials
-                      .filter((m) => m.itemType === "semiacabado" || m.itemType === "produto_acabado")
+                      .filter((m) => m.itemType !== "revenda")
                       .map((m) => (
                         <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
                       ))}
@@ -898,6 +1048,7 @@ const StockTab = () => {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Produzir Lote</DialogTitle>
+            <div className="space-y-1"><Label htmlFor="production-recipe-select">Ficha técnica do item produzido</Label><select id="production-recipe-select" className="w-full rounded-md border bg-background p-2 text-sm" value={prodRecipeId} onChange={event => openProduce(event.target.value)}>{recipes.filter(r => r.active).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select></div>
             <DialogDescription>
               Ao confirmar, gera etiqueta automaticamente (código + validade) e credita o item produzido no estoque.
             </DialogDescription>
@@ -905,17 +1056,19 @@ const StockTab = () => {
           <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Quantidade produzida (real)</Label>
-              <Input type="number" value={prodQuantity} onChange={(e) => setProdQuantity(e.target.value)} />
+              <div className="flex items-center gap-2"><Input type="number" min="0" step="any" value={prodQuantity} onChange={(e) => handleProductionQuantityChange(e.target.value)} /><span className="text-sm text-muted-foreground">{outputUnit}</span></div>
+              <p className="text-xs text-muted-foreground">Receita: {selectedProductionRecipe?.name ?? "Não selecionada"} · rendimento padrão: {selectedProductionRecipe?.outputQuantity} {outputUnit}. Insumos calculados proporcionalmente.</p>
             </div>
             <div className="space-y-2">
-              <Label className="text-sm text-muted-foreground">Insumos consumidos (ajuste se necessário)</Label>
+              <Label className="text-sm text-muted-foreground">Insumos necessários (ajuste o consumo real se necessário)</Label>
+              {insufficientInputs.length > 0 && <p role="alert" className="text-sm text-destructive">Estoque insuficiente, insumo ausente ou quantidade inválida. Regularize os insumos antes de produzir.</p>}
               {prodInputs.map((inp, idx) => {
                 const alocacao = fefoPreview[inp.rawMaterialId];
                 return (
                   <div key={idx} className="space-y-1">
                     <div className="flex gap-2 items-center">
                       <span className="flex-1 text-sm text-foreground">
-                        {materialsById[inp.rawMaterialId]?.name ?? "?"}
+                        {materialsById[inp.rawMaterialId]?.name ?? "?"} — disponível: {materialsById[inp.rawMaterialId]?.currentStock ?? 0} {materialsById[inp.rawMaterialId]?.unit ?? ""}
                       </span>
                       <Input
                         type="number"
@@ -955,7 +1108,7 @@ const StockTab = () => {
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setProduceOpen(false)} disabled={saving}>Cancelar</Button>
-            <Button data-tooltip="Confirme a produção: registre o lote e o consumo dos insumos." onClick={handleProduceBatch} disabled={saving || !prodQuantity}>
+            <Button data-tooltip="Confirme a produção: registre o lote e o consumo dos insumos." onClick={handleProduceBatch} disabled={saving || invalidProductionQuantity || !prodInputs.length || insufficientInputs.length > 0}>
               {saving ? "Aguarde..." : "Confirmar produção"}
             </Button>
           </DialogFooter>
@@ -965,4 +1118,8 @@ const StockTab = () => {
   );
 };
 
+const StockTab = () => {
+  const { businessUnitId } = useCurrentBusinessUnit();
+  return <UnitStockTab key={businessUnitId ?? "no-unit"} />;
+};
 export default StockTab;
