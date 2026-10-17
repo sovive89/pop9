@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mock = vi.hoisted(() => ({ unit: "a", export: vi.fn(), zip: vi.fn(), download: vi.fn() }));
 vi.mock("@/hooks/useMenuDocuments", () => ({ useMenuDocuments: () => ({ items: [], loading: false, error: false, businessUnitId: mock.unit, unitName: mock.unit, scope: mock.unit, reload: vi.fn() }) }));
+vi.mock("@/components/admin/RecipeSheetBrowser", () => ({ default: () => null }));
 vi.mock("@/components/admin/OperationalLinks", () => ({ default: () => null }));
 vi.mock("@/utils/recipeSheets", () => ({ exportJsonFiles: mock.export, zipFiles: mock.zip, templateFiles: () => ({ "template.csv": "example" }) }));
 vi.mock("@/utils/fileExport", () => ({ downloadBlob: mock.download, safeFileName: (value: string) => value }));

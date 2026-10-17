@@ -1,6 +1,12 @@
+import { lazy, Suspense, useEffect, useState } from "react";
+import { useUnitRoles } from "@/hooks/useUnitRoles";
+import { supabase } from "@/integrations/supabase/client";
+import BusinessUnitSelector from "@/components/BusinessUnitSelector";
+import { useAuth } from "@/hooks/useAuth";
+import { useLocation } from "react-router-dom";
 import AdminAssistant from "@/components/AdminAssistant";
 import PublicOrder from "./pages/PublicOrder";
-import OnlineOrders from "./pages/OnlineOrders";
+const OnlineOrders = lazy(() => import("./pages/OnlineOrders"));
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -12,12 +18,12 @@ import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import Login from "./pages/Login";
 import AuthCallback from "./pages/AuthCallback";
 import RecuperarSenha from "./pages/RecuperarSenha";
-import Kitchen from "./pages/Kitchen";
-import PrintStation from "./pages/PrintStation";
-import Admin from "./pages/Admin";
-import Cashier from "./pages/Cashier";
-import Delinquency from "./pages/Delinquency";
-import Reports from "./pages/Reports";
+const Kitchen = lazy(() => import("./pages/Kitchen"));
+const PrintStation = lazy(() => import("./pages/PrintStation"));
+const Admin = lazy(() => import("./pages/Admin"));
+const Cashier = lazy(() => import("./pages/Cashier"));
+const Delinquency = lazy(() => import("./pages/Delinquency"));
+const Reports = lazy(() => import("./pages/Reports"));
 import CustomerCheckin from "./pages/CustomerCheckin";
 import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
@@ -34,15 +40,29 @@ const UnitSelector = () => {
   </div>;
 };
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <GlobalTooltips />
-      <Toaster />
-      <Sonner />
-      <UnitSelector />
-      <BrowserRouter>
-        <Routes>
+const UnitHeader = () => {
+  const { user } = useAuth();
+  const { roles, loading: rolesLoading, error: rolesError } = useUnitRoles();
+  const [profile, setProfile] = useState({ userId: "", name: "" });
+  const userId = user?.id;
+  useEffect(() => {
+    if (!userId) return;
+    let disposed = false;
+    void supabase.from("profiles").select("full_name").eq("user_id", userId).maybeSingle().then(({ data }) => {
+      if (!disposed) setProfile({ userId, name: data?.full_name ?? "" });
+    });
+    return () => { disposed = true; };
+  }, [userId]);
+  const roleLabel = rolesLoading ? "Consultando perfil..." : rolesError ? "Perfil indisponível" : roles.includes("admin") ? "Administrador" : roles.includes("cashier") ? "Caixa" : roles.includes("attendant") ? "Atendente" : roles.includes("kitchen") ? "Cozinha" : "Sem perfil na unidade";
+  const { pathname } = useLocation();
+  const internal = ["/", "/atendimento", "/cozinha", "/impressao", "/admin", "/caixa", "/inadimplencia", "/relatorios", "/pedidos-online"].includes(pathname);
+  if (!user || !internal) return null;
+  return <><div className="sticky top-0 z-30 border-b bg-card px-4 py-2"><div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2"><BusinessUnitSelector /><p className="text-xs text-muted-foreground">{profile.userId === userId && profile.name ? `${profile.name} — ` : ""}{roleLabel}</p></div></div><UnitSelector /></>;
+};
+
+const UnitRoutes = () => {
+  const { businessUnitId } = useCurrentBusinessUnit();
+  return <Routes key={businessUnitId ?? "no-unit"}>
           <Route path="/" element={<Index />} />
           <Route path="/atendimento" element={<Index />} />
           <Route path="/login" element={<Login />} />
@@ -60,7 +80,18 @@ const App = () => (
           <Route path="/m" element={<CustomerCheckin />} />
           <Route path="/m/t/:token" element={<CustomerCheckin />} />
           <Route path="*" element={<NotFound />} />
-        </Routes>
+        </Routes>;
+};
+
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <GlobalTooltips />
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <UnitHeader />
+        <Suspense fallback={<p role="status" className="p-6">Carregando tela...</p>}><UnitRoutes /></Suspense>
         <AdminAssistant />
       </BrowserRouter>
     </TooltipProvider>

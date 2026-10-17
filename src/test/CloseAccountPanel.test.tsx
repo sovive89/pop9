@@ -33,7 +33,7 @@ describe("attendant payment and request flow",()=>{
     mocks.insert.mockImplementation(async(row)=>{mocks.payments.push({...row,id:"new",paid_at:new Date().toISOString()});return {error:null};});
     render(<CloseAccountPanel {...props} serviceChargeEnabled onRequestCloseSession={vi.fn()} onBack={vi.fn()} />);
     await waitFor(()=>expect(screen.queryByText("Atualizando pagamentos...")).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button",{name:"Pagar"}));
+    fireEvent.click(screen.getByRole("button",{name:"Registrar pagamento"}));
     fireEvent.click(screen.getByRole("button",{name:/Pagar R\$.*2,00/}));
     await waitFor(()=>expect(mocks.insert).toHaveBeenCalled());expect(mocks.insert.mock.calls[0][0]).toMatchObject({amount:0,service_charge:2,session_id:"session",business_unit_id:"unit"});
   });

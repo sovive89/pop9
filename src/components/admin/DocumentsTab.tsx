@@ -1,3 +1,4 @@
+import RecipeSheetBrowser from "@/components/admin/RecipeSheetBrowser";
 import OperationalLinks from "@/components/admin/OperationalLinks";
 import { useEffect, useRef, useState } from "react";
 import { FileText, ClipboardList, Receipt, FolderOpen, Download, ImageIcon, UtensilsCrossed, Sparkles } from "lucide-react";
@@ -108,7 +109,8 @@ export default function DocumentsTab() {
     </section>
     <section className="space-y-4 rounded-xl border border-border bg-card p-5">
       <h3 className="flex items-center gap-2 font-semibold"><ClipboardList className="h-5 w-5 text-primary" />Fichas técnicas</h3>
-      <p className="text-sm text-muted-foreground">Exporte cada ficha atual diretamente em JSON, sem compactação. Os modelos de importação continuam disponíveis em ZIP.</p>
+      <p className="text-sm text-muted-foreground">Consulte as fichas atuais de cardápio e produção dentro do sistema. Você também pode exportar em JSON ou baixar modelos.</p>
+      <RecipeSheetBrowser businessUnitId={businessUnitId} />
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" disabled={sheetBusy} data-tooltip="Modelos em branco com exemplos: fichas dos itens vendidos e receitas de preparos da casa." onClick={()=>void downloadSheets("templates")}><Download className="mr-2 h-4 w-4" />Baixar modelos (ZIP)</Button>
         <Button variant="outline" disabled={sheetBusy || !businessUnitId} data-tooltip="Exporta itens, insumos e quantidades cadastrados nesta unidade." onClick={()=>void downloadSheets("export")}><FileText className="mr-2 h-4 w-4" />Exportar fichas em JSON</Button>

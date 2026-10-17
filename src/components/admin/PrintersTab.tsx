@@ -118,6 +118,8 @@ const PrintersTab = () => {
         .insert({ business_unit_id: businessUnitId, slug, name });
       if (error) { toast.error(error.message); return; }
       setNewSector(""); await loadSectors();
+      setSetor(slug);
+      toast.success("Setor criado e selecionado");
       setDestinos(prev => [...new Set([...prev, slug])]);
     } finally { setSectorBusy(false); }
   };
@@ -271,7 +273,7 @@ const PrintersTab = () => {
                   )}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {SECTOR_LABELS[p.setor]} · {p.gatilhos.map((g) => GATILHO_LABELS[g]).join(", ")} · {CONNECTION_TYPE_LABELS[p.connectionType]} · {p.paperWidth} mm · {p.copies} cópia(s)
+                  {sectors.find(sector => sector.slug === p.setor)?.name ?? SECTOR_LABELS[p.setor] ?? p.setor} · {p.gatilhos.map((g) => GATILHO_LABELS[g]).join(", ")} · {CONNECTION_TYPE_LABELS[p.connectionType]} · {p.paperWidth} mm · {p.copies} cópia(s)
                   {p.deviceIdentifier && ` · ${p.deviceIdentifier}`}
                   {p.host && ` · Rede ${p.host}:${p.port} (${p.destinos.map((d) => sectors.find(s => s.slug === d)?.name ?? DESTINO_LABELS[d] ?? d).join(" + ")})`}
                 </p>
@@ -311,7 +313,7 @@ const PrintersTab = () => {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2 rounded-lg border p-3"><Label htmlFor="printer-preset">Modelo predefinido</Label><select id="printer-preset" className="w-full rounded-md border bg-background p-2 text-sm" value={preset} onChange={event=>setPreset(event.target.value)}>{PRINTER_PRESETS.map(option=><option key={option.id} value={option.id}>{option.label}</option>)}</select><p className="text-xs text-muted-foreground">{PRINTER_PRESETS.find(option=>option.id===preset)?.description}</p><Button type="button" variant="outline" disabled={saving} onClick={applyPreset}>Aplicar modelo</Button><p className="text-xs text-muted-foreground">Preenche tipo, impressões, destinos, papel, cópias e corte. A conexão e o endereço do equipamento são preservados.</p></div>
-            <div className="space-y-2"><Label htmlFor="printer-sector">Setor da impressora</Label><select id="printer-sector" value={setor} onChange={event=>setSetor(event.target.value as PrinterSector)} className="w-full rounded-md border bg-background p-2 text-sm">{Object.entries(SECTOR_LABELS).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
+            <div className="space-y-2"><Label htmlFor="printer-sector">Setor da impressora</Label><select id="printer-sector" value={setor} onChange={event=>setSetor(event.target.value as PrinterSector)} className="w-full rounded-md border bg-background p-2 text-sm">{Object.entries({ ...SECTOR_LABELS, ...Object.fromEntries(sectors.filter(sector => sector.active || sector.slug === setor).map(sector => [sector.slug, sector.name])) }).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
             <div className="space-y-2">
               <Label htmlFor="printer-name" className="text-sm text-muted-foreground">Nome</Label>
               <Input id="printer-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Impressora do bar" />

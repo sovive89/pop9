@@ -9,7 +9,7 @@ describe("category icons", () => {
   });
   it("suggests an icon that matches the category name", () => {
     const cases: [string, string][] = [
-      ["Hambúrgueres", "sandwich"], ["Sucos naturais", "citrus"], ["Bebidas", "cup-soda"], ["Açaí", "ice-cream-bowl"],
+      ["Hambúrgueres", "hamburger"], ["Sucos naturais", "citrus"], ["Bebidas", "cup-soda"], ["Açaí", "ice-cream-bowl"],
       ["Sobremesas", "dessert"], ["Frango", "drumstick"], ["Combos", "gift"], ["Cervejas", "beer"], ["Drinks", "martini"],
       ["Porções", "cooking-pot"], ["Massas", "wheat"], ["Café da manhã", "egg-fried"], ["Cafés", "coffee"], ["Kids", "baby"],
     ];

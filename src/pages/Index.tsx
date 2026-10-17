@@ -106,7 +106,7 @@ const Index = () => {
             </div>
             <div>
               <h1 tabIndex={0} data-tooltip={PAGE_HELP["/"]} className="text-2xl text-foreground leading-none">PØP9</h1>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Atendente</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-widest">{roles.admin ? "Administrador" : roles.attendant ? "Atendente" : roles.cashier ? "Caixa" : roles.kitchen ? "Cozinha" : "Sem perfil na unidade"}</p>
             </div>
             <AnimatePresence>
               {readyCount > 0 && (
@@ -146,8 +146,8 @@ const Index = () => {
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold uppercase">
                   {profileName.split(" ").filter(Boolean).map(n => n[0]).slice(0, 2).join("")}
                 </div>
-                <span className="text-sm font-medium text-foreground hidden sm:inline max-w-[120px] truncate">
-                  {profileName.split(" ")[0]}
+                <span className="text-sm font-medium text-foreground hidden sm:inline max-w-[220px] truncate">
+                  {profileName}
                 </span>
               </div>
             )}
