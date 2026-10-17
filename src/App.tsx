@@ -70,14 +70,14 @@ const UnitRoutes = () => {
           <Route path="/esqueci-senha" element={<Login />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/recuperar-senha" element={<RecuperarSenha />} />
-          <Route path="/cozinha" element={<Kitchen />} />
-          <Route path="/impressao" element={<PrintStation />} />
+          <Route path="/cozinha" element={<RoleRoute roles={["admin", "attendant", "kitchen", "cashier"]}><Kitchen /></RoleRoute>} />
+          <Route path="/impressao" element={<RoleRoute roles={["admin", "attendant", "kitchen", "cashier"]}><PrintStation /></RoleRoute>} />
           <Route path="/admin" element={<RoleRoute roles={["admin"]}><Admin /></RoleRoute>} />
           <Route path="/caixa" element={<RoleRoute roles={["admin", "cashier"]}><Cashier /></RoleRoute>} />
           <Route path="/inadimplencia" element={<Delinquency />} />
           <Route path="/relatorios" element={<RoleRoute roles={["admin"]}><Reports /></RoleRoute>} />
           <Route path="/pedir/:unit" element={<PublicOrder />} />
-          <Route path="/pedidos-online" element={<OnlineOrders />} />
+          <Route path="/pedidos-online" element={<RoleRoute roles={["admin", "attendant", "cashier"]}><OnlineOrders /></RoleRoute>} />
           <Route path="/m" element={<CustomerCheckin />} />
           <Route path="/m/t/:token" element={<CustomerCheckin />} />
           <Route path="*" element={<NotFound />} />

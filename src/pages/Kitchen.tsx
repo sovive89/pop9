@@ -1,3 +1,4 @@
+import { useUnitRoles } from "@/hooks/useUnitRoles";
 import { PAGE_HELP } from "@/lib/page-help";
 import {pickupLabel} from "@/utils/operationalLinks";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
@@ -297,24 +298,22 @@ const KitchenDisplay = () => {
       if (user) {
         setCurrentUserId(user.id);
         setUserName(user.user_metadata?.full_name?.split(" ")[0] ?? "Usuário");
-        const { data: roles } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", user.id);
-        const isKitchenOrAdmin = roles?.some((r) => r.role === "kitchen" || r.role === "admin");
-        setIsReadOnly(!isKitchenOrAdmin);
-        if (roles?.some((r) => r.role === "admin")) setUserRole("admin");
-        else if (roles?.some((r) => r.role === "kitchen")) setUserRole("kitchen");
-        else setUserRole("attendant");
-        const r = (roles ?? []).map((x) => x.role);
-        setNavRoles({
-          attendant: r.includes("attendant"),
-          kitchen: r.includes("kitchen"),
-          admin: r.includes("admin"),
-        });
       }
     });
   }, []);
+
+  // Papéis DA UNIDADE atual (antes a consulta não filtrava por unidade e um
+  // admin/cozinha de outra unidade ganhava edição aqui).
+  const { roles: unitRoles } = useUnitRoles();
+  const unitRolesKey = unitRoles.join(",");
+  useEffect(() => {
+    const r = unitRolesKey ? unitRolesKey.split(",") : [];
+    setIsReadOnly(!(r.includes("kitchen") || r.includes("admin")));
+    if (r.includes("admin")) setUserRole("admin");
+    else if (r.includes("kitchen")) setUserRole("kitchen");
+    else setUserRole("attendant");
+    setNavRoles({ attendant: r.includes("attendant"), kitchen: r.includes("kitchen"), admin: r.includes("admin") });
+  }, [unitRolesKey]);
 
   const loadOrders = useCallback(async () => {
     const { data, error } = await kitchenOrderQuery()
