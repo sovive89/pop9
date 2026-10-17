@@ -1,6 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { MenuRecipeDraft } from "@/lib/recipeDraft";
+import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 
 export interface UserWithRole {
   userId: string;
@@ -18,6 +21,8 @@ export interface DbMenuItem {
   image_url: string | null;
   sort_order: number;
   active: boolean;
+  sku: string | null;
+  status: "draft" | "published";
   ingredients: DbIngredient[];
   variants: DbVariant[];
 }
@@ -42,9 +47,22 @@ export interface DbMenuCategory {
   label: string;
   destination: string;
   sort_order: number;
+  icon_name?: string | null;
+  icon_color?: string | null;
 }
 
+type Role = Database["public"]["Enums"]["app_role"];
+
 export const useAdminData = () => {
+  const { businessUnitId } = useCurrentBusinessUnit();
+  const unitEpoch = useRef({ unit: businessUnitId, version: 0 });
+  if (unitEpoch.current.unit !== businessUnitId) unitEpoch.current = { unit: businessUnitId, version: unitEpoch.current.version + 1 };
+  const unitScope = `${businessUnitId ?? ''}:${unitEpoch.current.version}`;
+  const currentScope = useRef(unitScope);
+  currentScope.current = unitScope;
+  const menuRequest = useRef(0), categoryRequest = useRef(0);
+  const [menuScope, setMenuScope] = useState('');
+  const [categoriesScope, setCategoriesScope] = useState('');
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [menuItems, setMenuItems] = useState<DbMenuItem[]>([]);
   const [categories, setCategories] = useState<DbMenuCategory[]>([]);
@@ -87,28 +105,36 @@ export const useAdminData = () => {
   }, []);
 
   const loadMenu = useCallback(async () => {
+    const request = ++menuRequest.current;
+    const isCurrent = () => currentScope.current === unitScope && menuRequest.current === request;
+    setMenuScope(unitScope); setMenuItems([]);
+    if (!businessUnitId) { setLoadingMenu(false); return; }
     setLoadingMenu(true);
     const { data: items, error: iErr } = await supabase
       .from("menu_items")
       .select("*")
+      .eq("business_unit_id", businessUnitId)
       .order("category")
       .order("sort_order");
 
+    if (!isCurrent()) return;
     if (iErr) {
       toast.error("Erro ao carregar cardápio");
       setLoadingMenu(false);
       return;
     }
 
-    const { data: ingredients } = await supabase
-      .from("menu_item_ingredients")
-      .select("*")
-      .order("sort_order");
-
-    const { data: variants } = await supabase
-      .from("menu_item_variants")
-      .select("*")
-      .order("sort_order");
+    const itemIds = (items ?? []).map(item => item.id);
+    const [ingredientResult, variantResult] = itemIds.length ? await Promise.all([
+      supabase.from("menu_item_ingredients").select("*").in("menu_item_id", itemIds).order("sort_order"),
+      supabase.from("menu_item_variants").select("*").in("menu_item_id", itemIds).order("sort_order"),
+    ]) : [{ data: [], error: null }, { data: [], error: null }];
+    if (!isCurrent()) return;
+    if (ingredientResult.error || variantResult.error) {
+      toast.error("Erro ao carregar ingredientes ou variantes do cardápio");
+      setLoadingMenu(false); return;
+    }
+    const ingredients = ingredientResult.data, variants = variantResult.data;
 
     const mapped: DbMenuItem[] = (items ?? []).map((item) => ({
       id: item.id,
@@ -119,6 +145,8 @@ export const useAdminData = () => {
       image_url: item.image_url ?? null,
       sort_order: item.sort_order,
       active: item.active,
+      sku: item.sku ?? null,
+      status: (item.status as "draft" | "published") ?? "published",
       ingredients: (ingredients ?? [])
         .filter((ing) => ing.menu_item_id === item.id)
         .map((ing) => ({
@@ -139,14 +167,19 @@ export const useAdminData = () => {
 
     setMenuItems(mapped);
     setLoadingMenu(false);
-  }, []);
+  }, [businessUnitId, unitScope]);
 
   const loadCategories = useCallback(async () => {
+    const request = ++categoryRequest.current;
+    setCategoriesScope(unitScope); setCategories([]);
+    if (!businessUnitId) { setLoadingCategories(false); return; }
     setLoadingCategories(true);
     const { data, error } = await supabase
       .from("menu_categories")
       .select("*")
+      .eq("business_unit_id", businessUnitId)
       .order("sort_order");
+    if (currentScope.current !== unitScope || categoryRequest.current !== request) return;
     if (error) {
       toast.error("Erro ao carregar categorias");
     } else {
@@ -159,7 +192,7 @@ export const useAdminData = () => {
       })));
     }
     setLoadingCategories(false);
-  }, []);
+  }, [businessUnitId, unitScope]);
 
   useEffect(() => {
     loadUsers();
@@ -168,10 +201,11 @@ export const useAdminData = () => {
   }, [loadUsers, loadMenu, loadCategories]);
 
   // ── Role management ──
-  const addRole = async (userId: string, role: string) => {
+  const addRole = async (userId: string, role: Role) => {
+    if (!businessUnitId) { toast.error("Selecione uma unidade para atribuir permissões"); return false; }
     const { error } = await supabase
       .from("user_roles")
-      .insert({ user_id: userId, role: role as any });
+      .insert({ user_id: userId, role, business_unit_id: businessUnitId });
     if (error) {
       toast.error("Erro ao adicionar role");
       return false;
@@ -181,12 +215,12 @@ export const useAdminData = () => {
     return true;
   };
 
-  const removeRole = async (userId: string, role: string) => {
+  const removeRole = async (userId: string, role: Role) => {
     const { error } = await supabase
       .from("user_roles")
       .delete()
       .eq("user_id", userId)
-      .eq("role", role as any);
+      .eq("role", role);
     if (error) {
       toast.error("Erro ao remover role");
       return false;
@@ -222,56 +256,27 @@ export const useAdminData = () => {
   };
 
   // ── Menu CRUD ──
-  const saveMenuItem = async (item: Omit<DbMenuItem, "ingredients" | "variants"> & { ingredients: Omit<DbIngredient, "id">[]; variants: Omit<DbVariant, "id">[] }, isNew: boolean) => {
-    const { ingredients, variants, ...itemData } = item;
-
-    if (isNew) {
-      const { error } = await supabase.from("menu_items").insert(itemData);
-      if (error) { toast.error("Erro ao criar item: " + error.message); return false; }
-    } else {
-      const { error } = await supabase.from("menu_items").update({
-        name: itemData.name,
-        price: itemData.price,
-        category: itemData.category,
-        description: itemData.description,
-        image_url: itemData.image_url,
-        sort_order: itemData.sort_order,
-        active: itemData.active,
-      }).eq("id", itemData.id);
-      if (error) { toast.error("Erro ao atualizar item: " + error.message); return false; }
-    }
-
-    // Replace ingredients
-    await supabase.from("menu_item_ingredients").delete().eq("menu_item_id", item.id);
-    if (ingredients.length > 0) {
-      const { error } = await supabase.from("menu_item_ingredients").insert(
-        ingredients.map((ing, idx) => ({
-          menu_item_id: item.id,
-          name: ing.name,
-          removable: ing.removable,
-          extra_price: ing.extra_price,
-          sort_order: idx,
-        }))
-      );
-      if (error) { toast.error("Erro ao salvar ingredientes"); return false; }
-    }
-
-    // Replace variants
-    await supabase.from("menu_item_variants").delete().eq("menu_item_id", item.id);
-    if (variants.length > 0) {
-      const { error } = await supabase.from("menu_item_variants").insert(
-        variants.map((v, idx) => ({
-          menu_item_id: item.id,
-          name: v.name,
-          sort_order: idx,
-        }))
-      );
-      if (error) { toast.error("Erro ao salvar variantes"); return false; }
-    }
-
-    toast.success(isNew ? "Item criado" : "Item atualizado");
+  // Retorna o ID salvo ou false. Item, opções, insumos e ficha são atômicos.
+  type MenuItemSaveResult = string | false;
+  type MenuItemInput = Omit<DbMenuItem, "id" | "sku" | "sort_order" | "ingredients" | "variants"> & {
+    id?: string;
+    sort_order?: number;
+    ingredients: Omit<DbIngredient, "id">[];
+    variants: Omit<DbVariant, "id">[];
+    recipe: MenuRecipeDraft[];
+  };
+  const saveMenuItem = async (input: MenuItemInput, isNew: boolean): Promise<MenuItemSaveResult> => {
+    if (!businessUnitId || currentScope.current !== unitScope) return false;
+    const requestScope = unitScope;
+    const { id, ...data } = input;
+    const { data: savedId, error } = await supabase.rpc("save_menu_item_with_recipe", {
+      p_unit: businessUnitId, p_item_id: id ?? crypto.randomUUID(), p_data: data,
+    });
+    if (currentScope.current !== requestScope) return false;
+    if (error || !savedId) { toast.error("Erro ao salvar item e ficha técnica: " + (error?.message ?? "sem retorno")); return false; }
+    toast.success(isNew ? "Item e ficha técnica criados" : "Item e ficha técnica atualizados");
     await loadMenu();
-    return true;
+    return savedId;
   };
 
   const deleteMenuItem = async (id: string) => {
@@ -285,11 +290,15 @@ export const useAdminData = () => {
   // ── Category CRUD ──
   const saveCategory = async (cat: Omit<DbMenuCategory, "id"> & { id?: string }, isNew: boolean) => {
     if (isNew) {
+      if (!businessUnitId) { toast.error("Nenhuma unidade ativa encontrada"); return false; }
       const { error } = await supabase.from("menu_categories").insert({
         key: cat.key,
         label: cat.label,
+        icon_name: cat.icon_name ?? null,
+        icon_color: cat.icon_color ?? null,
         destination: cat.destination,
         sort_order: cat.sort_order,
+        business_unit_id: businessUnitId,
       });
       if (error) { toast.error("Erro ao criar categoria: " + error.message); return false; }
     } else {
@@ -316,11 +325,11 @@ export const useAdminData = () => {
 
   return {
     users,
-    menuItems,
-    categories,
+    menuItems: menuScope === unitScope ? menuItems : [],
+    categories: categoriesScope === unitScope ? categories : [],
     loadingUsers,
-    loadingMenu,
-    loadingCategories,
+    loadingMenu: loadingMenu || (Boolean(businessUnitId) && menuScope !== unitScope),
+    loadingCategories: loadingCategories || (Boolean(businessUnitId) && categoriesScope !== unitScope),
     addRole,
     removeRole,
     resetPassword,

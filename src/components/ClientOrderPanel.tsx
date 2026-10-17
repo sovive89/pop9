@@ -6,10 +6,6 @@ import {
   Minus,
   ShoppingCart,
   Trash2,
-  Beef,
-  Cookie,
-  CupSoda,
-  Salad,
   User,
   MessageSquare,
   Copy,
@@ -26,8 +22,11 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { categoryLabels, type MenuCategory, type MenuItem } from "@/data/menu";
+import { type MenuCategory, type MenuItem } from "@/data/menu";
 import { useMenuItems } from "@/hooks/useMenuItems";
+import { useCombos } from "@/hooks/useCombos";
+import ComboBuilder from "@/components/ComboBuilder";
+import { getCategoryIcon, safeCategoryColor } from "@/utils/categoryIcons";
 import {
   type ClientOrder,
   type OrderItem,
@@ -48,13 +47,6 @@ import ReceiptPreviewModal from "@/components/ReceiptPreviewModal";
 
 const MEAT_POINTS = ["Mal passado", "Ao ponto p/ mal", "Ao ponto", "Ao ponto p/ bem", "Bem passado"] as const;
 
-const categoryIcons: Record<MenuCategory, React.ElementType> = {
-  burgers: Beef,
-  sides: Salad,
-  drinks: CupSoda,
-  desserts: Cookie,
-};
-
 const orderStatusIcons: Record<OrderStatus, React.ElementType> = {
   pending: Clock,
   preparing: ChefHat,
@@ -71,16 +63,19 @@ interface Props {
   onBack: () => void;
 }
 
-type View = "menu" | "cart" | "orders" | "item-detail";
+type View = "menu" | "cart" | "orders" | "item-detail" | "combos";
 
 const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder, onBack }: Props) => {
-  const { menuItems } = useMenuItems();
+  const { menuItems, categories: dbCategories, categoryLabels, loading: menuLoading, error: menuError } = useMenuItems();
   const [activeCategory, setActiveCategory] = useState<MenuCategory>("burgers");
   const [view, setView] = useState<View>("menu");
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [itemObservation, setItemObservation] = useState("");
   const [ingredientMods, setIngredientMods] = useState<IngredientMod[]>([]);
   const [meatPoint, setMeatPoint] = useState<string | null>(null);
+  // Variante escolhida (sabor, molho...). Obrigatória quando o item tem variantes.
+  const [variant, setVariant] = useState<string | null>(null);
+  const { combos } = useCombos();
   // Index of cart entry being edited (null = adding new)
   const [editingCartIndex, setEditingCartIndex] = useState<number | null>(null);
   // Search
@@ -88,7 +83,8 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
   // Preview da conta impressa (tela)
   const [receiptPreviewHtml, setReceiptPreviewHtml] = useState<string | null>(null);
 
-  const categories: MenuCategory[] = ["burgers", "sides", "drinks", "desserts"];
+  const categories: MenuCategory[] = dbCategories.map((c) => c.key as MenuCategory);
+  const selectedCategory = categories.includes(activeCategory) ? activeCategory : categories[0];
 
   const isSearching = searchQuery.trim().length > 0;
 
@@ -101,8 +97,8 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
         return name.includes(q) || desc.includes(q);
       });
     }
-    return menuItems.filter((m) => m.category === activeCategory);
-  }, [menuItems, activeCategory, searchQuery, isSearching]);
+    return menuItems.filter((m) => m.category === selectedCategory);
+  }, [menuItems, selectedCategory, searchQuery, isSearching]);
 
   const cartCount = order.cart.length; // each entry is 1 unit
   const cartTotal = getCartTotal(order.cart);
@@ -124,6 +120,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
     setItemObservation("");
     setIngredientMods([]);
     setMeatPoint(null);
+    setVariant(null);
     setEditingCartIndex(null);
     setView("item-detail");
   };
@@ -143,6 +140,9 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
     // Remove structured parts from observation to get manual text
     let manualObs = obs;
     if (foundPoint) manualObs = manualObs.replace(foundPoint, "");
+    const foundVariant = (menuItem.variants ?? []).find((v) => obs.split(" | ").includes(v)) ?? null;
+    setVariant(foundVariant);
+    if (foundVariant) manualObs = manualObs.split(" | ").filter((part) => part !== foundVariant).join(" | ");
     // Remove ingredient mod text
     const removed = (entry.ingredientMods ?? []).filter((m) => m.action === "remove").map((m) => m.name);
     const extras = (entry.ingredientMods ?? []).filter((m) => m.action === "extra").map((m) => m.name);
@@ -191,6 +191,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
 
   const buildObservationText = (): string => {
     const parts: string[] = [];
+    if (variant) parts.push(variant);
     const removed = ingredientMods.filter((m) => m.action === "remove").map((m) => m.name);
     const extraNames = [...new Set(ingredientMods.filter((m) => m.action === "extra").map((m) => m.name))];
     const extraWithQty = extraNames.map((name) => {
@@ -207,7 +208,10 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
   const handleDuplicateLastOrder = () => {
     if (order.orders.length === 0) return;
     const last = order.orders[order.orders.length - 1];
-    onUpdateOrder({ ...order, cart: [...order.cart, ...last.items.map((i) => ({ ...i, quantity: 1 }))] });
+    // Combos repetidos ganham um grupo novo (não se misturam com o pedido anterior).
+    const groups = new Map<string, string>();
+    const regroup = (id?: string) => { if (!id) return undefined; if (!groups.has(id)) groups.set(id, crypto.randomUUID()); return groups.get(id); };
+    onUpdateOrder({ ...order, cart: [...order.cart, ...last.items.map((i) => ({ ...i, quantity: 1, comboGroupId: regroup(i.comboGroupId) }))] });
     toast.success("Último pedido duplicado no carrinho");
     setView("cart");
   };
@@ -215,14 +219,18 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
   // Add or update cart entry from item-detail
   const handleConfirmItem = () => {
     if (!selectedItem) return;
+    if (selectedItem.variants?.length && !variant) { toast.error("Escolha uma opção de " + selectedItem.name); return; }
     const obs = buildObservationText() || undefined;
+    // Item de combo mantém o preço repartido do combo; só os extras somam.
+    const editingCombo = editingCartIndex !== null ? order.cart[editingCartIndex] : null;
     const entry: OrderItem = {
       menuItemId: selectedItem.id,
       name: selectedItem.name,
-      price: selectedItem.price,
+      price: editingCombo?.comboGroupId ? editingCombo.price : selectedItem.price,
       quantity: 1,
       observation: obs,
       ingredientMods: ingredientMods.length > 0 ? [...ingredientMods] : undefined,
+      ...(editingCombo?.comboGroupId ? { comboGroupId: editingCombo.comboGroupId, comboName: editingCombo.comboName } : {}),
     };
 
     let newCart: OrderItem[];
@@ -241,13 +249,24 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
 
   // Remove a cart entry by index
   const handleRemoveCartEntry = (index: number) => {
-    const newCart = order.cart.filter((_, idx) => idx !== index);
+    // Item de combo sai com o combo inteiro (o desconto não fica num item solto).
+    const group = order.cart[index]?.comboGroupId;
+    const newCart = order.cart.filter((item, idx) => (group ? item.comboGroupId !== group : idx !== index));
     onUpdateOrder({ ...order, cart: newCart });
+    if (group) toast.success(`${order.cart[index].comboName ?? "Combo"} removido`);
   };
 
   // Duplicate a cart entry (add another identical unit)
   const handleDuplicateCartEntry = (index: number) => {
     const entry = order.cart[index];
+    if (entry.comboGroupId) {
+      // Duplicar item de combo duplica o combo inteiro, com grupo novo.
+      const id = crypto.randomUUID();
+      const copy = order.cart.filter((i) => i.comboGroupId === entry.comboGroupId).map((i) => ({ ...i, comboGroupId: id }));
+      onUpdateOrder({ ...order, cart: [...order.cart, ...copy] });
+      toast.success(`+1 ${entry.comboName ?? "combo"}`);
+      return;
+    }
     const newCart = [...order.cart, { ...entry }];
     onUpdateOrder({ ...order, cart: newCart });
     toast.success(`+1 ${entry.name}`);
@@ -280,7 +299,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
         className="sticky top-0 z-20 border-b border-border bg-card/95 backdrop-blur-md px-4 py-2.5"
       >
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors p-1">
+          <button data-tooltip="Volte para a tela anterior." aria-label="Volte para a tela anterior." onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors p-1">
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -292,7 +311,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
               <p className="text-[10px] text-muted-foreground">Mesa {String(tableId).padStart(2, "0")}</p>
             </div>
           </div>
-          <Button
+          <Button data-tooltip="Veja o histórico de pedidos deste cliente."
             variant={view === "orders" ? "default" : "ghost"}
             size="sm"
             className="relative gap-1 text-xs"
@@ -304,7 +323,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
               <span className="ml-0.5 text-[10px] font-bold">({order.orders.length})</span>
             )}
           </Button>
-          <Button
+          <Button data-tooltip="Abra o carrinho para revisar os itens antes de enviar o pedido." aria-label="Abra o carrinho para revisar os itens antes de enviar o pedido."
             variant={view === "cart" ? "default" : "outline"}
             size="sm"
             className="relative gap-1"
@@ -322,21 +341,31 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
 
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar — categories */}
-        {(view === "menu" || view === "item-detail") && (
+        {(view === "menu" || view === "item-detail" || view === "combos") && (
           <motion.aside
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             className="w-16 sm:w-20 border-r border-border bg-card/50 flex flex-col items-center py-3 gap-1 shrink-0 overflow-y-auto"
           >
+            {combos.some((c) => c.active) && (
+              <button data-tooltip="Combos do cardápio." aria-label="Combos"
+                onClick={() => setView("combos")}
+                className={`flex flex-col items-center gap-1 rounded-xl px-2 py-2.5 w-full transition-colors ${view === "combos" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"}`}>
+                <Package className="h-5 w-5" />
+                <span className="text-[9px] font-medium leading-tight text-center">Combos</span>
+              </button>
+            )}
             {categories.map((cat) => {
-              const Icon = categoryIcons[cat];
-              const isActive = cat === activeCategory;
+              const dbCategory = dbCategories.find((c) => c.key === cat);
+              const Icon = getCategoryIcon(dbCategory?.icon_name, dbCategory?.label ?? cat);
+              const iconColor = safeCategoryColor(dbCategory?.icon_color);
+              const isActive = cat === selectedCategory;
               return (
-                <button
+                <button data-tooltip="Volte para os itens do cardápio." aria-label="Volte para os itens do cardápio."
                   key={cat}
                   onClick={() => {
                     setActiveCategory(cat);
-                    if (view === "item-detail") setView("menu");
+                    if (view === "item-detail" || view === "combos") setView("menu");
                   }}
                   className={`flex flex-col items-center gap-1 rounded-xl px-2 py-2.5 w-full transition-colors ${
                     isActive
@@ -344,7 +373,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                       : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
                   }`}
                 >
-                  <Icon className="h-5 w-5" />
+                  <Icon className="h-5 w-5" style={{ color: isActive ? iconColor : undefined }} />
                   <span className="text-[9px] font-medium leading-tight text-center">
                     {categoryLabels[cat]}
                   </span>
@@ -357,7 +386,18 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
         {/* Main content */}
         <div className="flex-1 overflow-y-auto">
           <AnimatePresence mode="wait">
-            {view === "item-detail" && selectedItem ? (
+            {view === "combos" ? (
+              <ComboBuilder
+                combos={combos}
+                menuItems={menuItems}
+                onBack={() => setView("menu")}
+                onAdd={(lines) => {
+                  onUpdateOrder({ ...order, cart: [...order.cart, ...lines] });
+                  toast.success(`${lines[0]?.comboName ?? "Combo"} adicionado — personalize os itens no carrinho`);
+                  setView("cart");
+                }}
+              />
+            ) : view === "item-detail" && selectedItem ? (
               /* Item detail */
               <motion.div
                 key="detail"
@@ -366,7 +406,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                 exit={{ opacity: 0, x: 20 }}
                 className="p-4 space-y-4"
               >
-                <button
+                <button data-tooltip="Abra o carrinho para revisar os itens antes de enviar o pedido."
                   onClick={() => setView(editingCartIndex !== null ? "cart" : "menu")}
                   className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
@@ -375,6 +415,9 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                 </button>
 
                 <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
+                  {selectedItem.imageUrl && (
+                    <img src={selectedItem.imageUrl} alt={`Foto de ${selectedItem.name}`} loading="lazy" className="w-full aspect-[4/3] rounded-xl object-cover" />
+                  )}
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="text-2xl text-foreground" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>
@@ -391,6 +434,21 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                     )}
                     <p className="text-xl font-bold text-primary mt-2">{formatCurrency(selectedItem.price)}</p>
                   </div>
+
+                  {/* Variante (sabor, molho...) */}
+                  {selectedItem.variants && selectedItem.variants.length > 0 && (
+                    <div className="space-y-1.5">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Escolha uma opção</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedItem.variants.map((v) => (
+                          <button key={v} aria-pressed={variant === v} onClick={() => setVariant(variant === v ? null : v)}
+                            className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${variant === v ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground hover:border-primary/50"}`}>
+                            {v}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Ingredients +/- */}
                   {selectedItem.ingredients && selectedItem.ingredients.length > 0 && (
@@ -455,7 +513,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                       <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Ponto da Carne</span>
                       <div className="flex flex-wrap gap-1.5">
                         {MEAT_POINTS.map((point) => (
-                          <button
+                          <button data-tooltip="Selecione ou retire esta opção de ponto da carne." aria-label="Selecione ou retire esta opção de ponto da carne."
                             key={point}
                             onClick={() => setMeatPoint(meatPoint === point ? null : point)}
                             className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
@@ -495,9 +553,10 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                     const extrasTotal = ingredientMods
                       .filter((m) => m.action === "extra" && m.extraPrice)
                       .reduce((s, m) => s + (m.extraPrice ?? 0), 0);
-                    const unitPrice = selectedItem.price + extrasTotal;
+                    const editingEntry = editingCartIndex !== null ? order.cart[editingCartIndex] : null;
+                    const unitPrice = (editingEntry?.comboGroupId ? editingEntry.price : selectedItem.price) + extrasTotal;
                     return (
-                      <Button className="w-full gap-2" onClick={handleConfirmItem}>
+                      <Button data-tooltip="Adicione este item ao carrinho ou salve a edição com as opções selecionadas." className="w-full gap-2" onClick={handleConfirmItem}>
                         {editingCartIndex !== null ? (
                           <>
                             <Pencil className="h-4 w-4" />
@@ -529,7 +588,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                   </h3>
                   <div className="flex gap-2">
                     {order.orders.length > 0 && (
-                      <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={handleDuplicateLastOrder}>
+                      <Button data-tooltip="Adicione novamente ao carrinho os itens do último pedido." variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={handleDuplicateLastOrder}>
                         <Copy className="h-3.5 w-3.5" />
                         Repetir último
                       </Button>
@@ -541,7 +600,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                   <div className="text-center py-12 space-y-2">
                     <ShoppingCart className="h-10 w-10 text-muted-foreground/30 mx-auto" />
                     <p className="text-sm text-muted-foreground">Carrinho vazio</p>
-                    <Button variant="outline" size="sm" onClick={() => setView("menu")}>
+                    <Button data-tooltip="Volte para os itens do cardápio." variant="outline" size="sm" onClick={() => setView("menu")}>
                       Ver cardápio
                     </Button>
                   </div>
@@ -555,6 +614,9 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                           <div className="flex items-center gap-3">
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium text-foreground truncate">{item.name}</p>
+                              {item.comboName && (
+                                <p className="text-[10px] font-semibold text-primary mt-0.5 truncate">🍱 {item.comboName}</p>
+                              )}
                               {modSummary && (
                                 <p className="text-[10px] text-primary/80 mt-0.5 truncate">
                                   {modSummary}
@@ -690,7 +752,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                     className="w-full h-10 rounded-xl border border-border bg-muted pl-9 pr-9 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                   {searchQuery && (
-                    <button
+                    <button data-tooltip="Limpe a busca e veja novamente todos os itens do cardápio." aria-label="Limpe a busca e veja novamente todos os itens do cardápio."
                       onClick={() => setSearchQuery("")}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     >
@@ -708,7 +770,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                     : categoryLabels[activeCategory]}
                 </h3>
 
-                {filteredItems.length === 0 ? (
+                {menuError ? <p role="alert" className="text-sm text-destructive">{menuError}</p> : menuLoading ? <p className="text-sm text-muted-foreground">Carregando cardápio...</p> : filteredItems.length === 0 ? (
                   <div className="text-center py-8 space-y-2">
                     <Search className="h-8 w-8 text-muted-foreground/30 mx-auto" />
                     <p className="text-sm text-muted-foreground">Nenhum item encontrado</p>
@@ -718,7 +780,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                     {filteredItems.map((item) => {
                       const qty = getItemQty(item.id);
                       return (
-                        <motion.button
+                        <motion.button data-tooltip="Abra este item para escolher variantes, ingredientes e adicionais."
                           key={item.id}
                           initial={{ opacity: 0, scale: 0.95 }}
                           animate={{ opacity: 1, scale: 1 }}
@@ -763,7 +825,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
           animate={{ y: 0, opacity: 1 }}
           className="sticky bottom-0 border-t border-border bg-card/95 backdrop-blur-md px-4 py-2.5"
         >
-          <button
+          <button data-tooltip="Abra o carrinho para revisar os itens antes de enviar o pedido."
             onClick={() => setView("cart")}
             className="w-full flex items-center justify-between rounded-xl bg-primary px-4 py-3 text-primary-foreground hover:bg-primary/90 transition-colors"
           >
@@ -783,7 +845,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
           animate={{ y: 0, opacity: 1 }}
           className="sticky bottom-0 border-t border-border bg-card/95 backdrop-blur-md px-4 py-3"
         >
-          <Button className="w-full gap-2 h-12 text-base" onClick={handlePlaceOrder}>
+          <Button data-tooltip="Envie os itens do carrinho para a cozinha e registre o pedido." className="w-full gap-2 h-12 text-base" onClick={handlePlaceOrder}>
             <ShoppingCart className="h-5 w-5" />
             Enviar Pedido — {formatCurrency(cartTotal)}
           </Button>

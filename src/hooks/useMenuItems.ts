@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import {
   menuItems as staticMenuItems,
   type MenuItem,
@@ -14,6 +15,8 @@ interface DbCategory {
   label: string;
   destination: string;
   sort_order: number;
+  icon_name: string | null;
+  icon_color: string | null;
 }
 
 /**
@@ -21,34 +24,44 @@ interface DbCategory {
  * Falls back to static data if DB fetch fails.
  */
 export const useMenuItems = () => {
-  const [items, setItems] = useState<MenuItem[]>(staticMenuItems);
+  const { businessUnitId, loading: unitLoading } = useCurrentBusinessUnit();
+  const [items, setItems] = useState<MenuItem[]>([]);
   const [dbCategories, setDbCategories] = useState<DbCategory[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
+      setError(null);
+      const unitId = businessUnitId;
+      if (!unitId) {
+        setItems([]);
+        setDbCategories([]);
+        setError("Nenhuma unidade ativa disponível para carregar o cardápio.");
+        setLoading(false);
+        return;
+      }
       // Load categories
       const { data: cats } = await supabase
         .from("menu_categories")
-        .select("key, label, destination, sort_order")
+        .select("key, label, destination, sort_order, icon_name, icon_color")
+        .eq("business_unit_id", unitId)
         .order("sort_order");
 
-      if (cats && cats.length > 0) {
-        setDbCategories(cats);
-      }
+      setDbCategories(cats ?? []);
 
       const [itemsRes, ingredientsRes, variantsRes] = await Promise.all([
-        supabase.from("menu_items").select("id, name, price, category, description, sort_order").eq("active", true).order("sort_order"),
+        supabase.from("menu_items").select("id, name, price, category, description, image_url, sort_order").eq("active", true).eq("status", "published").eq("business_unit_id",unitId).order("sort_order"),
         supabase.from("menu_item_ingredients").select("menu_item_id, name, removable, extra_price, sort_order").order("sort_order"),
         supabase.from("menu_item_variants").select("menu_item_id, name, sort_order").order("sort_order"),
       ]);
 
       const { data: dbItems, error: iErr } = itemsRes;
 
-      if (iErr || !dbItems || dbItems.length === 0) {
-        setItems(staticMenuItems);
-        setLoading(false);
-        return;
+      // Fallback estático só em erro; lista vazia (ex.: tudo em rascunho) é
+      // cardápio vazio de verdade, não motivo pra mostrar itens fictícios.
+      if (iErr || !dbItems) {
+        throw iErr ?? new Error('Falha ao consultar cardápio');
       }
 
       const dbIngredients = ingredientsRes.data ?? [];
@@ -60,6 +73,7 @@ export const useMenuItems = () => {
         price: Number(item.price),
         category: item.category as MenuCategory,
         description: item.description ?? undefined,
+        imageUrl: item.image_url ?? undefined,
         ingredients: (dbIngredients ?? [])
           .filter((ing) => ing.menu_item_id === item.id)
           .map((ing) => ({
@@ -73,15 +87,18 @@ export const useMenuItems = () => {
       }));
 
       setItems(mapped);
-    } catch {
-      setItems(staticMenuItems);
+    } catch (e) {
+      setItems([]);
+      setError(e instanceof Error ? e.message : 'Erro ao carregar cardápio');
     }
     setLoading(false);
-  }, []);
+  }, [businessUnitId]);
 
   useEffect(() => {
+    if (unitLoading) return;
+    setLoading(true);
     load();
-  }, [load]);
+  }, [load, unitLoading]);
 
   const kitchenCategories = useMemo(() => {
     if (dbCategories) return dbCategories.filter((c) => c.destination === "kitchen").map((c) => c.key);
@@ -114,5 +131,5 @@ export const useMenuItems = () => {
     [items, barCategories]
   );
 
-  return { menuItems: items, loading, isKitchenItem, isBarItem, categoryLabels };
+  return { menuItems: items, loading, error, categories: dbCategories ?? [], isKitchenItem, isBarItem, categoryLabels };
 };

@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # 34 erros pré-existentes no lint (não relacionados a este workflow) —
+      # não-bloqueante por enquanto, só informativo até virarem dívida paga.
+      - run: npm run lint
+        continue-on-error: true
+
+      - run: npm run test
+
+      - run: npm run build

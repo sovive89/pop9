@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import CloseAccountPanel from "@/components/CloseAccountPanel";
 import {
   UserPlus,
@@ -12,10 +12,8 @@ import {
   Calculator,
   SplitSquareHorizontal,
   User,
-  Lock,
-  Eye,
-  EyeOff,
   Printer,
+  QrCode,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -34,11 +32,15 @@ export interface ClientInfo {
   cep?: string;
   bairro?: string;
   genero?: string;
+  faixa_etaria?: string;
+  origem_conhecimento?: string;
 }
 
 export interface TableSession {
   startedAt: Date;
   endedAt?: Date;
+  closureRequestedAt?: string | null;
+  serviceChargeEnabled?: boolean;
   clients: ClientInfo[];
 }
 
@@ -49,7 +51,7 @@ interface Props {
   orders: ClientOrder[];
   onStartSession: (client: Omit<ClientInfo, "id" | "addedAt">) => void;
   onAddClient: (client: Omit<ClientInfo, "id" | "addedAt">) => void;
-  onCloseSession: () => void;
+  onRequestCloseSession: (serviceCharge: boolean) => Promise<boolean>;
   onClose: () => void;
   onSelectClient: (client: ClientInfo) => void;
 }
@@ -77,7 +79,7 @@ const TableSessionPanel = ({
   orders,
   onStartSession,
   onAddClient,
-  onCloseSession,
+  onRequestCloseSession,
   onClose,
   onSelectClient,
 }: Props) => {
@@ -87,6 +89,9 @@ const TableSessionPanel = ({
   const [clientCep, setClientCep] = useState("");
   const [clientBairro, setClientBairro] = useState("");
   const [clientGenero, setClientGenero] = useState("");
+  const [clientFaixa, setClientFaixa] = useState("");
+  const [clientOrigem, setClientOrigem] = useState("");
+  const [formStep, setFormStep] = useState<"identification" | "survey">("identification");
   const [nameError, setNameError] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(!session);
 
@@ -100,11 +105,12 @@ const TableSessionPanel = ({
   const [showCalc, setShowCalc] = useState(false);
   const [calcPeople, setCalcPeople] = useState(2);
 
-  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
-  const [closePassword, setClosePassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [isVerifying, setIsVerifying] = useState(false);
+  const [isRequesting, setIsRequesting] = useState(false);
   const [showCloseAccount, setShowCloseAccount] = useState(false);
+
+  const [accessCode, setAccessCode] = useState<string | null>(null);
+  const [accessCodeExpiresAt, setAccessCodeExpiresAt] = useState<Date | null>(null);
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
 
   const tableTotal = getTableTotal(orders);
   const [includeServiceCharge, setIncludeServiceCharge] = useState(false);
@@ -112,33 +118,29 @@ const TableSessionPanel = ({
   const tableTotalWithCharge = includeServiceCharge ? tableTotal * 1.1 : tableTotal;
   const serviceChargeAmount = includeServiceCharge ? tableTotal * 0.1 : 0;
 
-  const handleCloseSession = async () => {
-    if (!closePassword.trim()) {
-      toast.error("Digite sua senha");
-      return;
-    }
-    setIsVerifying(true);
+  const handleRequestClosure = async () => {
+    setIsRequesting(true);
+    try { await onRequestCloseSession(includeServiceCharge); } finally { setIsRequesting(false); }
+  };
+
+  const handleGenerateAccessCode = async () => {
+    setIsGeneratingCode(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user?.email) {
-        toast.error("Usuário não autenticado");
-        return;
-      }
-      const { error } = await supabase.auth.signInWithPassword({
-        email: user.email,
-        password: closePassword,
+      const { data: { session: authSession } } = await supabase.auth.getSession();
+      const { data, error } = await supabase.functions.invoke("customer-checkin", {
+        body: { action: "staff_generate_code", table_number: tableId },
+        headers: authSession ? { Authorization: `Bearer ${authSession.access_token}` } : undefined,
       });
-      if (error) {
-        toast.error("Senha incorreta");
+      if (error || data?.error) {
+        toast.error(data?.error ?? "Erro ao gerar código");
         return;
       }
-      onCloseSession();
-      setShowCloseConfirm(false);
-      setClosePassword("");
+      setAccessCode(data.code);
+      setAccessCodeExpiresAt(new Date(data.expires_at));
     } catch {
-      toast.error("Erro ao verificar senha");
+      toast.error("Erro ao gerar código");
     } finally {
-      setIsVerifying(false);
+      setIsGeneratingCode(false);
     }
   };
 
@@ -155,6 +157,11 @@ const TableSessionPanel = ({
       toast.error("Celular inválido");
       return;
     }
+    setFormStep("survey");
+  };
+
+  const handleFinish = () => {
+    const phoneDigits = clientPhone.replace(/\\D/g, "");
     const clientData = {
       name: clientName.trim(),
       phone: phoneDigits.length >= 10 ? clientPhone : undefined,
@@ -162,6 +169,8 @@ const TableSessionPanel = ({
       cep: clientCep.replace(/\D/g, "").length === 8 ? clientCep.replace(/\D/g, "") : undefined,
       bairro: clientBairro.trim() || undefined,
       genero: clientGenero || undefined,
+      faixa_etaria: clientFaixa || undefined,
+      origem_conhecimento: clientOrigem || undefined,
     };
     if (session) {
       onAddClient(clientData);
@@ -175,6 +184,9 @@ const TableSessionPanel = ({
     setClientCep("");
     setClientBairro("");
     setClientGenero("");
+    setClientFaixa("");
+    setClientOrigem("");
+    setFormStep("identification");
   };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -200,7 +212,7 @@ const TableSessionPanel = ({
             <h3 className="text-3xl text-foreground" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>
               MESA {String(tableId).padStart(2, "0")}
             </h3>
-            <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+            <button data-tooltip="Feche este painel." aria-label="Feche este painel." onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -222,6 +234,38 @@ const TableSessionPanel = ({
               </div>
             </div>
           )}
+
+          {/* Liberar acesso do cliente (check-in via QR) */}
+          {session && (
+            accessCode ? (
+              <div className="mt-2 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Código de acesso do cliente</p>
+                  <p className="text-2xl font-bold text-primary tracking-widest">{accessCode}</p>
+                  {accessCodeExpiresAt && (
+                    <p className="text-[10px] text-muted-foreground">
+                      Válido até {formatTime(accessCodeExpiresAt)}
+                    </p>
+                  )}
+                </div>
+                <button data-tooltip="Oculte o código de acesso do cliente." aria-label="Oculte o código de acesso do cliente."
+                  onClick={() => { setAccessCode(null); setAccessCodeExpiresAt(null); }}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <button data-tooltip="Gere um código temporário para o cliente acessar esta mesa."
+                onClick={handleGenerateAccessCode}
+                disabled={isGeneratingCode}
+                className="mt-2 w-full flex items-center justify-center gap-2 rounded-lg border border-dashed border-muted-foreground/30 px-4 py-2 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
+              >
+                <QrCode className="h-3.5 w-3.5" />
+                {isGeneratingCode ? "Gerando..." : "Liberar acesso do cliente"}
+              </button>
+            )
+          )}
         </div>
 
         {/* Scrollable content */}
@@ -238,7 +282,7 @@ const TableSessionPanel = ({
                   const clientTotal = clientOrder ? getClientTotal(clientOrder) : 0;
                   const itemCount = clientOrder ? clientOrder.orders.reduce((s, o) => s + o.items.reduce((ss, i) => ss + i.quantity, 0), 0) + clientOrder.cart.reduce((s, i) => s + i.quantity, 0) : 0;
                   return (
-                    <motion.button
+                    <motion.button data-tooltip="Abra o cardápio e os pedidos deste cliente."
                       key={c.id}
                       whileHover={{ scale: 1.03 }}
                       whileTap={{ scale: 0.97 }}
@@ -262,7 +306,7 @@ const TableSessionPanel = ({
                   );
                 })}
                 {/* Add client button */}
-                <motion.button
+                <motion.button data-tooltip="Adicione um cliente à sessão desta mesa."
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.97 }}
                   onClick={() => setShowAddForm(true)}
@@ -285,6 +329,7 @@ const TableSessionPanel = ({
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 {session ? "Novo cliente" : "Registrar primeiro cliente"}
               </p>
+              {formStep === "identification" ? <>
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Nome completo</label>
                 <input
@@ -314,77 +359,33 @@ const TableSessionPanel = ({
                   onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
                 />
               </div>
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">
-                  E-mail <span className="text-muted-foreground/60">(opcional)</span>
+              </> : <div className="space-y-3">
+                <p className="text-sm font-medium">Pesquisa de perfil (opcional)</p>
+                <p className="text-xs text-muted-foreground">Mesa ${String(tableId).padStart(2, "0")} · {clientName.trim()}</p>
+                <label className="block text-sm">E-mail (opcional)<input type="email" value={clientEmail} onChange={e => setClientEmail(e.target.value)} className="mt-1 w-full h-10 rounded-md border bg-background px-3" /></label>
+                <label className="block text-sm">Região administrativa do DF
+                  <select data-tooltip="Selecione o bairro do cliente para completar a pesquisa." aria-label="Selecione o bairro do cliente para completar a pesquisa." value={clientBairro} onChange={e => setClientBairro(e.target.value)} className="mt-1 w-full h-10 rounded-md border bg-background px-3">
+                    <option value="">Selecione (opcional)</option>
+                    {["Águas Claras","Arniqueira","Brazlândia","Candangolândia","Ceilândia","Cruzeiro","Fercal","Gama","Guará","Itapoã","Jardim Botânico","Lago Norte","Lago Sul","Núcleo Bandeirante","Paranoá","Park Way","Planaltina","Plano Piloto","Recanto das Emas","Riacho Fundo","Riacho Fundo II","Samambaia","Santa Maria","São Sebastião","SCIA/Estrutural","SIA","Sobradinho","Sobradinho II","Sol Nascente/Pôr do Sol","Sudoeste/Octogonal","Taguatinga","Varjão","Vicente Pires","Arapoanga","Água Quente"].sort((a,b)=>a.localeCompare(b,"pt-BR")).map(v=><option key={v} value={v}>{v}</option>)}
+                  </select>
                 </label>
-                <input
-                  type="email"
-                  value={clientEmail}
-                  onChange={(e) => setClientEmail(e.target.value)}
-                  placeholder="email@exemplo.com"
-                  className="mt-1 w-full h-11 rounded-lg border border-border bg-muted px-4 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                  onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">
-                    CEP <span className="text-muted-foreground/60">(opcional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={clientCep}
-                    onChange={(e) => {
-                      const v = e.target.value.replace(/\D/g, "").slice(0, 8);
-                      setClientCep(v.length > 5 ? `${v.slice(0, 5)}-${v.slice(5)}` : v);
-                    }}
-                    placeholder="00000-000"
-                    className="mt-1 w-full h-11 rounded-lg border border-border bg-muted px-4 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                    onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">
-                    Bairro <span className="text-muted-foreground/60">(opcional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={clientBairro}
-                    onChange={(e) => setClientBairro(e.target.value)}
-                    placeholder="Bairro"
-                    maxLength={80}
-                    className="mt-1 w-full h-11 rounded-lg border border-border bg-muted px-4 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                    onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">
-                  Gênero <span className="text-muted-foreground/60">(opcional)</span>
-                </label>
-                <select
-                  value={clientGenero}
-                  onChange={(e) => setClientGenero(e.target.value)}
-                  className="mt-1 w-full h-11 rounded-lg border border-border bg-muted px-4 text-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                >
-                  {GENERO_OPTIONS.map((o) => (
-                    <option key={o.value || "x"} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
+                <label className="block text-sm">Gênero<select data-tooltip="Selecione o gênero informado pelo cliente na pesquisa opcional." aria-label="Selecione o gênero informado pelo cliente na pesquisa opcional." value={clientGenero} onChange={e => setClientGenero(e.target.value)} className="mt-1 w-full h-10 rounded-md border bg-background px-3">{GENERO_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></label>
+                <label className="block text-sm">Faixa etária<select data-tooltip="Selecione a faixa etária informada pelo cliente na pesquisa opcional." aria-label="Selecione a faixa etária informada pelo cliente na pesquisa opcional." value={clientFaixa} onChange={e => setClientFaixa(e.target.value)} className="mt-1 w-full h-10 rounded-md border bg-background px-3"><option value="">Selecione (opcional)</option>{["18–24","25–34","35–44","45–54","55–64","65 ou mais","Menor de 18"].map(v=><option key={v} value={v}>{v}</option>)}</select></label>
+                <label className="block text-sm">Como conheceu o bar?<select data-tooltip="Informe como o cliente conheceu o estabelecimento." aria-label="Informe como o cliente conheceu o estabelecimento." value={clientOrigem} onChange={e => setClientOrigem(e.target.value)} className="mt-1 w-full h-10 rounded-md border bg-background px-3"><option value="">Selecione (opcional)</option>{["Indicação de amigos","Instagram","Google/Maps","Passando na rua","Já conhecia","Evento","Outro"].map(v=><option key={v} value={v}>{v}</option>)}</select></label>
+                <Button data-tooltip="Conclua o cadastro do cliente e continue para o pedido." type="button" variant="outline" className="w-full" onClick={handleFinish}>Pular pesquisa e continuar para o pedido</Button>
+              </div>}
               <div className="flex gap-2">
                 {session && (
                   <Button variant="outline" className="flex-1" onClick={() => setShowAddForm(false)}>
                     Cancelar
                   </Button>
                 )}
-                <Button className="flex-1 gap-2" onClick={handleSubmit}>
+                <Button data-tooltip="Conclua o cadastro do cliente e continue para o pedido." className="flex-1 gap-2" onClick={formStep === "identification" ? handleSubmit : handleFinish}>
                   <UserPlus className="h-4 w-4" />
-                  {session ? "Adicionar" : "Iniciar Sessão"}
+                  {formStep === "identification" ? "Continuar" : session ? "Adicionar e continuar" : "Iniciar comanda"}
                 </Button>
                 {!session && (
-                  <Button variant="outline" className="flex-1" onClick={onClose}>
+                  <Button data-tooltip="Feche este painel." variant="outline" className="flex-1" onClick={onClose}>
                     Voltar
                   </Button>
                 )}
@@ -451,14 +452,14 @@ const TableSessionPanel = ({
                     <SplitSquareHorizontal className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm text-muted-foreground">Dividir por</span>
                     <div className="flex items-center gap-2">
-                      <button
+                      <button data-tooltip="Diminua o número de pessoas na divisão da conta." aria-label="Diminua o número de pessoas na divisão da conta."
                         onClick={() => setCalcPeople(Math.max(2, calcPeople - 1))}
                         className="h-8 w-8 rounded-lg border border-border flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
                       >
                         -
                       </button>
                       <span className="w-8 text-center text-sm font-bold text-foreground">{calcPeople}</span>
-                      <button
+                      <button data-tooltip="Aumente o número de pessoas na divisão da conta." aria-label="Aumente o número de pessoas na divisão da conta."
                         onClick={() => setCalcPeople(Math.min(20, calcPeople + 1))}
                         className="h-8 w-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors"
                       >
@@ -479,8 +480,9 @@ const TableSessionPanel = ({
           )}
         </div>
 
+        {session?.closureRequestedAt && <p role="status" className="px-4 pb-3 text-sm text-amber-500">Encerramento solicitado — aguardando o caixa. A mesa permanece ocupada.</p>}
         {/* Footer actions */}
-        {session && !showCloseConfirm && (
+        {session && (
           <div className="p-4 pt-0 space-y-2">
             {tableTotal > 0 && (
               <ServiceChargeToggle
@@ -496,7 +498,7 @@ const TableSessionPanel = ({
               />
             )}
             <div className="flex gap-3">
-              <Button variant="outline" className="flex-1 gap-2" onClick={onClose}>
+              <Button data-tooltip="Feche este painel." variant="outline" className="flex-1 gap-2" onClick={onClose}>
                 Voltar ao Mapa
               </Button>
               {tableTotal > 0 ? (
@@ -505,71 +507,15 @@ const TableSessionPanel = ({
                   Fechar Conta
                 </Button>
               ) : (
-                <Button variant="destructive" className="flex-1" onClick={() => setShowCloseConfirm(true)}>
-                  Encerrar Sessão
+                <Button data-tooltip="Solicite ao caixa o encerramento desta sessão." variant="destructive" className="flex-1" onClick={handleRequestClosure} disabled={isRequesting}>
+                  {isRequesting ? "Solicitando..." : "Solicitar encerramento"}
                 </Button>
               )}
             </div>
           </div>
         )}
 
-        {/* Password confirmation modal (for empty tables) */}
-        <AnimatePresence>
-          {showCloseConfirm && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20 }}
-              className="p-4 pt-0 space-y-3"
-            >
-              <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Lock className="h-4 w-4 text-destructive" />
-                  <p className="text-sm font-semibold text-foreground">Confirmar encerramento</p>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Digite sua senha para encerrar a sessão da Mesa {String(tableId).padStart(2, "0")}.
-                </p>
-                <div className="relative">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={closePassword}
-                    onChange={(e) => setClosePassword(e.target.value)}
-                    placeholder="Sua senha"
-                    autoFocus
-                    className="w-full h-11 rounded-lg border border-border bg-muted px-4 pr-10 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-destructive text-sm"
-                    onKeyDown={(e) => e.key === "Enter" && handleCloseSession()}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => { setShowCloseConfirm(false); setClosePassword(""); }}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    className="flex-1 gap-2"
-                    onClick={handleCloseSession}
-                    disabled={isVerifying}
-                  >
-                    <Lock className="h-4 w-4" />
-                    {isVerifying ? "Verificando..." : "Confirmar"}
-                  </Button>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+
       </motion.div>
 
       {/* Preview da conta impressa (tela) */}
@@ -582,14 +528,14 @@ const TableSessionPanel = ({
       {/* Close Account Panel */}
       {showCloseAccount && session && (
         <CloseAccountPanel
+          key={session.dbId}
           tableId={tableId}
           sessionId={session.dbId}
           clients={session.clients}
           orders={orders}
-          onCloseSession={() => {
-            onCloseSession();
-            setShowCloseAccount(false);
-          }}
+          serviceChargeEnabled={session.serviceChargeEnabled ?? false}
+          closureRequested={Boolean(session.closureRequestedAt)}
+          onRequestCloseSession={onRequestCloseSession}
           onBack={() => setShowCloseAccount(false)}
         />
       )}

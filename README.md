@@ -60,6 +60,10 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Executor de tarefas PØP9
+
+A [arquitetura do executor](docs/task-executor-architecture.md) define capacidades, preparação no formulário, preview, confirmação e comando transacional para novos itens de cardápio em rascunho. A base de contratos compartilhados está testada; handlers, adapters e gravação pelo executor ainda não estão ativados.
+
 ## Conectar ao banco de dados (Supabase)
 
 O app usa o **Supabase** como banco de dados e o SDK oficial (`@supabase/supabase-js`).
@@ -170,3 +174,8 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+
+### WhatsApp, pedidos próprios e CRM por unidade
+
+O fluxo atualizado substitui a antiga configuração global de WhatsApp em `app_config`. Consulte [publicação e configuração Meta/PWA/CRM](docs/whatsapp-pwa-crm-rollout.md). Credenciais ficam no backend; a validação Meta e o recebimento de mensagens têm estados distintos. Os demais conectores do catálogo permanecem como pré-configurações, sem conexão simulada.

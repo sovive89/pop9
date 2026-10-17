@@ -6,20 +6,23 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { useAdminData, UserWithRole } from "@/hooks/useAdminData";
 import { supabase } from "@/integrations/supabase/client";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import { toast } from "sonner";
 
-import { SENHA_ABSOLUTA_MIN } from "@/constants/auth";
+import { SENHA_ABSOLUTA_MIN, SENHA_REQUISITOS, senhaValida } from "@/constants/auth";
 
-const ALL_ROLES = ["admin", "attendant", "kitchen"] as const;
+const ALL_ROLES = ["admin", "attendant", "kitchen", "cashier"] as const;
 const ROLE_LABELS: Record<string, string> = {
   admin: "Admin",
   attendant: "Atendente",
   kitchen: "Cozinha",
+  cashier: "Caixa",
 };
 const ROLE_COLORS: Record<string, string> = {
   admin: "bg-destructive/15 text-destructive border-destructive/30",
   attendant: "bg-primary/15 text-primary border-primary/30",
   kitchen: "bg-success/15 text-success-foreground border-success/30",
+  cashier: "bg-emerald-500/15 text-emerald-500 border-emerald-500/30",
 };
 
 const formatCPF = (cpf: string) => {
@@ -37,7 +40,40 @@ const formatCPFInput = (value: string) => {
 
 type ModalMode = "create" | "edit" | "delete" | null;
 
+type ManageUserPayload =
+  | { admin_password: string }
+  | {
+      admin_password: string;
+      action: "create";
+      full_name: string;
+      cpf: string;
+      password: string;
+      roles: string[];
+      business_unit_id: string;
+    }
+  | {
+      admin_password: string;
+      action: "update";
+      user_id: string;
+      full_name?: string;
+      new_password?: string;
+    }
+  | { admin_password: string; action: "delete"; user_id: string };
+
+type ManageUserResponse =
+  | { success: true; user_id?: string }
+  | { error: string };
+
+type ErrorWithMessage = { message: string };
+
+const isErrorWithMessage = (value: unknown): value is ErrorWithMessage =>
+  typeof value === "object" &&
+  value !== null &&
+  "message" in value &&
+  typeof value.message === "string";
+
 const UsersTab = () => {
+  const { businessUnitId } = useCurrentBusinessUnit();
   const { users, loadingUsers, addRole, removeRole, refreshUsers } = useAdminData();
   const [search, setSearch] = useState("");
 
@@ -98,38 +134,57 @@ const UsersTab = () => {
 
     setFormLoading(true);
     try {
-      let body: any = { admin_password: adminPassword };
+      let body: ManageUserPayload = { admin_password: adminPassword };
 
       if (modalMode === "create") {
+        if (!businessUnitId) { toast.error("Selecione uma unidade para cadastrar o usuário"); setFormLoading(false); return; }
         const cpfDigits = formCpf.replace(/\D/g, "");
         if (cpfDigits.length !== 11) { toast.error("CPF inválido"); setFormLoading(false); return; }
         if (!formName.trim()) { toast.error("Nome obrigatório"); setFormLoading(false); return; }
-        if (formPassword.length < SENHA_ABSOLUTA_MIN) {
-          toast.error(`Senha absoluta: mínimo ${SENHA_ABSOLUTA_MIN} caracteres`);
+        if (!senhaValida(formPassword)) {
+          toast.error(SENHA_REQUISITOS);
           setFormLoading(false);
           return;
         }
 
-        body = { ...body, action: "create", full_name: formName.trim(), cpf: cpfDigits, password: formPassword, roles: formRoles };
+        body = {
+          admin_password: adminPassword,
+          action: "create",
+          full_name: formName.trim(),
+          cpf: cpfDigits,
+          password: formPassword,
+          roles: formRoles,
+          business_unit_id: businessUnitId,
+        };
       } else if (modalMode === "edit") {
-        if (formPassword && formPassword.length < SENHA_ABSOLUTA_MIN) {
-          toast.error(`Senha absoluta: mínimo ${SENHA_ABSOLUTA_MIN} caracteres`);
+        if (formPassword && !senhaValida(formPassword)) {
+          toast.error(SENHA_REQUISITOS);
           setFormLoading(false);
           return;
         }
-        body = { ...body, action: "update", user_id: selectedUser!.userId, full_name: formName.trim() || undefined, new_password: formPassword || undefined };
+        body = {
+          admin_password: adminPassword,
+          action: "update",
+          user_id: selectedUser!.userId,
+          full_name: formName.trim() || undefined,
+          new_password: formPassword || undefined,
+        };
       } else if (modalMode === "delete") {
-        body = { ...body, action: "delete", user_id: selectedUser!.userId };
+        body = {
+          admin_password: adminPassword,
+          action: "delete",
+          user_id: selectedUser!.userId,
+        };
       }
 
-      const { data, error } = await supabase.functions.invoke("manage-user", { body });
+      const { data, error } = await supabase.functions.invoke<ManageUserResponse>("manage-user", { body });
 
       if (error) {
         toast.error(error.message || "Erro na operação");
         setFormLoading(false);
         return;
       }
-      if (data?.error) {
+      if (data && "error" in data) {
         toast.error(data.error);
         setFormLoading(false);
         return;
@@ -142,8 +197,8 @@ const UsersTab = () => {
       );
       closeModal();
       await refreshUsers();
-    } catch (err: any) {
-      toast.error(err.message || "Erro inesperado");
+    } catch (err: unknown) {
+      toast.error(isErrorWithMessage(err) ? err.message : "Erro inesperado");
     } finally {
       setFormLoading(false);
     }
@@ -177,7 +232,7 @@ const UsersTab = () => {
             className="h-10 pl-9"
           />
         </div>
-        <Button onClick={openCreate} size="icon" className="h-10 w-10 shrink-0">
+        <Button data-tooltip="Cadastre um novo funcionário e configure seus acessos." aria-label="Cadastre um novo funcionário e configure seus acessos." onClick={openCreate} size="icon" className="h-10 w-10 shrink-0">
           <Plus className="h-4 w-4" />
         </Button>
       </div>
@@ -191,13 +246,13 @@ const UsersTab = () => {
               <p className="text-xs text-muted-foreground">{formatCPF(user.cpf)}</p>
             </div>
             <div className="flex gap-1">
-              <button
+              <button data-tooltip="Edite o cadastro deste funcionário." aria-label="Edite o cadastro deste funcionário."
                 onClick={() => openEdit(user)}
                 className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               >
                 <Pencil className="h-4 w-4" />
               </button>
-              <button
+              <button data-tooltip="Abra a confirmação para excluir este funcionário." aria-label="Abra a confirmação para excluir este funcionário."
                 onClick={() => openDelete(user)}
                 className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
               >
@@ -209,7 +264,7 @@ const UsersTab = () => {
             {ALL_ROLES.map((role) => {
               const hasRole = user.roles.includes(role);
               return (
-                <button
+                <button data-tooltip="Ative ou remova este perfil de acesso para o funcionário." aria-label="Ative ou remova este perfil de acesso para o funcionário."
                   key={role}
                   onClick={() => hasRole ? removeRole(user.userId, role) : addRole(user.userId, role)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-all ${
@@ -243,8 +298,8 @@ const UsersTab = () => {
               {modalMode === "delete"
                 ? `Tem certeza que deseja excluir "${selectedUser?.fullName}"? Esta ação não pode ser desfeita.`
                 : modalMode === "edit"
-                ? "Altere os dados do usuário. Deixe a senha em branco para manter a atual. Nova senha: mín. 12 caracteres (senha absoluta)."
-                : "Registre o usuário e defina a atribuição. Exija senha absoluta (mín. 12 caracteres)."}
+                ? "Altere os dados do usuário. Deixe a senha em branco para manter a atual. Nova senha: mínimo de 8 caracteres, uma maiúscula e um caractere especial."
+                : "Registre o usuário e defina a atribuição. Exija senha de 8 caracteres, uma maiúscula e um caractere especial."}
             </DialogDescription>
           </DialogHeader>
 
@@ -275,7 +330,7 @@ const UsersTab = () => {
                       placeholder={`Mínimo ${SENHA_ABSOLUTA_MIN} caracteres`}
                       minLength={SENHA_ABSOLUTA_MIN}
                     />
-                    <button type="button" onClick={() => setShowFormPassword(!showFormPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    <button data-tooltip="Mostre ou oculte a senha digitada." aria-label="Mostre ou oculte a senha digitada." type="button" onClick={() => setShowFormPassword(!showFormPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                       {showFormPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
@@ -286,7 +341,7 @@ const UsersTab = () => {
                     {ALL_ROLES.map((role) => {
                       const active = formRoles.includes(role);
                       return (
-                        <button
+                        <button data-tooltip="Ative ou remova este perfil de acesso para o funcionário." aria-label="Ative ou remova este perfil de acesso para o funcionário."
                           key={role}
                           type="button"
                           onClick={() => toggleFormRole(role)}
@@ -320,7 +375,7 @@ const UsersTab = () => {
                       onChange={(e) => setFormPassword(e.target.value)}
                       placeholder="Deixe em branco para manter"
                     />
-                    <button type="button" onClick={() => setShowFormPassword(!showFormPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    <button data-tooltip="Mostre ou oculte a senha digitada." aria-label="Mostre ou oculte a senha digitada." type="button" onClick={() => setShowFormPassword(!showFormPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                       {showFormPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
@@ -341,7 +396,7 @@ const UsersTab = () => {
                   onChange={(e) => setAdminPassword(e.target.value)}
                   placeholder="Confirme com sua senha"
                 />
-                <button type="button" onClick={() => setShowAdminPassword(!showAdminPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <button data-tooltip="Mostre ou oculte a senha digitada." aria-label="Mostre ou oculte a senha digitada." type="button" onClick={() => setShowAdminPassword(!showAdminPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                   {showAdminPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
@@ -350,7 +405,7 @@ const UsersTab = () => {
 
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={closeModal} disabled={formLoading}>Cancelar</Button>
-            <Button
+            <Button data-tooltip="Salve os dados preenchidos e continue para a próxima etapa."
               onClick={handleSubmit}
               disabled={formLoading || !adminPassword}
               variant={modalMode === "delete" ? "destructive" : "default"}
