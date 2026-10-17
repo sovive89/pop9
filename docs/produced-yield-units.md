@@ -14,6 +14,10 @@ Corrigir o antigo `un` teórico de insumos somente quando todos os lotes ativos 
 
 O cadastro produzido existente deve carregar sua receita quando selecionado, evitando solicitar uma nova ficha idêntica. Estoque e lotes continuam nas tabelas canônicas existentes.
 
+## Simplificação da ficha (17/10/2026)
+
+O usuário identificou a seleção permanente da unidade-base como informação repetida no fluxo da ficha. A definição continua necessária, mas a tela passa a mostrar apenas “Estoque controlado em…”; novos insumos usam inicialmente a medida da receita. A alteração da unidade inicial fica no diálogo de cadastro do insumo, acessível por “Alterar”. Cadastros com uso continuam protegidos pelas validações existentes. Não há alteração de banco, contratos de gravação ou saldos.
+
 A unidade-base inicial fica editável na ficha para novos insumos e cadastros teóricos sem uso. É independente da medida de consumo: estoque em `kg` pode ter ficha em `g`. A validação no banco impede redefinição após fichas, lotes, movimentações ou estoque mínimo configurado; os vínculos anteriores são verificados antes de substituir a ficha. Reenvios de produção reutilizam a mesma receita e rejeitam alteração da composição com o mesmo identificador de solicitação.
 
 ## Validação e aplicação

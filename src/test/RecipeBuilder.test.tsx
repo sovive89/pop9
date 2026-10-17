@@ -75,17 +75,25 @@ describe("technical recipe draft", () => {
   it("lets the initial stock unit differ from the displayed recipe measure", () => {
     const ref=createRef<RecipeBuilderHandle>();render(<RecipeBuilder ref={ref}/>);
     fireEvent.click(screen.getByRole("button",{name:"Adicionar insumo"}));fill("Nome do novo insumo","Queijo");
-    fill("Unidade-base inicial do insumo","kg");fill("Unidade de medida do insumo","g");fill("Quantidade do insumo por item","30");
-    expect(screen.getByLabelText("Unidade-base inicial do insumo")).toHaveValue("kg");
+    expect(screen.queryByLabelText("Unidade-base inicial do insumo")).not.toBeInTheDocument();
+    fill("Unidade de medida do insumo","g");expect(screen.getByText(/Estoque controlado em/)).toHaveTextContent('Estoque controlado em g');
+    fireEvent.click(screen.getByRole('button',{name:'Alterar unidade do estoque do insumo'}));
+    fill("Unidade-base inicial do insumo","kg");fireEvent.click(screen.getByRole('button',{name:'Close'}));
+    fill("Unidade de medida do insumo","g");fill("Quantidade do insumo por item","30");
+    expect(screen.queryByLabelText("Unidade-base inicial do insumo")).not.toBeInTheDocument();
+    expect(screen.getByText(/Estoque controlado em/)).toHaveTextContent('Estoque controlado em kg');
     expect(ref.current!.getDraft()[0]).toMatchObject({stockUnit:"kg",newUnit:"g",quantity:30});
     expect(ref.current!.validate()).toBe(true);
   });
   it("makes the initial measure editable before use and preserves an entered quantity", () => {
     const ref=createRef<RecipeBuilderHandle>();render(<RecipeBuilder ref={ref}/>);
     fireEvent.click(screen.getByRole("button",{name:"Adicionar insumo"}));fill("Insumo","initial");
-    fill("Unidade de medida do insumo","g");fill("Quantidade do insumo por item","30");fill("Unidade-base inicial do insumo","kg");
+    fill("Unidade de medida do insumo","g");fill("Quantidade do insumo por item","30");
+    fireEvent.click(screen.getByRole('button',{name:'Alterar unidade do estoque do insumo'}));fill("Unidade-base inicial do insumo","kg");
+    fireEvent.click(screen.getByRole('button',{name:'Close'}));
     expect(ref.current!.getDraft()[0]).toMatchObject({rawMaterialId:"initial",stockUnit:"kg",newUnit:"g",quantity:30});
-    fill("Insumo","blend");expect(screen.getByLabelText("Unidade-base inicial do insumo")).toBeDisabled();
-    expect(screen.getByLabelText("Unidade-base inicial do insumo")).toHaveValue("un");
+    fill("Insumo","blend");expect(screen.queryByRole('button',{name:'Alterar unidade do estoque do insumo'})).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Unidade-base inicial do insumo")).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Estoque controlado em/)[0]).toHaveTextContent('Estoque controlado em un');
   });
 });
