@@ -19,3 +19,10 @@ describe("export_menu_item_to_units", () => {
     expect(sql).toMatch(/revoke all on function public\.export_menu_item_to_units[^;]*from public,anon/);
   });
 });
+
+describe("export_menu_item_to_units — produção", () => {
+  it("leva a receita de produção, mas nunca lotes/produções já feitas", () => {
+    expect(sql).toMatch(/'preparation'/);
+    expect(sql).not.toMatch(/insert into public\.(production_batches|production_recipes)/i);
+  });
+});
