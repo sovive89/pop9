@@ -66,9 +66,23 @@ describe("combos prontos no PWA",()=>{
     expect(Number(combos[1].price)).toBe(33.3);
     expect(await list(OTHER)).toEqual([]);
   });
-  it("esconde combo com item inativo ou não elegível",async()=>{
-    await db.exec("update menu_items set combo_eligible=false where id='fries'");
-    expect(await list()).toEqual([]);
+  it("esconde e recusa combo com item não elegível, inativo ou em rascunho",async()=>{
+    for(const change of ["combo_eligible=false","active=false","status='draft'"]){
+      await db.exec(`update menu_items set ${change} where id='fries'`);
+      expect((await list()).map(c=>c.name)).toEqual([]);
+      await expect(submit([{combo_id:READY,quantity:1}])).rejects.toThrow("Combo indisponível");
+      await db.exec("update menu_items set combo_eligible=true,active=true,status='published' where id='fries'");
+    }
+  });
+  it("lista só para o servidor (service_role)",async()=>{
+    for(const role of ["anon","authenticated"]){
+      await db.exec(`set role ${role}`);
+      await expect(list()).rejects.toThrow(/permission denied/);
+      await db.exec("reset role");
+    }
+  });
+  it("não deixa repetir o combo com um id extra",async()=>{
+    await expect(submit([{combo_id:READY,quantity:20,id:"a"},{combo_id:READY,quantity:20,id:"b"}])).rejects.toThrow("Itens duplicados");
   });
   it("grava os componentes agrupados com o total rateado sem perder centavos",async()=>{
     const order=await submit([{combo_id:READY,quantity:2},{id:"juice",quantity:1}]);
@@ -83,6 +97,14 @@ describe("combos prontos no PWA",()=>{
   it("recusa combo com escolha, de outra unidade ou com preço vindo do cliente",async()=>{
     await expect(submit([{combo_id:CHOICE,quantity:1}])).rejects.toThrow("Combo indisponível");
     await expect(submit([{combo_id:"x",quantity:1}])).rejects.toThrow("Combo indisponível");
+    // Combo pronto válido, mas de outra unidade.
+    const FOREIGN="00000000-0000-0000-0000-0000000000c9";
+    await db.query("insert into menu_items(id,business_unit_id,name,price,category) values('other-burger',$1,'Burger B',20,'burger')",[OTHER]);
+    await db.query("insert into menu_combos values($1,$2,'Combo B',null,'fixed',15,0,true,0)",[FOREIGN,OTHER]);
+    const {rows}=await db.query<{id:string}>("insert into menu_combo_slots(combo_id,business_unit_id,label) values($1,$2,'Lanche') returning id",[FOREIGN,OTHER]);
+    await db.query("insert into menu_combo_options(slot_id,business_unit_id,menu_item_id) values($1,$2,'other-burger')",[rows[0].id,OTHER]);
+    expect((await list(OTHER)).map(c=>c.name)).toEqual(["Combo B"]);
+    await expect(submit([{combo_id:FOREIGN,quantity:1}])).rejects.toThrow("Combo indisponível");
     const order=await submit([{combo_id:READY,quantity:1,price:0.01}]);expect(Number(order.total)).toBe(39.9);
   });
   it("mantém o pedido avulso como antes",async()=>{

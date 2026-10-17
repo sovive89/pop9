@@ -63,7 +63,8 @@ function GenericFields({
               />
             ) : (
               <Input
-                type={field.type === "url" ? "url" : "text"}
+                type={field.type === "url" ? "url" : field.type === "password" ? "password" : "text"}
+                autoComplete={field.type === "password" ? "new-password" : undefined}
                 value={String(values[field.key] ?? "")}
                 onChange={(e) => onChange(field.key, e.target.value)}
                 placeholder={field.placeholder}
