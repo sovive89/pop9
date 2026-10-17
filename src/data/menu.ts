@@ -9,6 +9,8 @@ export interface MenuItem {
   name: string;
   price: number;
   category: MenuCategory;
+  itemKind?: "regular" | "special" | "seasonal";
+  comboEligible?: boolean;
   destination?: string | null;
   description?: string;
   imageUrl?: string;
