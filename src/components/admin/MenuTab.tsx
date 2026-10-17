@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Flame, Plus, Trash2, Pencil, Save, X, ChevronDown, ChevronUp, Tags, ImagePlus, Image, Sparkles, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,15 +7,23 @@ import { supabase } from "@/integrations/supabase/client";
 import { formatCurrency } from "@/utils/orders";
 import { CATEGORY_ICON_OPTIONS, CATEGORY_COLORS, getCategoryIcon, safeCategoryColor, suggestCategoryIcon } from "@/utils/categoryIcons";
 import { toast } from "sonner";
+import type { MenuRecipeDraft } from "@/lib/recipeDraft";
 import RecipeBuilder, { type RecipeBuilderHandle } from "@/components/admin/RecipeBuilder";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
+import { useSearchParams } from "react-router-dom";
+import MenuImportDialog from "@/components/admin/MenuImportDialog";
+import MenuPrefixField from '@/components/admin/MenuPrefixField';
+import { useMenuSuggestionCatalog } from '@/hooks/useMenuSuggestionCatalog';
+import { useAuth } from '@/hooks/useAuth';
+import { useUnitRoles } from '@/hooks/useUnitRoles';
+import { usePrintSectors, sectorName } from '@/hooks/usePrintSectors';
 
 // ── Image Upload Helper ──
 // O nome do arquivo é gerado aqui (não depende do ID do item, que só existe
 // depois que o banco cria o registro).
-const uploadMenuImage = async (file: File): Promise<string | null> => {
+const uploadMenuImage = async (file: File, businessUnitId: string): Promise<string | null> => {
   const ext = file.name.split(".").pop();
-  const path = `${crypto.randomUUID()}.${ext}`;
+  const path = `${businessUnitId}/uploads/${crypto.randomUUID()}.${ext}`;
 
   const { error } = await supabase.storage.from("menu-images").upload(path, file, { upsert: true });
   if (error) {
@@ -49,18 +57,51 @@ const AI_IMAGE_MODELS = [
   { id: "stability/stable-image-ultra", label: "Stable Image Ultra — premium (Stability AI)", provider: "stability" },
 ];
 
+type CategoryInput = Omit<DbMenuCategory, "id"> & { id?: string };
+type MenuItemInput = Omit<DbMenuItem, "id" | "sku" | "sort_order" | "ingredients" | "variants"> & {
+  id?: string;
+  sort_order?: number;
+  ingredients: Omit<DbIngredient, "id">[];
+  variants: Omit<DbVariant, "id">[];
+  recipe: MenuRecipeDraft[];
+};
+type MenuItemSaveResult = string | false;
+
 // ── Category Editor ──
 interface CategoryEditorProps {
   category?: DbMenuCategory;
-  onSave: (cat: any, isNew: boolean) => Promise<boolean>;
+  /** Chaves já usadas na unidade, para gerar uma chave nova sem repetir. */
+  existingKeys?: string[];
+  onSave: (cat: CategoryInput, isNew: boolean) => Promise<boolean>;
   onCancel: () => void;
 }
 
-const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => {
+/** Chave interna gerada a partir do nome: "Bebidas Quentes" → "bebidas_quentes". */
+const categoryKeyFrom = (label: string, taken: string[] = []) => {
+  const base = label.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40) || "categoria";
+  let candidate = base;
+  for (let n = 2; taken.includes(candidate); n++) candidate = `${base}_${n}`;
+  return candidate;
+};
+
+const ingredientsFromDescription = (description: string, fallback: Omit<DbIngredient, "id">[]) => {
+  const names = description.split(",").map(value => value.trim()).filter(Boolean);
+  if (names.length < 2) return fallback;
+  return names.map((name, sort_order) => ({ name, removable: false, extra_price: null, sort_order }));
+};
+
+const CategoryEditor = ({ category, existingKeys = [], onSave, onCancel }: CategoryEditorProps) => {
   const isNew = !category;
-  const [key, setKey] = useState(category?.key ?? "");
   const [label, setLabel] = useState(category?.label ?? "");
+  // Categorias novas recebem uma sugestão legível; categorias existentes
+  // preservam a chave atual para não quebrar os itens já vinculados.
+  const [key, setKey] = useState(category?.key ?? categoryKeyFrom(category?.label ?? "", existingKeys));
+  const [keyTouched, setKeyTouched] = useState(!isNew);
   const [destination, setDestination] = useState(category?.destination ?? "kitchen");
+  const [sectorTouched, setSectorTouched] = useState(!isNew);
+  const { activeSectors } = usePrintSectors();
+  // Mantém o setor atual na lista mesmo se desativado, para não trocar sem querer ao editar.
+  const sectorOptions = activeSectors.some((s) => s.slug === destination) ? activeSectors : [...activeSectors, { slug: destination, name: destination, active: false }];
   const [sortOrder, setSortOrder] = useState(category?.sort_order?.toString() ?? "0");
   const [saving, setSaving] = useState(false);
   const [iconName, setIconName] = useState(category?.icon_name ?? suggestCategoryIcon(category?.label ?? ""));
@@ -70,13 +111,16 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
   const PreviewIcon = getCategoryIcon(iconName, label);
 
   const handleSave = async () => {
-    if (!key.trim() || !label.trim()) {
-      toast.error("Chave e nome são obrigatórios");
+    if (!label.trim()) {
+      toast.error("Informe o nome da categoria");
       return;
     }
     setSaving(true);
+    const normalizedKey = key.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
+    const finalKey = isNew ? categoryKeyFrom(normalizedKey || label, existingKeys) : key;
     const ok = await onSave(
-      { id: category?.id, key: key.trim().toLowerCase(), label: label.trim(), icon_name: iconName, icon_color: iconColor, destination, sort_order: parseInt(sortOrder) || 0 },
+      { id: category?.id, key: finalKey, label: label.trim(), icon_name: iconName, icon_color: iconColor, destination, sort_order: parseInt(sortOrder) || 0 },
       isNew
     );
     setSaving(false);
@@ -87,29 +131,40 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
     <div className="rounded-xl border border-border bg-card p-4 space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-foreground">{isNew ? "Nova Categoria" : "Editar Categoria"}</h3>
-        <button onClick={onCancel} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+        <button data-tooltip="Feche a edição sem salvar as alterações pendentes." aria-label="Feche a edição sem salvar as alterações pendentes." onClick={onCancel} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">Chave (slug)</label>
-          <Input value={key} onChange={(e) => setKey(e.target.value)} disabled={!isNew} placeholder="ex: salads" className="h-8 text-sm" />
-        </div>
+      <div className="grid grid-cols-1 gap-3">
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Nome</label>
-          <Input value={label} onChange={(e) => { setLabel(e.target.value); if (!iconTouched) setIconName(suggestCategoryIcon(e.target.value)); }} placeholder="ex: Saladas" className="h-8 text-sm" />
+          <Input value={label} onChange={(e) => {
+            setLabel(e.target.value);
+            if (isNew && !keyTouched) setKey(categoryKeyFrom(e.target.value, existingKeys));
+            if (!iconTouched) setIconName(suggestCategoryIcon(e.target.value));
+            // Setor sugerido pelo nome (bebidas → Bar) enquanto o admin não escolheu outro.
+            if (isNew && !sectorTouched) setDestination(/bebida|drink|suco|refri|cerveja|chopp|vinho|cafe|café|agua|água|dose|caipir/i.test(e.target.value) ? "bar" : "kitchen");
+          }} placeholder="ex: Saladas" className="h-8 text-sm" />
         </div>
+      </div>
+      <div className="space-y-1">
+        <label htmlFor="category-key" className="text-xs font-medium text-muted-foreground">Chave (slug)</label>
+        <Input id="category-key" value={key} disabled={!isNew}
+          onChange={(e) => { setKey(e.target.value); setKeyTouched(true); }}
+          placeholder="ex: saladas" className="h-8 font-mono text-sm" />
+        <p className="text-[10px] text-muted-foreground">
+          Identificador interno sugerido automaticamente a partir do nome. Sem acentos ou espaços; ajuste se necessário.
+        </p>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">Destino</label>
-          <select value={destination} onChange={(e) => setDestination(e.target.value)} className="w-full h-8 rounded-md border border-border bg-muted px-3 text-sm text-foreground">
-            <option value="kitchen">Cozinha</option>
-            <option value="bar">Bar</option>
+          <label className="text-xs font-medium text-muted-foreground">Setor</label>
+          <select data-tooltip="Setor que recebe os pedidos desta categoria (crie novos em Impressoras)." aria-label="Setor que recebe os pedidos desta categoria." value={destination} onChange={(e) => { setDestination(e.target.value); setSectorTouched(true); }} className="w-full h-8 rounded-md border border-border bg-muted px-3 text-sm text-foreground">
+            {sectorOptions.map((s) => <option key={s.slug} value={s.slug}>{s.name}</option>)}
           </select>
         </div>
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Ordem</label>
           <Input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-8 text-sm" />
+          <p className="text-[10px] text-muted-foreground">Posição na lista: menor aparece primeiro (0 antes de 1).</p>
         </div>
       </div>
       <div className="space-y-2">
@@ -118,9 +173,12 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
           <PreviewIcon className="h-7 w-7 shrink-0" style={{ color: iconColor }} />
           <span className="text-sm font-medium text-foreground truncate">{label || "Nova categoria"}</span>
         </div>
-        <Input value={iconSearch} onChange={(e) => setIconSearch(e.target.value)} placeholder="Buscar ícone..." className="h-8 text-sm" />
-        <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-48 overflow-y-auto">
-          {CATEGORY_ICON_OPTIONS.filter((option) => (option.label + " " + option.name).toLowerCase().includes(iconSearch.toLowerCase())).map(({ name, label: iconLabel, Icon }) => (
+        <Input value={iconSearch} onChange={(e) => setIconSearch(e.target.value)} placeholder="Buscar ícone (ex.: suco, combo, açaí)..." className="h-8 text-sm" />
+        <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto">
+          {CATEGORY_ICON_OPTIONS.filter((option) => {
+            const plain = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+            return plain(`${option.label} ${option.name}`).includes(plain(iconSearch));
+          }).map(({ name, label: iconLabel, Icon }) => (
             <button key={name} type="button" title={iconLabel} aria-label={iconLabel} aria-pressed={iconName === name}
               onClick={() => { setIconName(name); setIconTouched(true); }}
               className={`flex flex-col items-center gap-1 rounded-lg border p-2 min-w-0 ${iconName === name ? "border-primary bg-primary/10" : "border-border hover:bg-muted"}`}>
@@ -139,10 +197,10 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
         </div>
       </div>
       <div className="flex gap-2">
-        <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1">
+        <Button data-tooltip="Salve as configurações preenchidas." size="sm" onClick={handleSave} disabled={saving} className="gap-1">
           <Save className="h-3.5 w-3.5" /> {saving ? "Salvando..." : "Salvar"}
         </Button>
-        <Button size="sm" variant="outline" onClick={onCancel}>Cancelar</Button>
+        <Button data-tooltip="Feche a edição sem salvar as alterações pendentes." size="sm" variant="outline" onClick={onCancel}>Cancelar</Button>
       </div>
     </div>
   );
@@ -152,26 +210,24 @@ const CategoryEditor = ({ category, onSave, onCancel }: CategoryEditorProps) => 
 interface MenuEditorProps {
   item?: DbMenuItem;
   categories: DbMenuCategory[];
-  onSave: (item: any, isNew: boolean) => Promise<string | false | { failedId: string }>;
+  onSave: (item: MenuItemInput, isNew: boolean) => Promise<MenuItemSaveResult>;
   onCancel: () => void;
 }
 
 const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps) => {
-  // Se o item novo já foi criado mas um passo seguinte (ficha técnica) falhou,
-  // guardamos o ID para que "salvar de novo" atualize em vez de duplicar.
-  const [createdId, setCreatedId] = useState<string | null>(null);
-  const isNew = !item && !createdId;
+  // Stable across network retries; the atomic RPC never leaves a partial item.
+  const newItemId = useRef(crypto.randomUUID());
+  const isNew = !item;
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Imagens enviadas/geradas nesta edição; as não usadas são apagadas ao fechar.
   const sessionImages = useRef<string[]>([]);
-  // Imagem já gravada no item (save ok, mas um passo seguinte falhou):
-  // não pode ser apagada ao cancelar, senão a URL do item fica quebrada.
+  // Imagem já gravada no item; o acervo permanece disponível para reutilização.
   const persistedImage = useRef<string | null>(null);
   // Editor fechado: upload/geração que terminar depois disso é apagado na hora.
   const closed = useRef(false);
   const trackImage = (url: string): boolean => {
     if (closed.current) {
-      void removeMenuImages([url]);
+      // O arquivo permanece no acervo, mesmo após o editor ser fechado.
       return false;
     }
     sessionImages.current.push(url);
@@ -182,14 +238,38 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   const [category, setCategory] = useState(item?.category ?? (categories[0]?.key ?? ""));
   const [description, setDescription] = useState(item?.description ?? "");
   const [imageUrl, setImageUrl] = useState(item?.image_url ?? "");
+  const [libraryPhotos, setLibraryPhotos] = useState<string[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
+  const loadPhotoLibrary = async () => {
+    if (!businessUnitId) return;
+    setLibraryLoading(true);
+    try {
+      const bucket = supabase.storage.from("menu-images");
+      const [uploads, generated] = await Promise.all([
+        bucket.list(`${businessUnitId}/uploads`, { limit: 100, sortBy: { column: "created_at", order: "desc" } }),
+        bucket.list(`${businessUnitId}/ai`, { limit: 100, sortBy: { column: "created_at", order: "desc" } }),
+      ]);
+      if (uploads.error || generated.error) throw uploads.error ?? generated.error;
+      setLibraryPhotos([
+        ...(uploads.data ?? []).map(file => `${businessUnitId}/uploads/${file.name}`),
+        ...(generated.data ?? []).map(file => `${businessUnitId}/ai/${file.name}`),
+      ].filter(path => !path.endsWith("/.emptyFolderPlaceholder")).map(path => bucket.getPublicUrl(path).data.publicUrl));
+    } catch (error) {
+      toast.error("Não foi possível listar as fotos: " + (error instanceof Error ? error.message : String(error)));
+    } finally { setLibraryLoading(false); }
+  };
   const [sortOrder, setSortOrder] = useState(item?.sort_order?.toString() ?? "0");
   const [active, setActive] = useState(item?.active ?? true);
-  // Status já gravado no banco (não o do item aberto): muda assim que um save
-  // passa, mesmo que um passo seguinte (ficha técnica) falhe e o editor continue aberto.
+  // Status confirmado pela gravação atômica do item e da ficha.
   const [savedStatus, setSavedStatus] = useState(item?.status);
   const isPublished = savedStatus === "published";
   const [uploading, setUploading] = useState(false);
   const { businessUnitId } = useCurrentBusinessUnit();
+  const { user } = useAuth();
+  const { roles, loading: rolesLoading } = useUnitRoles();
+  const catalog = useMenuSuggestionCatalog(businessUnitId, user?.id, !rolesLoading && roles.includes('admin'));
+  const [categorySearch, setCategorySearch] = useState('');
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [aiModel, setAiModel] = useState(AI_IMAGE_MODELS[0].id);
   useEffect(() => {
@@ -249,14 +329,39 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   );
   const [saving, setSaving] = useState(false);
   const recipeBuilderRef = useRef<RecipeBuilderHandle>(null);
+  const [documentSheets,setDocumentSheets] = useState<{id:string;name:string}[]>([]);
+  const [documentPickerOpen,setDocumentPickerOpen] = useState(false);
+  const [documentPickerBusy,setDocumentPickerBusy] = useState(false);
+  const [selectedDocument,setSelectedDocument] = useState("");
+  const openDocumentPicker = async () => {
+    if (!businessUnitId) return;
+    setDocumentPickerBusy(true);
+    try {
+      const {data,error} = await supabase.from("menu_items").select("id,name")
+        .eq("business_unit_id",businessUnitId).order("name");
+      if(error) throw error;
+      setDocumentSheets((data??[]).filter(source=>source.id!==item?.id && source.id!==newItemId.current));
+      setSelectedDocument("");
+      setDocumentPickerOpen(true);
+    }catch{toast.error("Não foi possível consultar as fichas de Documentos.");}
+    finally{setDocumentPickerBusy(false);}
+  };
+  const applyDocumentSheet = async () => {
+    if (!selectedDocument || !recipeBuilderRef.current) return;
+    setDocumentPickerBusy(true);
+    try{
+      if(await recipeBuilderRef.current.importFromMenuItem(selectedDocument)) setDocumentPickerOpen(false);
+    }finally{setDocumentPickerBusy(false);}
+  };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     try {
-      const url = await uploadMenuImage(file);
-      if (url && trackImage(url)) setImageUrl(url);
+      if (!businessUnitId) { toast.error("Selecione uma unidade antes de enviar a foto"); return; }
+      const url = await uploadMenuImage(file, businessUnitId);
+      if (url && trackImage(url)) { setImageUrl(url); setImageFailed(false); }
     } catch (err) {
       toast.error("Erro ao enviar imagem: " + (err instanceof Error ? err.message : String(err)));
     } finally {
@@ -303,25 +408,25 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       return;
     }
     if (!trackImage(data.url)) {
-      // Editor já fechado: a geração foi cobrada, mas a foto foi descartada.
-      toast.info("A foto gerada chegou depois de fechar o editor e foi descartada.");
+      toast.info("Foto salva no acervo, mas o editor já foi fechado.");
       return;
     }
     setImageUrl(data.url);
+    setImageFailed(false);
     toast.success("Foto gerada — salve o item para manter");
   };
 
   const removeImage = () => {
+    setImageFailed(false);
     setImageUrl("");
   };
 
-  // Cancelar: descarta tudo que foi enviado/gerado nesta edição.
-  const discardSessionImages = () => {
+  // Encerra o estado desta edição; mantém as fotos no acervo.
+  const discardSessionImages = useCallback(() => {
     closed.current = true;
-    const leftovers = sessionImages.current.filter((u) => u !== persistedImage.current);
     sessionImages.current = [];
-    if (leftovers.length > 0) void removeMenuImages(leftovers);
-  };
+    // Preserva todas as fotos no acervo para reutilização posterior.
+  }, []);
 
   // Não deixa fechar no meio do save: a foto ainda não foi gravada no item e
   // seria apagada antes de a URL chegar ao banco.
@@ -331,72 +436,77 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     onCancel();
   };
 
-  // Trocar de seção do admin desmonta o editor sem passar por Cancelar/Salvar:
-  // apaga as fotos enviadas/geradas que não foram gravadas e ignora respostas atrasadas.
-  useEffect(() => discardSessionImages, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Ao desmontar, limpa o rastreamento local e ignora respostas atrasadas.
+  useEffect(() => discardSessionImages, [discardSessionImages]);
 
   // ID, SKU e ordem inicial são definidos pelo banco (trigger + defaults).
   // O status muda pela ação escolhida: "Salvar rascunho" ou "Publicar".
   const handleSave = async (status: "draft" | "published") => {
-    if (!name.trim() || !price) {
-      toast.error("Nome e preço são obrigatórios");
+    if (!name.trim() || !price || !Number.isFinite(Number(price)) || Number(price) < 0 || (status === "published" && Number(price) <= 0)) {
+      toast.error("Informe nome e preço válido; para publicar, o preço deve ser maior que zero");
+      return;
+    }
+    if (status === "published" && !recipeBuilderRef.current) {
+      toast.error("Aguarde a ficha técnica carregar antes de publicar.");
       return;
     }
     setSaving(true);
+    // Um rascunho pode começar sem ficha. As linhas preenchidas e a publicação
+    // são gravadas junto com o item, sem uma segunda etapa de escrita.
+    if (recipeBuilderRef.current && !recipeBuilderRef.current.validate()) { setSaving(false); return; }
     const finalImage = imageUrl.trim() || null;
+    const listedIngredients = ingredientsFromDescription(description, ingredients);
     const savedId = await onSave(
       {
         ...(item
           ? { id: item.id, sort_order: parseInt(sortOrder) || 0 }
-          : createdId ? { id: createdId } : {}),
+          : { id: newItemId.current }),
         name: name.trim(),
-        price: parseFloat(price),
+        price: Number(price),
         category,
         description: description.trim() || null,
         image_url: finalImage,
         active,
         status,
-        ingredients,
+        ingredients: listedIngredients,
         variants,
+        recipe: recipeBuilderRef.current?.getDraft() ?? [],
       },
       isNew
     );
-    if (typeof savedId !== "string") {
-      // Item novo ficou no banco sem conseguir desfazer: próxima tentativa atualiza ele.
-      if (savedId) {
-        if (!item) setCreatedId(savedId.failedId);
-        // A linha existe e já aponta para esta foto/status: Cancelar não pode apagá-la.
-        persistedImage.current = finalImage;
-        setSavedStatus(status);
-      }
-      setSaving(false);
-      return;
-    }
-    if (!item) setCreatedId(savedId);
+    setSaving(false);
+    if (typeof savedId !== "string") return;
     persistedImage.current = finalImage;
     setSavedStatus(status);
-    const recipeOk = await recipeBuilderRef.current?.commit(savedId);
-    setSaving(false);
-    if (recipeOk === false) return;
 
     // Salvo: apaga a foto antiga (se foi trocada) e as tentativas descartadas.
     const stale = [item?.image_url, ...sessionImages.current].filter((u) => u && u !== finalImage);
     closed.current = true;
     sessionImages.current = [];
-    void removeMenuImages(stale);
+    // Não apagar fotos anteriores ou tentativas: fazem parte do acervo.
     onCancel();
   };
 
-  const addIngredient = () => {
-    setIngredients([...ingredients, { name: "", removable: true, extra_price: null, sort_order: ingredients.length }]);
-  };
-
-  const updateIngredient = (idx: number, field: string, value: any) => {
-    setIngredients(ingredients.map((ing, i) => i === idx ? { ...ing, [field]: value } : ing));
-  };
-
-  const removeIngredient = (idx: number) => {
-    setIngredients(ingredients.filter((_, i) => i !== idx));
+  // Sugestão por IA: usa o modo "criar ficha" e aproveita só o que estiver vazio.
+  const [suggesting, setSuggesting] = useState(false);
+  const suggestWithAi = async () => {
+    if (!businessUnitId || !name.trim()) return;
+    setSuggesting(true);
+    try {
+      const { listImportModels, extractMenuDraft } = await import("@/lib/menuImport");
+      const { models, warning } = await listImportModels(businessUnitId);
+      if (!models.length) throw new Error(warning || "Conecte a IA em Conexões desta unidade.");
+      const catLabel = categories.find((c) => c.key === category)?.label ?? "";
+      const { draft } = await extractMenuDraft({ businessUnitId, model: models[0].id, files: [], mode: "create",
+        text: `${name.trim()}${catLabel ? ` (categoria ${catLabel})` : ""}${description.trim() ? `. ${description.trim()}` : ""}` });
+      const found = draft.items[0];
+      if (!found) throw new Error("A IA não conseguiu sugerir. Detalhe melhor o nome.");
+      let filled = 0;
+      if (!description.trim() && found.description) { setDescription(found.description); filled++; }
+      toast[filled ? "success" : "info"](filled ? "Descrição sugerida e aplicada. Revise antes de salvar." : "A descrição já estava preenchida; nada foi alterado.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível sugerir");
+    } finally { setSuggesting(false); }
   };
 
   const addVariant = () => {
@@ -416,7 +526,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
 
       {item && (
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          <span>SKU: <span className="font-mono text-foreground">{item.sku ?? "—"}</span></span>
+          <span data-tooltip="Código interno único do produto, gerado automaticamente. Usado em relatórios, importação e integrações; não precisa preencher.">SKU (código interno): <span className="font-mono text-foreground">{item.sku ?? "—"}</span></span>
           <span>Status: <span className="text-foreground">{isPublished ? "Publicado" : "Rascunho"}</span></span>
         </div>
       )}
@@ -424,15 +534,17 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       <div className="grid grid-cols-1 gap-3">
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Categoria</label>
-          <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full h-9 rounded-md border border-border bg-muted px-3 text-sm text-foreground">
+          <select data-tooltip="Escolha a categoria em que o item aparecerá no cardápio." aria-label="Escolha a categoria em que o item aparecerá no cardápio." value={category} onChange={(e) => setCategory(e.target.value)} className="w-full h-9 rounded-md border border-border bg-muted px-3 text-sm text-foreground">
             {categories.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
           </select>
+          <MenuPrefixField label="Buscar categoria pelo início" placeholder="Digite o início da categoria" value={categorySearch} onChange={setCategorySearch} mode="whole" suggestions={catalog.suggestions.categories}
+            onPick={suggestion => { const found = catalog.categories.find(row => row.id === suggestion.id); if (found) setCategory(found.key); setCategorySearch(''); }} />
         </div>
       </div>
 
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">Nome</label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} className="h-9" />
+          <MenuPrefixField label="Nome do produto" value={name} onChange={setName} suggestions={[...catalog.suggestions.products, ...catalog.suggestions.words]} className="h-9" />
       </div>
 
       <div className="grid grid-cols-3 gap-3">
@@ -442,8 +554,9 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
         </div>
         {item && (
           <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Ordem</label>
+            <label className="text-xs font-medium text-muted-foreground" data-tooltip="Posição do item na categoria: menor aparece primeiro.">Ordem</label>
             <Input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="h-9" />
+            <p className="text-[10px] text-muted-foreground">Menor aparece primeiro.</p>
           </div>
         )}
         <div className="flex items-end">
@@ -454,34 +567,44 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" size="sm" variant="outline" disabled={suggesting || !name.trim() || !businessUnitId}
+          data-tooltip="A IA sugere descrição e ingredientes a partir do nome. Só preenche campos vazios; revise antes de salvar."
+          onClick={() => void suggestWithAi()}>
+          <Sparkles className="mr-1 h-4 w-4" />{suggesting ? "Sugerindo..." : "Sugerir com IA"}
+        </Button>
+        <span className="text-[11px] text-muted-foreground">Preenche descrição e ingredientes vazios a partir do nome.</span>
+      </div>
+
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">Descrição</label>
-        <textarea
+        <MenuPrefixField multiline label="Descrição do produto"
           value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          rows={2}
+          onChange={setDescription} suggestions={catalog.suggestions.words}
           className="w-full rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
         />
+        <p className="text-[11px] text-muted-foreground">Para exibir ingredientes no cardápio, separe-os por vírgulas. Ex.: pão brioche, carne, queijo, molho especial.</p>
       </div>
 
       {/* Image Upload */}
+      <p className="text-xs text-muted-foreground">{catalog.loading ? 'Carregando sugestões…' : catalog.error ? 'Autocomplete indisponível. Você pode continuar digitando.' : catalog.limited ? 'Autocomplete limitado aos primeiros 500 cadastros por tipo.' : 'Digite duas letras para ver sugestões desta unidade.'}</p>
       <div className="space-y-2">
         <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Foto do Item</label>
         <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
         {imageUrl ? (
           <div className="relative w-32 h-32 rounded-lg overflow-hidden border border-border group">
-            <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
+            <img src={imageUrl} alt="Preview" onError={() => setImageFailed(true)} onLoad={() => setImageFailed(false)} className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-              <button onClick={() => fileInputRef.current?.click()} className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-white/30">
+              <button data-tooltip="Escolha uma foto para o item do cardápio." aria-label="Escolha uma foto para o item do cardápio." onClick={() => fileInputRef.current?.click()} className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-white/30">
                 <Pencil className="h-4 w-4" />
               </button>
-              <button onClick={removeImage} className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-red-500/60">
+              <button data-tooltip="Retire a foto deste item. A imagem permanece no acervo." aria-label="Retire a foto deste item. A imagem permanece no acervo." onClick={removeImage} className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-red-500/60">
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>
           </div>
         ) : (
-          <button
+          <button data-tooltip="Escolha uma foto para o item do cardápio."
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
             className="flex items-center gap-2 px-4 py-3 rounded-lg border-2 border-dashed border-border hover:border-primary/50 text-muted-foreground hover:text-foreground transition-colors"
@@ -495,6 +618,17 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
           </button>
         )}
 
+        {imageFailed && <p className="text-xs text-destructive">A foto cadastrada não foi encontrada no armazenamento. Selecione outra no acervo ou envie novamente.</p>}
+        <div className="space-y-2 rounded-lg border border-border p-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium">Acervo de fotos · Storage</span>
+            <Button data-tooltip="Veja as fotos armazenadas no acervo desta unidade para reutilizar no cardápio." type="button" variant="outline" size="sm" disabled={libraryLoading || !businessUnitId} onClick={() => void loadPhotoLibrary()}>{libraryLoading ? "Carregando..." : "Ver fotos"}</Button>
+          </div>
+          {libraryPhotos.length > 0 && <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 max-h-64 overflow-y-auto">
+            {libraryPhotos.map(url => <button type="button" key={url} onClick={() => { setImageUrl(url); setImageFailed(false); }} aria-label="Usar foto do acervo" className={`aspect-square rounded-md overflow-hidden border-2 ${imageUrl === url ? "border-primary" : "border-border"}`}><img src={url} alt="Foto armazenada" loading="lazy" className="h-full w-full object-cover" /></button>)}
+          </div>}
+          <p className="text-xs text-muted-foreground">Fotos enviadas e geradas permanecem salvas, mesmo quando substituídas ou removidas do produto.</p>
+        </div>
         <div className="rounded-lg border border-border bg-secondary/20 p-3 space-y-2">
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
             <Sparkles className="h-3.5 w-3.5 text-primary" /> Gerar foto com IA
@@ -523,7 +657,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
               <p className="text-[11px] text-muted-foreground">O texto pode ser ajustado. A descrição e os ingredientes continuam sendo enviados separadamente para orientar a fidelidade da imagem.</p>
             </div>
             <Button type="button" variant="outline" aria-label="Configurar padrão fotográfico" title="Configurar padrão fotográfico" onClick={()=>setShowPhotoSettings(v=>!v)} className="h-9 px-3"><Settings2 className="h-4 w-4"/></Button>
-            <Button type="button" variant="outline" onClick={handleGenerateImage} disabled={generating || availableModels.length === 0} className="gap-2 h-9">
+            <Button data-tooltip="Gere uma foto do item com a IA conectada nesta unidade. A geração pode ter custo no provedor." type="button" variant="outline" onClick={handleGenerateImage} disabled={generating || availableModels.length === 0} className="gap-2 h-9">
               {generating ? <Flame className="h-4 w-4 animate-pulse text-primary" /> : <Sparkles className="h-4 w-4" />}
               {generating ? "Gerando..." : imageUrl ? "Gerar outra" : "Gerar"}
             </Button>
@@ -554,42 +688,41 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
         </div>
       </div>
 
-      {/* Ingredients */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Ingredientes</label>
-          <button onClick={addIngredient} className="text-xs text-primary hover:underline flex items-center gap-1">
-            <Plus className="h-3 w-3" /> Adicionar
-          </button>
-        </div>
-        {ingredients.map((ing, idx) => (
-          <div key={idx} className="flex items-center gap-2 rounded-lg bg-secondary/30 p-2">
-            <Input value={ing.name} onChange={(e) => updateIngredient(idx, "name", e.target.value)} placeholder="Nome" className="h-8 text-xs flex-1" />
-            <Input type="number" step="0.01" value={ing.extra_price ?? ""} onChange={(e) => updateIngredient(idx, "extra_price", e.target.value ? parseFloat(e.target.value) : null)} placeholder="Extra R$" className="h-8 text-xs w-20" />
-            <label className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
-              <input type="checkbox" checked={ing.removable} onChange={(e) => updateIngredient(idx, "removable", e.target.checked)} />
-              Removível
-            </label>
-            <button onClick={() => removeIngredient(idx)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-3.5 w-3.5" /></button>
-          </div>
-        ))}
+        <Button type="button" variant="outline" disabled={saving || documentPickerBusy}
+          onClick={() => void openDocumentPicker()}>Puxar ficha de Documentos</Button>
+        <p className="text-xs text-muted-foreground">Selecione uma ficha técnica já salva nesta unidade. A importação só será vinculada após salvar o item.</p>
+        <RecipeBuilder ref={recipeBuilderRef} menuItemId={item?.id}
+          menuItemName={name} disabled={saving || uploading || generating} />
       </div>
-
-      {/* Ficha técnica (recipe_items → raw_materials, separado dos ingredientes de exibição acima) */}
-      <RecipeBuilder ref={recipeBuilderRef} menuItemId={item?.id} />
+      {documentPickerOpen && <div role="dialog" aria-label="Puxar ficha técnica de Documentos"
+        className="space-y-3 rounded-lg border border-border bg-card p-3">
+        <p className="text-sm font-semibold">Fichas técnicas da unidade</p>
+        <select aria-label="Selecionar ficha técnica" value={selectedDocument}
+          onChange={event=>setSelectedDocument(event.target.value)}
+          className="w-full rounded-md border bg-background p-2 text-sm">
+          <option value="">Selecione um item</option>
+          {documentSheets.map(source=><option key={source.id} value={source.id}>{source.name}</option>)}
+        </select>
+        <div className="flex gap-2">
+          <Button type="button" disabled={!selectedDocument || documentPickerBusy}
+            onClick={()=>void applyDocumentSheet()}>Carregar ficha</Button>
+          <Button type="button" variant="outline" onClick={()=>setDocumentPickerOpen(false)}>Cancelar</Button>
+        </div>
+      </div>}
 
       {/* Variants */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Variantes</label>
-          <button onClick={addVariant} className="text-xs text-primary hover:underline flex items-center gap-1">
+          <button data-tooltip="Adicione uma variante que o cliente poderá escolher neste item." onClick={addVariant} className="text-xs text-primary hover:underline flex items-center gap-1">
             <Plus className="h-3 w-3" /> Adicionar
           </button>
         </div>
         {variants.map((v, idx) => (
           <div key={idx} className="flex items-center gap-2 rounded-lg bg-secondary/30 p-2">
             <Input value={v.name} onChange={(e) => setVariants(variants.map((vv, i) => i === idx ? { ...vv, name: e.target.value } : vv))} placeholder="Nome da variante" className="h-8 text-xs flex-1" />
-            <button onClick={() => removeVariant(idx)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-3.5 w-3.5" /></button>
+            <button data-tooltip="Remova esta variante do item em edição." aria-label="Remova esta variante do item em edição." onClick={() => removeVariant(idx)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-3.5 w-3.5" /></button>
           </div>
         ))}
       </div>
@@ -597,28 +730,36 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
       <div className="flex gap-2 pt-2">
         {isPublished ? (
           <>
-            <Button onClick={() => handleSave("published")} disabled={saving || uploading || generating} className="gap-2">
+            <Button data-tooltip="Salve o item e a ficha técnica e publique no cardápio." onClick={() => handleSave("published")} disabled={saving || uploading || generating} className="gap-2">
               <Save className="h-4 w-4" /> {saving ? "Salvando..." : "Salvar"}
             </Button>
-            <Button variant="outline" onClick={() => handleSave("draft")} disabled={saving || uploading || generating}>Voltar para rascunho</Button>
+            <Button data-tooltip="Salve o item e a ficha técnica como rascunho, fora do cardápio publicado." variant="outline" onClick={() => handleSave("draft")} disabled={saving || uploading || generating}>Voltar para rascunho</Button>
           </>
         ) : (
           <>
-            <Button variant="outline" onClick={() => handleSave("draft")} disabled={saving || uploading || generating} className="gap-2">
+            <Button data-tooltip="Salve o item e a ficha técnica como rascunho, fora do cardápio publicado." variant="outline" onClick={() => handleSave("draft")} disabled={saving || uploading || generating} className="gap-2">
               <Save className="h-4 w-4" /> {saving ? "Salvando..." : "Salvar rascunho"}
             </Button>
-            <Button onClick={() => handleSave("published")} disabled={saving || uploading || generating}>Publicar</Button>
+            <Button data-tooltip="Salve o item e a ficha técnica e publique no cardápio." onClick={() => handleSave("published")} disabled={saving || uploading || generating}>Publicar</Button>
           </>
         )}
-        <Button variant="outline" onClick={handleCancel} disabled={saving}>Cancelar</Button>
+        <Button data-tooltip="Feche a edição sem salvar as alterações pendentes." variant="outline" onClick={handleCancel} disabled={saving}>Cancelar</Button>
       </div>
     </div>
   );
 };
 
 // ── Menu Tab ──
-const MenuTab = () => {
-  const { menuItems, categories, loadingMenu, loadingCategories, saveMenuItem, deleteMenuItem, saveCategory, deleteCategory } = useAdminData();
+const UnitMenuTab = () => {
+  const { sectors } = usePrintSectors();
+  const { menuItems, categories, loadingMenu, loadingCategories, saveMenuItem, deleteMenuItem, saveCategory, deleteCategory, refreshMenu, refreshCategories } = useAdminData();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const importOpen = searchParams.get("import") === "1";
+  const setImportOpen = (value: boolean) => setSearchParams(previous => {
+    const next = new URLSearchParams(previous);
+    if (value) next.set("import", "1"); else next.delete("import");
+    return next;
+  });
   const [editingItem, setEditingItem] = useState<DbMenuItem | null>(null);
   const [creating, setCreating] = useState(false);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
@@ -645,20 +786,24 @@ const MenuTab = () => {
   return (
     <div className="space-y-4">
       <div className="flex gap-2 flex-wrap">
-        <Button onClick={() => setCreating(true)} className="gap-2">
+        <Button data-tooltip="Monte um novo item do cardápio e sua ficha técnica." onClick={() => setCreating(true)} className="gap-2">
           <Plus className="h-4 w-4" /> Novo Item
         </Button>
-        <Button variant="outline" onClick={() => setShowCategories(!showCategories)} className="gap-2">
+        <Button data-tooltip="Abra ou recolha o cadastro das categorias do cardápio." variant="outline" onClick={() => setShowCategories(!showCategories)} className="gap-2">
           <Tags className="h-4 w-4" /> Categorias ({categories.length})
         </Button>
+        <Button data-tooltip="Envie cardápios e fichas técnicas (PDF, foto, planilha). A IA monta um rascunho para você revisar e gravar." variant="outline" onClick={() => setImportOpen(true)} className="gap-2">
+          <Sparkles className="h-4 w-4" /> Importar com IA
+        </Button>
       </div>
+      <MenuImportDialog open={importOpen} onOpenChange={setImportOpen} onImported={() => { void refreshMenu(); void refreshCategories(); }} />
 
       {/* Categories Management */}
       {showCategories && (
         <div className="rounded-xl border border-border p-4 space-y-3 bg-muted/30">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-foreground">Gerenciar Categorias</h3>
-            <button onClick={() => setCreatingCategory(true)} className="text-xs text-primary hover:underline flex items-center gap-1">
+            <button data-tooltip="Cadastre uma categoria para organizar os itens do cardápio." onClick={() => setCreatingCategory(true)} className="text-xs text-primary hover:underline flex items-center gap-1">
               <Plus className="h-3 w-3" /> Nova
             </button>
           </div>
@@ -666,6 +811,7 @@ const MenuTab = () => {
           {(creatingCategory || editingCategory) && (
             <CategoryEditor
               category={editingCategory ?? undefined}
+              existingKeys={categories.map((c) => c.key)}
               onSave={saveCategory}
               onCancel={() => { setEditingCategory(null); setCreatingCategory(false); }}
             />
@@ -678,9 +824,9 @@ const MenuTab = () => {
                 <span className="flex-1 min-w-0 text-sm font-medium text-foreground truncate">{cat.label}</span>
                 <span className="hidden sm:inline text-xs text-muted-foreground truncate">{cat.key}</span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
-                  {cat.destination === "kitchen" ? "Cozinha" : "Bar"}
+                  {sectorName(sectors, cat.destination)}
                 </span>
-                <button onClick={() => setEditingCategory(cat)} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground">
+                <button data-tooltip="Edite o nome, o ícone e a cor desta categoria." aria-label="Edite o nome, o ícone e a cor desta categoria." onClick={() => setEditingCategory(cat)} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground">
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
                 <button
@@ -761,7 +907,7 @@ const MenuTab = () => {
                             </div>
                           )}
                           <div className="flex gap-2 pt-2">
-                            <Button size="sm" className="flex-1 gap-2" onClick={() => setEditingItem(item)}>
+                            <Button data-tooltip="Edite este item, seus ingredientes de exibição e sua ficha técnica." size="sm" className="flex-1 gap-2" onClick={() => setEditingItem(item)}>
                               <Pencil className="h-4 w-4" /> Editar / Ficha técnica
                             </Button>
                             <Button size="sm" variant="outline" aria-label={`Excluir ${item.name}`}
@@ -784,6 +930,11 @@ const MenuTab = () => {
       })}
     </div>
   );
+};
+
+const MenuTab = () => {
+  const { businessUnitId } = useCurrentBusinessUnit();
+  return <UnitMenuTab key={businessUnitId ?? 'no-unit'} />;
 };
 
 export default MenuTab;

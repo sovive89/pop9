@@ -1,3 +1,4 @@
+import { PAGE_HELP } from "@/lib/page-help";
 import { Database } from "lucide-react";
 
 /** Integração futura: nenhuma chamada de API é realizada nesta tela. */
@@ -5,7 +6,7 @@ export function Pop9HubTab() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Pop9 Hub</h2>
+        <h2 tabIndex={0} data-tooltip={PAGE_HELP["hub"]} className="text-lg font-semibold">Pop9 Hub</h2>
         <p className="text-sm text-muted-foreground">
           Integração do ERP com o ecossistema Pop9 Hub.
         </p>

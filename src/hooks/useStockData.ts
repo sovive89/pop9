@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { MenuRecipeDraft } from "@/lib/recipeDraft";
+import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 
@@ -16,6 +18,7 @@ export interface RawMaterial {
   minStock: number;
   averageCost: number;
   active: boolean;
+  isTheoretical: boolean;
 }
 
 export interface Lote {
@@ -37,6 +40,25 @@ export interface Lote {
   conteudoPorCaixa: number | null;
   statusValidade: "sem_validade" | "vencido" | "vence_em_breve" | "valido";
 }
+
+/**
+ * Payload aceito pela edição de lote de compra.
+ *
+ * Todos os valores são JSON nativo para que o contrato também seja válido
+ * como `p_data` da RPC, sem converter um Record genérico por cast. O caller
+ * da tela monta exatamente este formato.
+ */
+export type PurchaseLotEditData = {
+  quantidade_compra: number;
+  fator_conversao: number;
+  unidade_compra: string;
+  custo_total: number | null;
+  fornecedor_id: string | null;
+  validade: string | null;
+  numero_lote: string;
+  caixas: number | null;
+  conteudo_por_caixa: number | null;
+};
 
 export interface AlocacaoFefo {
   loteId: string | null; // null = sem lote rastreado suficiente (fallback, não bloqueia)
@@ -102,7 +124,7 @@ export interface Supplier {
   active: boolean;
 }
 
-export interface ProductionRecipeInput {
+export type ProductionRecipeInput = {
   id?: string;
   rawMaterialId: string;
   quantity: number;
@@ -143,513 +165,148 @@ export interface LowStockAlert {
   deficit: number;
 }
 
+type StockState = {
+  scope: string; rawMaterials: RawMaterial[]; suppliers: Supplier[]; recipes: ProductionRecipe[];
+  labels: ProductionLabel[]; alerts: LowStockAlert[]; lotes: Lote[]; error: boolean;
+};
+const EMPTY_STOCK: StockState = { scope: "", rawMaterials: [], suppliers: [], recipes: [], labels: [], alerts: [], lotes: [], error: false };
+const positive = (value: number) => Number.isFinite(value) && value > 0;
+const statusValidade = (validade: string | null): Lote["statusValidade"] => {
+  if (!validade) return "sem_validade";
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const dias = (new Date(`${validade}T00:00:00`).getTime() - today.getTime()) / 86_400_000;
+  return dias < 0 ? "vencido" : dias <= 3 ? "vence_em_breve" : "valido";
+};
+
 export const useStockData = () => {
   const { businessUnitId } = useCurrentBusinessUnit();
-  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [recipes, setRecipes] = useState<ProductionRecipe[]>([]);
-  const [labels, setLabels] = useState<ProductionLabel[]>([]);
-  const [alerts, setAlerts] = useState<LowStockAlert[]>([]);
-  const [lotes, setLotes] = useState<Lote[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const statusValidade = (validade: string | null): Lote["statusValidade"] => {
-    if (!validade) return "sem_validade";
-    const dias = (new Date(validade).getTime() - Date.now()) / 86_400_000;
-    if (dias < 0) return "vencido";
-    if (dias <= 3) return "vence_em_breve";
-    return "valido";
+  const epoch = useRef({ unit: businessUnitId, version: 0 });
+  if (epoch.current.unit !== businessUnitId) epoch.current = { unit: businessUnitId, version: epoch.current.version + 1 };
+  const scope = `${businessUnitId}:${epoch.current.version}`;
+  const current = useRef(scope); current.current = scope;
+  const generation = useRef(0);
+  const invalidateRequests = useCallback(() => { generation.current++; }, []);
+  const [state, setState] = useState<StockState>(EMPTY_STOCK);
+  const [busy, setBusy] = useState(false);
+  const visible = Boolean(businessUnitId) && state.scope === scope;
+  const stock = visible ? state : EMPTY_STOCK;
+  const requests = useRef(new Map<string, { payload: string; id: string }>());
+  const requestId = (kind: string, data: unknown) => {
+    const key = `${scope}:${kind}`, payload = JSON.stringify(data);
+    const previous = requests.current.get(key);
+    if (previous?.payload === payload) return previous.id;
+    const id = crypto.randomUUID(); requests.current.set(key, { payload, id }); return id;
   };
-
-  const loadRawMaterials = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("raw_materials")
-      .select("*")
-      .eq("active", true)
-      .order("name");
-    if (error) {
-      toast.error("Erro ao carregar insumos");
-      return;
-    }
-    setRawMaterials(
-      (data ?? []).map((r) => ({
-        id: r.id,
-        name: r.name,
-        unit: r.unit,
-        isProduced: r.is_produced,
-        // `tipo` é a coluna real do banco (enum item_tipo, existe desde
-        // 07/08 via uma migration nunca versionada aqui). is_produced é
-        // sempre derivado dela por trigger — nunca a fonte de verdade.
-        itemType: r.tipo as ItemType,
-        categoria: r.categoria ?? null,
-        currentStock: Number(r.current_stock),
-        minStock: Number(r.min_stock),
-        averageCost: Number(r.average_cost),
-        active: r.active,
-      }))
-    );
-  }, []);
-
-  const loadLotes = useCallback(async () => {
-    const { data: lotesData, error } = await supabase
-      .from("lotes")
-      .select("*")
-      .is("cancelado_em", null)
-      .order("validade", { ascending: true, nullsFirst: false });
-    if (error) {
-      // Tabela pode ainda não existir localmente se a migration
-      // 20260828041000 não tiver sido aplicada neste ambiente — falha
-      // silenciosa aqui não deve travar o resto do estoque.
-      return;
-    }
-
-    const { data: consumoData } = await supabase
-      .from("stock_movements")
-      .select("lote_id, quantity")
-      .eq("type", "saida")
-      .not("lote_id", "is", null);
-
-    // Consumo de produção (FEFO) fica registrado em production_batch_inputs,
-    // não em stock_movements — ver comentário em produceBatch. Coluna nova
-    // (migration 20260828050000): se ainda não foi aplicada, a query dá
-    // erro e simplesmente não soma nada, sem quebrar o resto dos lotes.
-    const { data: consumoProducaoData, error: consumoProducaoErr } = await supabase
-      .from("production_batch_inputs")
-      .select("lote_id, quantity_used")
-      .not("lote_id", "is", null);
-
-    const consumoPorLote = new Map<string, number>();
-    for (const m of consumoData ?? []) {
-      if (!m.lote_id) continue;
-      consumoPorLote.set(m.lote_id, (consumoPorLote.get(m.lote_id) ?? 0) + Number(m.quantity));
-    }
-    if (!consumoProducaoErr) {
-      for (const p of consumoProducaoData ?? []) {
-        if (!p.lote_id) continue;
-        consumoPorLote.set(p.lote_id, (consumoPorLote.get(p.lote_id) ?? 0) + Number(p.quantity_used));
-      }
-    }
-
-    setLotes(
-      (lotesData ?? []).map((l) => {
-        const entrada = Number(l.quantidade_entrada);
-        const consumido = consumoPorLote.get(l.id) ?? 0;
-        return {
-          id: l.id,
-          rawMaterialId: l.raw_material_id,
-          numeroLote: l.numero_lote,
-          origem: l.origem as Lote["origem"],
-          quantidadeEntrada: entrada,
-          quantidadeRestante: Math.max(0, entrada - consumido),
-          dataEntrada: l.data_entrada,
-          validade: l.validade,
-          fornecedorId: l.fornecedor_id,
-          precoUnitario: l.preco_unitario !== null ? Number(l.preco_unitario) : null,
-          unidadeCompra: (l as any).unidade_compra ?? null,
-          quantidadeCompra: (l as any).quantidade_compra == null ? null : Number((l as any).quantidade_compra),
-          fatorConversao: (l as any).fator_conversao == null ? null : Number((l as any).fator_conversao),
-          custoTotal: (l as any).custo_total == null ? null : Number((l as any).custo_total),
-          caixas: (l as any).caixas == null ? null : Number((l as any).caixas),
-          conteudoPorCaixa: (l as any).conteudo_por_caixa == null ? null : Number((l as any).conteudo_por_caixa),
-          statusValidade: statusValidade(l.validade),
-        };
-      })
-    );
-  }, []);
-
-  const loadSuppliers = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("suppliers")
-      .select("*")
-      .eq("active", true)
-      .order("name");
-    if (error) {
-      toast.error("Erro ao carregar fornecedores");
-      return;
-    }
-    setSuppliers(
-      (data ?? []).map((s) => ({
-        id: s.id,
-        name: s.name,
-        document: s.document,
-        phone: s.phone,
-        email: s.email,
-        active: s.active,
-      }))
-    );
-  }, []);
-
-  const loadRecipes = useCallback(async () => {
-    const { data: recipesData, error: rErr } = await supabase
-      .from("production_recipes")
-      .select("*")
-      .eq("active", true)
-      .order("name");
-    if (rErr) {
-      toast.error("Erro ao carregar receitas de produção");
-      return;
-    }
-    const { data: inputsData } = await supabase
-      .from("production_recipe_inputs")
-      .select("*");
-
-    setRecipes(
-      (recipesData ?? []).map((r) => ({
-        id: r.id,
-        name: r.name,
-        outputRawMaterialId: r.output_raw_material_id,
-        outputQuantity: Number(r.output_quantity),
-        shelfLifeDays: r.shelf_life_days,
-        tipo: (r.tipo as FichaTipo | null) ?? "producao",
-        perdaEsperada: r.perda_esperada !== null && r.perda_esperada !== undefined ? Number(r.perda_esperada) : null,
-        tempoProducao: r.tempo_producao ?? null,
-        active: r.active,
-        inputs: (inputsData ?? [])
-          .filter((i) => i.recipe_id === r.id)
-          .map((i) => ({ id: i.id, rawMaterialId: i.raw_material_id, quantity: Number(i.quantity) })),
-      }))
-    );
-  }, []);
-
-  const loadLabels = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("production_labels")
-      .select("*")
-      .order("produced_at", { ascending: false })
-      .limit(50);
-    if (error) {
-      toast.error("Erro ao carregar etiquetas de produção");
-      return;
-    }
-    setLabels(
-      (data ?? []).map((l) => ({
-        batchId: l.batch_id!,
-        batchCode: l.batch_code,
-        productName: l.product_name!,
-        unit: l.unit!,
-        quantityProduced: Number(l.quantity_produced),
-        producedAt: l.produced_at!,
-        expiresAt: l.expires_at,
-        statusValidade: l.status_validade as ProductionLabel["statusValidade"],
-      }))
-    );
-  }, []);
-
-  const loadAlerts = useCallback(async () => {
-    const { data, error } = await supabase.from("low_stock_alerts").select("*");
-    if (error) return;
-    setAlerts(
-      (data ?? []).map((a) => ({
-        id: a.id!,
-        name: a.name!,
-        unit: a.unit!,
-        currentStock: Number(a.current_stock),
-        minStock: Number(a.min_stock),
-        deficit: Number(a.deficit),
-      }))
-    );
-  }, []);
 
   const refreshAll = useCallback(async () => {
-    setLoading(true);
-    await Promise.all([loadRawMaterials(), loadSuppliers(), loadRecipes(), loadLabels(), loadAlerts(), loadLotes()]);
-    setLoading(false);
-  }, [loadRawMaterials, loadSuppliers, loadRecipes, loadLabels, loadAlerts, loadLotes]);
-
-  useEffect(() => {
-    refreshAll();
-  }, [refreshAll]);
-
-  const createRawMaterial = async (input: {
-    name: string;
-    unit: string;
-    itemType: ItemType;
-    minStock: number;
-    categoria?: string | null;
-  }) => {
-    if (!businessUnitId) {
-      toast.error("Nenhuma unidade ativa encontrada");
-      return false;
+    if (!businessUnitId || current.current !== scope) return;
+    const request = ++generation.current; setBusy(true);
+    try {
+      const [materials, suppliers, recipes, batches, lots] = await Promise.all([
+        supabase.from("raw_materials").select("*").eq("business_unit_id", businessUnitId).eq("active", true).order("name"),
+        supabase.from("suppliers").select("*").eq("business_unit_id", businessUnitId).eq("active", true).order("name"),
+        supabase.from("production_recipes").select("*").eq("business_unit_id", businessUnitId).eq("active", true).order("name"),
+        supabase.from("production_batches").select("id").eq("business_unit_id", businessUnitId).order("produced_at", { ascending: false }).limit(50),
+        supabase.from("stock_lot_balances").select("*").eq("business_unit_id", businessUnitId).is("cancelado_em", null).order("validade", { ascending: true, nullsFirst: false }),
+      ]);
+      const failure = [materials, suppliers, recipes, batches, lots].find(result => result.error);
+      if (failure?.error) throw failure.error;
+      if (current.current !== scope || request !== generation.current) return;
+      const recipeIds = (recipes.data ?? []).map(r => r.id), batchIds = (batches.data ?? []).map(b => b.id);
+      const [inputs, labels] = await Promise.all([
+        recipeIds.length ? supabase.from("production_recipe_inputs").select("*").in("recipe_id", recipeIds) : Promise.resolve({ data: [], error: null }),
+        batchIds.length ? supabase.from("production_labels").select("*").in("batch_id", batchIds).order("produced_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (inputs.error || labels.error) throw inputs.error ?? labels.error;
+      if (current.current !== scope || request !== generation.current) return;
+      const rawMaterials: RawMaterial[] = (materials.data ?? []).map(r => ({
+        id: r.id, name: r.name, unit: r.unit, isProduced: r.is_produced, itemType: r.tipo as ItemType,
+        categoria: r.categoria ?? null, currentStock: Number(r.current_stock), minStock: Number(r.min_stock), averageCost: Number(r.average_cost), active: r.active, isTheoretical: r.is_theoretical,
+      }));
+      setState({ scope, error: false, rawMaterials,
+        suppliers: (suppliers.data ?? []).map(s => ({ id: s.id, name: s.name, document: s.document, phone: s.phone, email: s.email, active: s.active })),
+        recipes: (recipes.data ?? []).map(r => ({
+          id: r.id, name: r.name, outputRawMaterialId: r.output_raw_material_id, outputQuantity: Number(r.output_quantity),
+          shelfLifeDays: r.shelf_life_days, tipo: (r.tipo as FichaTipo | null) ?? "producao", perdaEsperada: r.perda_esperada == null ? null : Number(r.perda_esperada),
+          tempoProducao: r.tempo_producao ?? null, active: r.active,
+          inputs: (inputs.data ?? []).filter(i => i.recipe_id === r.id).map(i => ({ id: i.id, rawMaterialId: i.raw_material_id, quantity: Number(i.quantity) })),
+        })),
+        labels: (labels.data ?? []).map(l => ({ batchId: l.batch_id!, batchCode: l.batch_code, productName: l.product_name!, unit: l.unit!,
+          quantityProduced: Number(l.quantity_produced), producedAt: l.produced_at!, expiresAt: l.expires_at, statusValidade: l.status_validade as ProductionLabel["statusValidade"] })),
+        alerts: rawMaterials.filter(r => r.currentStock < r.minStock).map(r => ({ id: r.id, name: r.name, unit: r.unit, currentStock: r.currentStock, minStock: r.minStock, deficit: r.minStock - r.currentStock })),
+        lotes: (lots.data ?? []).map(l => ({
+          id: l.id, rawMaterialId: l.raw_material_id, numeroLote: l.numero_lote, origem: l.origem as Lote["origem"],
+          quantidadeEntrada: Number(l.quantidade_entrada), quantidadeRestante: Math.max(0, Number(l.quantidade_restante)),
+          dataEntrada: l.data_entrada, validade: l.validade, fornecedorId: l.fornecedor_id, precoUnitario: l.preco_unitario == null ? null : Number(l.preco_unitario),
+          unidadeCompra: l.unidade_compra, quantidadeCompra: l.quantidade_compra == null ? null : Number(l.quantidade_compra),
+          fatorConversao: l.fator_conversao == null ? null : Number(l.fator_conversao), custoTotal: l.custo_total == null ? null : Number(l.custo_total),
+          caixas: l.caixas == null ? null : Number(l.caixas), conteudoPorCaixa: l.conteudo_por_caixa == null ? null : Number(l.conteudo_por_caixa), statusValidade: statusValidade(l.validade),
+        })),
+      });
+    } catch {
+      if (current.current === scope && request === generation.current) setState({ ...EMPTY_STOCK, scope, error: true });
+    } finally {
+      if (current.current === scope && request === generation.current) setBusy(false);
     }
-    const { error } = await supabase.from("raw_materials").insert({
-      name: input.name,
-      unit: input.unit,
-      tipo: input.itemType,
-      // is_produced não é enviado: o trigger trg_sync_raw_material_is_produced
-      // (migration 20260828041000) deriva a partir de tipo no insert.
-      min_stock: input.minStock,
-      categoria: input.categoria || null,
-      business_unit_id: businessUnitId,
-    });
-    if (error) {
-      toast.error("Erro ao criar insumo: " + error.message);
-      return false;
-    }
-    toast.success("Insumo criado");
-    await loadRawMaterials();
-    return true;
+  }, [businessUnitId, scope]);
+  useEffect(() => { void refreshAll(); return invalidateRequests; }, [refreshAll, invalidateRequests]);
+
+  const complete = async (result: { error: { message: string } | null }, message: string, kind?: string) => {
+    if (current.current !== scope) return false;
+    if (result.error) { toast.error("Não foi possível salvar: " + result.error.message); return false; }
+    if (kind) requests.current.delete(`${scope}:${kind}`);
+    toast.success(message); await refreshAll(); return true;
   };
+  const createRawMaterialRecord = async (input: { name: string; unit: string; itemType: ItemType; minStock: number; categoria?: string | null }) => {
+    if (!businessUnitId || current.current !== scope) return null;
+    if (!input.name.trim() || !input.unit.trim() || !Number.isFinite(input.minStock) || input.minStock < 0) { toast.error("Informe nome, unidade e estoque mínimo válido"); return null; }
+    const { data, error } = await supabase.from("raw_materials").insert({ name: input.name.trim(), unit: input.unit.trim(), tipo: input.itemType,
+      is_theoretical: true, min_stock: input.minStock, categoria: input.categoria || null, business_unit_id: businessUnitId }).select("id").single();
+    if (current.current !== scope) return null;
+    if (error || !data) { toast.error("Erro ao criar insumo: " + (error?.message ?? "ID não retornado")); return null; }
+    await complete({ error: null }, "Insumo criado"); return data.id;
+  };
+  const savePreparation = async (input: MenuRecipeDraft) => {
+    if (!businessUnitId || current.current !== scope) return null;
+    const { data, error } = await supabase.rpc("save_stock_preparation", { p_unit: businessUnitId, p_data: input });
+    if (!await complete({ error }, "Ficha de produção salva, sem movimentar estoque")) return null;
+    return data;
+  };
+  const updateRawMaterialCategory = async (id: string, categoria: string) => {
+    if (!businessUnitId || current.current !== scope) return false;
+    return complete(await supabase.from("raw_materials").update({ categoria }).eq("id", id).eq("business_unit_id", businessUnitId), "Categoria atualizada");
+  };
+  const createRawMaterial = async (input: Parameters<typeof createRawMaterialRecord>[0]) => Boolean(await createRawMaterialRecord(input));
 
   const registerPurchase = async (input: {
-    rawMaterialId: string;
-    quantity: number;
-    unitCost: number | null;
-    supplierId: string | null;
-    boxCount?: number;
-    unitsPerBox?: number;
-    purchaseUnit: string;
-    purchaseQuantity: number;
-    conversionFactor: number;
-    totalCost: number | null;
-    validade?: string | null; // YYYY-MM-DD, opcional — pilar "Lotes/Validade"
-    numeroLote?: string | null; // opcional; se vazio, gera um código
+    rawMaterialId: string; quantity: number; unitCost: number | null; supplierId: string | null; boxCount?: number; unitsPerBox?: number;
+    purchaseUnit: string; purchaseQuantity: number; conversionFactor: number; totalCost: number | null; validade?: string | null; numeroLote?: string | null; dataEntrada?: string;
   }) => {
-    if (!businessUnitId) {
-      toast.error("Nenhuma unidade ativa encontrada");
-      return false;
-    }
-    if (!(input.quantity > 0) || !(input.purchaseQuantity > 0) || !(input.conversionFactor > 0) ||
-        Math.abs(input.quantity - input.purchaseQuantity * input.conversionFactor) > 0.000001) {
-      toast.error("Quantidade e conversão do lote inconsistentes");
-      return false;
-    }
-    const { data: userData } = await supabase.auth.getUser();
-    const batchInfo =
-      input.boxCount && input.unitsPerBox
-        ? { caixas: input.boxCount, unidades_por_caixa: input.unitsPerBox }
-        : null;
-
-    // 1) Sempre cria o lote primeiro — é o que dá rastreabilidade e permite
-    // FEFO depois, tanto para entrada manual quanto (no futuro) XML/OCR:
-    // as três portas de compra convergem para esta mesma chamada.
-    const numeroLote =
-      input.numeroLote?.trim() ||
-      `L-${new Date().toISOString().replace(/[-:T.]/g, "").slice(0, 14)}`;
-
-    const { data: loteRow, error: loteErr } = await supabase
-      .from("lotes")
-      .insert({
-        raw_material_id: input.rawMaterialId,
-        numero_lote: numeroLote,
-        origem: "compra",
-        quantidade_entrada: input.quantity,
-        validade: input.validade || null,
-        fornecedor_id: input.supplierId,
-        preco_unitario: input.unitCost,
-        unidade_compra: input.purchaseUnit,
-        quantidade_compra: input.purchaseQuantity,
-        fator_conversao: input.conversionFactor,
-        custo_total: input.totalCost,
-        caixas: input.boxCount ?? null,
-        conteudo_por_caixa: input.unitsPerBox ?? null,
-        business_unit_id: businessUnitId,
-      } as any)
-      .select()
-      .single();
-
-    if (loteErr || !loteRow) {
-      toast.error("Não foi possível criar o lote. Verifique a migration de estoque: " + (loteErr?.message ?? ""));
-      return false;
-    }
-
-    const { error } = await supabase.from("stock_movements").insert({
-      raw_material_id: input.rawMaterialId,
-      type: "entrada",
-      quantity: input.quantity,
-      reason: "compra",
-      supplier_id: input.supplierId,
-      unit_cost: input.unitCost,
-      batch_info: batchInfo,
-      lote_id: loteRow.id,
-      created_by: userData.user?.id,
-      business_unit_id: businessUnitId,
-    });
-    if (error) {
-      await supabase.from("lotes").delete().eq("id", loteRow.id);
-      toast.error("Erro ao registrar entrada: " + error.message);
-      return false;
-    }
-    toast.success(`Entrada registrada — lote ${numeroLote}`);
-    await Promise.all([loadRawMaterials(), loadAlerts(), loadLotes()]);
-    return true;
+    if (!businessUnitId || current.current !== scope) return false;
+    if (![input.quantity, input.purchaseQuantity, input.conversionFactor].every(positive)
+      || Math.abs(input.quantity - input.purchaseQuantity * input.conversionFactor) > 0.000001) { toast.error("Quantidade e conversão do lote inconsistentes"); return false; }
+    if ([input.totalCost, input.unitCost].some(value => value != null && (!Number.isFinite(value) || value < 0))) { toast.error("Informe um custo válido ou deixe-o vazio"); return false; }
+    return complete(await supabase.rpc("register_stock_purchase", { p_unit: businessUnitId, p_lote_id: requestId("purchase", input), p_data: input }), "Entrada e lote registrados", "purchase");
   };
-
   const createSupplier = async (input: { name: string; document: string; phone: string; email: string }) => {
-    if (!businessUnitId) {
-      toast.error("Nenhuma unidade ativa encontrada");
-      return false;
-    }
-    const { error } = await supabase.from("suppliers").insert({ ...input, business_unit_id: businessUnitId });
-    if (error) {
-      toast.error("Erro ao criar fornecedor: " + error.message);
-      return false;
-    }
-    toast.success("Fornecedor criado");
-    await loadSuppliers();
-    return true;
+    if (!businessUnitId || current.current !== scope) return false;
+    return complete(await supabase.from("suppliers").insert({ ...input, business_unit_id: businessUnitId }), "Fornecedor criado");
   };
-
-  const createRecipe = async (input: {
-    name: string;
-    outputRawMaterialId: string;
-    outputQuantity: number;
-    shelfLifeDays: number | null;
-    tipo?: FichaTipo;
-    perdaEsperada?: number | null;
-    tempoProducao?: number | null;
-    inputs: ProductionRecipeInput[];
-  }) => {
-    if (!businessUnitId) {
-      toast.error("Nenhuma unidade ativa encontrada");
-      return false;
-    }
-    const { data: recipeRow, error: recipeErr } = await supabase
-      .from("production_recipes")
-      .insert({
-        name: input.name,
-        output_raw_material_id: input.outputRawMaterialId,
-        output_quantity: input.outputQuantity,
-        shelf_life_days: input.shelfLifeDays,
-        tipo: input.tipo ?? "producao",
-        perda_esperada: input.perdaEsperada ?? null,
-        tempo_producao: input.tempoProducao ?? null,
-        business_unit_id: businessUnitId,
-      })
-      .select()
-      .single();
-
-    if (recipeErr || !recipeRow) {
-      toast.error("Erro ao criar receita: " + recipeErr?.message);
-      return false;
-    }
-
-    if (input.inputs.length > 0) {
-      const { error: inputsErr } = await supabase.from("production_recipe_inputs").insert(
-        input.inputs.map((i) => ({
-          recipe_id: recipeRow.id,
-          raw_material_id: i.rawMaterialId,
-          quantity: i.quantity,
-        }))
-      );
-      if (inputsErr) {
-        toast.error("Erro ao salvar insumos da receita: " + inputsErr.message);
-        return false;
-      }
-    }
-
-    toast.success("Receita de produção criada");
-    await loadRecipes();
-    return true;
+  const createRecipe = async (input: { name: string; outputRawMaterialId: string; outputQuantity: number; shelfLifeDays: number | null;
+    tipo?: FichaTipo; perdaEsperada?: number | null; tempoProducao?: number | null; inputs: ProductionRecipeInput[] }) => {
+    if (!businessUnitId || current.current !== scope) return false;
+    if (!positive(input.outputQuantity) || !input.inputs.length || input.inputs.some(i => !positive(i.quantity))) { toast.error("Informe rendimento e insumos com quantidade maior que zero"); return false; }
+    return complete(await supabase.rpc("create_stock_recipe", { p_unit: businessUnitId, p_recipe_id: requestId("recipe", input), p_data: input }), "Receita de produção criada", "recipe");
   };
-
-  const produceBatch = async (input: {
-    recipeId: string;
-    quantityProduced: number;
-    notes: string;
-    inputsUsed: { rawMaterialId: string; quantityUsed: number }[];
-  }) => {
-    if (!businessUnitId) {
-      toast.error("Nenhuma unidade ativa encontrada");
-      return false;
-    }
-    const { data: userData } = await supabase.auth.getUser();
-
-    const { data: batchRow, error: batchErr } = await supabase
-      .from("production_batches")
-      .insert({
-        recipe_id: input.recipeId,
-        quantity_produced: input.quantityProduced,
-        notes: input.notes || null,
-        produced_by: userData.user?.id,
-        business_unit_id: businessUnitId,
-      })
-      .select()
-      .single();
-
-    if (batchErr || !batchRow) {
-      toast.error("Erro ao registrar produção: " + batchErr?.message);
-      return false;
-    }
-
-    if (input.inputsUsed.length > 0) {
-      // FEFO de verdade: em vez de uma linha só com a quantidade total,
-      // decide de qual(is) lote(s) ela sai (mais próximo do vencimento
-      // primeiro) e grava uma linha por lote consumido. Não toca em
-      // stock_movements — ver comentário na migration 20260828050000 sobre
-      // por que isso ficou de fora de propósito (risco de dupla contagem
-      // com um trigger que já existe e não conhecemos o código).
-      const rows = input.inputsUsed.flatMap((i) => {
-        const alocacao = alocarFefo(i.rawMaterialId, i.quantityUsed, lotes);
-        return alocacao.map((a) => ({
-          batch_id: batchRow.id,
-          raw_material_id: i.rawMaterialId,
-          quantity_used: a.quantidade,
-          lote_id: a.loteId,
-        }));
-      });
-      const { error: inputsErr } = await supabase.from("production_batch_inputs").insert(rows);
-      if (inputsErr) {
-        toast.error("Erro ao registrar consumo de insumos: " + inputsErr.message);
-        return false;
-      }
-    }
-
-    // Cria o lote de saída da produção (pilar "Lotes → Validade" do Stock
-    // Core). Não mexe em stock_movements/current_stock — isso já é feito por
-    // um trigger existente que não conhecemos o código exato (ver
-    // 1-PLANO.md). Esta escrita é só o registro de rastreabilidade do lote
-    // em si, então uma falha aqui não deve desfazer a produção já
-    // registrada — só avisa, como já fazemos em registerPurchase para
-    // ambientes sem a migration aplicada.
-    const recipe = recipes.find((r) => r.id === input.recipeId);
-    if (recipe) {
-      const { error: loteErr } = await supabase.from("lotes").insert({
-        raw_material_id: recipe.outputRawMaterialId,
-        numero_lote: batchRow.batch_code ?? `P-${batchRow.id.slice(0, 8)}`,
-        origem: "producao",
-        quantidade_entrada: input.quantityProduced,
-        validade: batchRow.expires_at ?? null,
-        receita_id: input.recipeId,
-        batch_id: batchRow.id,
-        business_unit_id: businessUnitId,
-      });
-      if (loteErr) {
-        console.warn("Não foi possível registrar o lote de produção (migration de lotes pendente?):", loteErr.message);
-      }
-    }
-
-    toast.success(`Lote produzido — etiqueta ${batchRow.batch_code}`);
-    await Promise.all([loadRawMaterials(), loadLabels(), loadAlerts(), loadLotes()]);
-    return true;
+  const produceBatch = async (input: { recipeId: string; quantityProduced: number; notes: string; inputsUsed: { rawMaterialId: string; quantityUsed: number }[] }) => {
+    if (!businessUnitId || current.current !== scope) return false;
+    if (!positive(input.quantityProduced) || !input.inputsUsed.length || input.inputsUsed.some(i => !positive(i.quantityUsed))) { toast.error("Informe quantidade produzida e todos os consumos maiores que zero"); return false; }
+    return complete(await supabase.rpc("produce_stock_batch", { p_unit: businessUnitId, p_batch_id: requestId("production", input), p_data: input }), "Produção, consumos e lote registrados", "production");
   };
-
-  const managePurchaseLot = async (loteId: string, action: "edit" | "cancel", data?: Record<string, unknown>) => {
-    const { error } = await supabase.rpc("manage_purchase_lot" as any, {
-      p_lote_id: loteId, p_action: action, p_data: data ?? {},
-    } as any);
-    if (error) {
-      toast.error("Não foi possível alterar o lote: " + error.message);
-      return false;
-    }
-    toast.success(action === "cancel" ? "Lote cancelado com histórico preservado" : "Lote atualizado");
-    await Promise.all([loadRawMaterials(), loadAlerts(), loadLotes()]);
-    return true;
+  const managePurchaseLot = async (loteId: string, action: "edit" | "cancel", data?: PurchaseLotEditData) => {
+    if (!businessUnitId || current.current !== scope) return false;
+    const args: Database["public"]["Functions"]["manage_purchase_lot"]["Args"] = { p_lote_id: loteId, p_action: action, ...(data === undefined ? {} : { p_data: data }) };
+    return complete(await supabase.rpc("manage_purchase_lot", args), action === "cancel" ? "Lote cancelado com histórico preservado" : "Lote atualizado");
   };
-
-  return {
-    rawMaterials,
-    suppliers,
-    recipes,
-    labels,
-    alerts,
-    lotes,
-    loading,
-    refreshAll,
-    createRawMaterial,
-    registerPurchase,
-    managePurchaseLot,
-    createSupplier,
-    createRecipe,
-    produceBatch,
-  };
+  return { ...stock, ready: visible && !state.error, loading: Boolean(businessUnitId) && (!visible || busy), refreshAll, createRawMaterial, createRawMaterialRecord, savePreparation, updateRawMaterialCategory, registerPurchase, createSupplier, createRecipe, produceBatch, managePurchaseLot };
 };

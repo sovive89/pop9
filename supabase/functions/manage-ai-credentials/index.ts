@@ -1,14 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { AI_PROVIDERS } from "../_shared/ai-providers.ts";
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, apikey, x-client-info, content-type", "Content-Type": "application/json" };
 const reply = (data: unknown, status=200) => new Response(JSON.stringify(data), { status, headers: CORS });
-const PROVIDERS = new Set(["openai","google","xai","bfl","ideogram","anthropic","stability"]);
+const PROVIDERS = new Set<string>(AI_PROVIDERS.map(provider=>provider.id));
 const ENDPOINTS: Record<string,string> = {
   openai:"https://api.openai.com/v1/models",
-  stability:"https://api.stability.ai/v1/user/balance",
   google:"https://generativelanguage.googleapis.com/v1beta/models",
-  xai:"https://api.x.ai/v1/models",
-  bfl:"https://api.bfl.ai/v1/get_result/invalid",
-  ideogram:"https://api.ideogram.ai/v1/ideogram-v3/generate",
   anthropic:"https://api.anthropic.com/v1/models?limit=1",
 };
 function base64(data:Uint8Array) { let s=""; for(const b of data) s+=String.fromCharCode(b); return btoa(s); }
@@ -30,12 +27,8 @@ async function testKey(provider:string,key:string) {
   const headers:Record<string,string>={};
   if(provider==="google") headers["x-goog-api-key"]=key;
   else if(provider==="anthropic") {headers["x-api-key"]=key;headers["anthropic-version"]="2023-06-01";}
-  else if(provider==="ideogram") headers["Api-Key"]=key;
-  else if(provider==="bfl") headers["x-key"]=key;
   else headers.Authorization="Bearer "+key;
   const response=await fetch(ENDPOINTS[provider],{headers,signal:AbortSignal.timeout(12000)});
-  // 400/404 for providers without a safe read-only credential probe are not proof of valid credentials.
-  if(provider==="bfl" || provider==="ideogram") throw new Error("Teste de credencial indisponível para este provedor; conexão não ativada");
   if(!response.ok) throw new Error("A API do provedor recusou a validação (HTTP "+response.status+")");
 }
 Deno.serve(async(req)=>{
@@ -66,7 +59,7 @@ Deno.serve(async(req)=>{
   const {data:role}=await admin.from("user_roles").select("id").eq("user_id",user.id).eq("role","admin").or(`business_unit_id.eq.${businessUnitId},business_unit_id.is.null`).limit(1).maybeSingle();
   if(!role)return reply({error:"Sem permissão de administrador nesta unidade"},403);
   if(action==="list"){
-   const {data,error}=await admin.from("ai_provider_credentials").select("provider,status,validated_at,updated_at").eq("business_unit_id",businessUnitId);
+   const {data,error}=await admin.from("ai_provider_credentials").select("provider,status,validated_at,updated_at").eq("business_unit_id",businessUnitId).in("provider",[...PROVIDERS]);
    if(error)throw error;
    return reply({connections:data});
   }

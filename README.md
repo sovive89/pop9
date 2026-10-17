@@ -170,3 +170,8 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+
+### WhatsApp, pedidos próprios e CRM por unidade
+
+O fluxo atualizado substitui a antiga configuração global de WhatsApp em `app_config`. Consulte [publicação e configuração Meta/PWA/CRM](docs/whatsapp-pwa-crm-rollout.md). Credenciais ficam no backend; a validação Meta e o recebimento de mensagens têm estados distintos. Os demais conectores do catálogo permanecem como pré-configurações, sem conexão simulada.

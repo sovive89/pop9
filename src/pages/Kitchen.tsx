@@ -1,6 +1,9 @@
+import { PAGE_HELP } from "@/lib/page-help";
+import {pickupLabel} from "@/utils/operationalLinks";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import type { QueryData } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +13,10 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import type { IngredientMod } from "@/utils/orders";
+import { parseIngredientMods } from "@/lib/kitchen-order-parsers";
 import { useAuth } from "@/hooks/useAuth";
+import { useUnitKds } from "@/hooks/useUnitKds";
+import { ChefHat } from "lucide-react";
 
 // ── Types ──
 interface KitchenItem {
@@ -35,10 +41,24 @@ interface KitchenOrder {
   items: KitchenItem[];
 }
 
+type AudioWindow = Window & {
+  AudioContext?: typeof AudioContext;
+  webkitAudioContext?: typeof AudioContext;
+};
+
+const createAudioContext = (): AudioContext | undefined => {
+  if (typeof window === "undefined") return undefined;
+  const win = window as AudioWindow;
+  const Ctor = win.AudioContext ?? win.webkitAudioContext;
+  if (!Ctor) return undefined;
+  return new Ctor();
+};
+
 // ── Sound Effects ──
 const playNewOrderSound = () => {
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const ctx = createAudioContext();
+    if (!ctx) return;
     const playTone = (freq: number, start: number, dur: number) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -58,7 +78,8 @@ const playNewOrderSound = () => {
 
 const playReadySound = () => {
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const ctx = createAudioContext();
+    if (!ctx) return;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = "sine";
@@ -157,6 +178,33 @@ const getFoodEmoji = (name: string): string => {
   if (n.includes("onion") || n.includes("cebola")) return "🧅";
   return "🍽️";
 };
+
+const kitchenOrderQuery = () => supabase.from("orders").select(
+  "id, status, placed_at, order_items(*), sessions!inner(table_number), session_clients!inner(name)",
+);
+type KitchenOrderRow = QueryData<ReturnType<typeof kitchenOrderQuery>>[number];
+
+const mapOrder = (o: KitchenOrderRow): KitchenOrder => ({
+  id: o.id,
+  status: o.status,
+  placedAt: new Date(o.placed_at),
+  startedAt: o.status === "preparing" ? new Date(o.placed_at) : undefined,
+  tableNumber: o.sessions?.table_number ?? 0,
+  clientName: o.session_clients?.name ?? "Cliente",
+  items: (o.order_items ?? [])
+    .filter((oi) => oi.destination === "kitchen")
+    .map((oi) => ({
+      id: oi.id,
+      menuItemId: oi.menu_item_id,
+      name: oi.name,
+      quantity: oi.quantity,
+      readyQuantity: oi.ready_quantity ?? 0,
+      observation: oi.observation ?? undefined,
+      ingredientMods: parseIngredientMods(oi.ingredient_mods),
+      claimedBy: oi.claimed_by ?? undefined,
+      claimedAt: oi.claimed_at ? new Date(oi.claimed_at) : undefined,
+    })),
+});
 
 // ── Kitchen Display ──
 const KitchenDisplay = () => {
@@ -268,32 +316,8 @@ const KitchenDisplay = () => {
     });
   }, []);
 
-  const mapOrder = (o: any): KitchenOrder => ({
-    id: o.id,
-    status: o.status,
-    placedAt: new Date(o.placed_at),
-    startedAt: o.status === "preparing" ? new Date(o.placed_at) : undefined,
-    tableNumber: o.sessions?.table_number ?? 0,
-    clientName: o.session_clients?.name ?? "Cliente",
-    items: (o.order_items ?? [])
-      .filter((oi: any) => oi.destination === "kitchen")
-      .map((oi: any) => ({
-        id: oi.id,
-        menuItemId: oi.menu_item_id,
-        name: oi.name,
-        quantity: oi.quantity,
-        readyQuantity: oi.ready_quantity ?? 0,
-        observation: oi.observation ?? undefined,
-        ingredientMods: (oi.ingredient_mods as IngredientMod[]) ?? undefined,
-        claimedBy: oi.claimed_by ?? undefined,
-        claimedAt: oi.claimed_at ? new Date(oi.claimed_at) : undefined,
-      })),
-  });
-
   const loadOrders = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("orders")
-      .select("id, status, placed_at, order_items(*), sessions!inner(table_number), session_clients!inner(name)")
+    const { data, error } = await kitchenOrderQuery()
       .in("status", ["pending", "preparing"])
       .order("placed_at", { ascending: true });
 
@@ -319,9 +343,7 @@ const KitchenDisplay = () => {
 
   const loadFinished = useCallback(async () => {
     const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-    const { data } = await supabase
-      .from("orders")
-      .select("id, status, placed_at, order_items(*), sessions!inner(table_number), session_clients!inner(name)")
+    const { data } = await kitchenOrderQuery()
       .eq("status", "ready")
       .gte("placed_at", thirtyMinAgo)
       .order("placed_at", { ascending: false })
@@ -408,12 +430,12 @@ const KitchenDisplay = () => {
     if (allReady) {
       await supabase.from("orders").update({ status: "ready", ready_at: new Date().toISOString() }).eq("id", order.id);
       if (soundEnabled) playReadySound();
-      toast.success(`✅ Pedido pronto! Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`);
+      toast.success(`✅ Pedido pronto! ${pickupLabel(order.tableNumber)} — ${order.clientName}`);
       supabase.functions.invoke("push-notify", {
         body: {
           action: "notify",
           title: `🔔 Pedido Pronto!`,
-          message: `Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`,
+          message: `${pickupLabel(order.tableNumber)} — ${order.clientName}`,
           url: "/",
         },
       }).catch(() => toast.error("Notificação não enviada"));
@@ -487,12 +509,12 @@ const KitchenDisplay = () => {
           }
           await supabase.from("orders").update({ status: "ready", ready_at: new Date().toISOString() }).eq("id", actionTargetId);
           if (soundEnabled) playReadySound();
-          toast.success(`✅ Pedido despachado! Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`);
+          toast.success(`✅ Pedido despachado! ${pickupLabel(order.tableNumber)} — ${order.clientName}`);
           supabase.functions.invoke("push-notify", {
             body: {
               action: "notify",
               title: `🔔 Pedido Pronto!`,
-              message: `Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`,
+              message: `${pickupLabel(order.tableNumber)} — ${order.clientName}`,
               url: "/",
             },
           }).catch(() => toast.error("Notificação não enviada"));
@@ -522,13 +544,13 @@ const KitchenDisplay = () => {
     }
     await supabase.from("orders").update({ status: "ready", ready_at: new Date().toISOString() }).eq("id", orderId);
     if (soundEnabled) playReadySound();
-    toast.success(`✅ Pedido pronto! Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`);
+    toast.success(`✅ Pedido pronto! ${pickupLabel(order.tableNumber)} — ${order.clientName}`);
     // Send push notification to attendants
     supabase.functions.invoke("push-notify", {
       body: {
         action: "notify",
         title: `🔔 Pedido Pronto!`,
-        message: `Mesa ${String(order.tableNumber).padStart(2, "0")} — ${order.clientName}`,
+        message: `${pickupLabel(order.tableNumber)} — ${order.clientName}`,
         url: "/",
       },
     }).catch(() => toast.error("Notificação não enviada"));
@@ -551,23 +573,23 @@ const KitchenDisplay = () => {
       <header className="sticky top-0 z-10 border-b border-white/10 bg-[hsl(220,20%,10%)]/90 backdrop-blur-md px-2 sm:px-3 py-1.5 sm:py-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-primary shrink-0 text-lg sm:text-xl" aria-hidden>🍳</span>
-          <h1 className="text-sm sm:text-xl font-bold leading-none truncate" style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: "0.05em" }}>
+          <h1 tabIndex={0} data-tooltip={PAGE_HELP["/cozinha"]} className="text-sm sm:text-xl font-bold leading-none truncate" style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: "0.05em" }}>
             Cozinha
           </h1>
           {(navRoles.attendant || navRoles.kitchen || navRoles.admin) && (
             <div className="hidden sm:flex items-center gap-1 ml-2 border-l border-white/20 pl-2">
               {navRoles.attendant && (
-                <Button variant="ghost" size="sm" className="h-8 text-xs text-white/60 hover:text-white gap-1" onClick={() => navigate("/")}>
+                <Button data-tooltip="Abra o atendimento e acompanhe mesas e pedidos." variant="ghost" size="sm" className="h-8 text-xs text-white/60 hover:text-white gap-1" onClick={() => navigate("/")}>
                   <span aria-hidden>📋</span> Atendimento
                 </Button>
               )}
               {navRoles.kitchen && (
-                <Button variant="ghost" size="sm" className="h-8 text-xs text-primary gap-1" onClick={() => navigate("/cozinha")}>
+                <Button data-tooltip="Abra a cozinha e acompanhe o preparo dos pedidos." variant="ghost" size="sm" className="h-8 text-xs text-primary gap-1" onClick={() => navigate("/cozinha")}>
                   <span aria-hidden>🍳</span> Cozinha
                 </Button>
               )}
               {navRoles.admin && (
-                <Button variant="ghost" size="sm" className="h-8 text-xs text-white/60 hover:text-white gap-1" onClick={() => navigate("/admin")}>
+                <Button data-tooltip="Abra a administração do estabelecimento." variant="ghost" size="sm" className="h-8 text-xs text-white/60 hover:text-white gap-1" onClick={() => navigate("/admin")}>
                   <span aria-hidden>⚙</span> Admin
                 </Button>
               )}
@@ -609,7 +631,7 @@ const KitchenDisplay = () => {
           </Button>
           {!isReadOnly && (
             <>
-              <Button
+              <Button data-tooltip="Pause ou retome o acompanhamento dos pedidos na cozinha."
                 variant={paused ? "default" : "destructive"}
                 size="sm"
                 className="gap-1 h-10 text-xs px-3 sm:text-xs sm:px-2.5 sm:h-8"
@@ -618,7 +640,7 @@ const KitchenDisplay = () => {
                 <span className="text-sm" aria-hidden>{paused ? "▶" : "⏸"}</span>
                 <span className="hidden sm:inline">{paused ? "Retomar" : "Pausar"}</span>
               </Button>
-              <Button
+              <Button data-tooltip="Abra a confirmação para cancelar todos os pedidos da cozinha."
                 variant="destructive"
                 size="sm"
                 className="gap-1 h-10 text-xs px-3 sm:text-xs sm:px-2.5 sm:h-8"
@@ -629,7 +651,7 @@ const KitchenDisplay = () => {
               </Button>
             </>
           )}
-          <Button
+          <Button data-tooltip="Encerre sua sessão e volte para a tela de entrada."
             variant="outline"
             size="sm"
             className="gap-1 h-10 text-xs px-3 sm:text-xs sm:px-2.5 sm:h-8 border-white/20 text-white/60 hover:text-white"
@@ -643,7 +665,7 @@ const KitchenDisplay = () => {
 
       {/* Mobile tab switcher */}
       <div className="flex sm:hidden border-b border-white/10">
-        <button
+        <button data-tooltip="Alterne entre os pedidos ativos e os pedidos prontos da cozinha."
           onClick={() => setKdsTab("ativos")}
           className={`flex-1 py-2 text-xs font-bold text-center transition-colors ${
             kdsTab === "ativos" ? "text-primary border-b-2 border-primary" : "text-white/40"
@@ -652,7 +674,7 @@ const KitchenDisplay = () => {
           <span className="inline mr-1 opacity-80" aria-hidden>🍳</span>
           Ativos ({orders.length})
         </button>
-        <button
+        <button data-tooltip="Alterne entre os pedidos ativos e os pedidos prontos da cozinha."
           onClick={() => setKdsTab("prontos")}
           className={`flex-1 py-2 text-xs font-bold text-center transition-colors ${
             kdsTab === "prontos" ? "text-green-400 border-b-2 border-green-400" : "text-white/40"
@@ -723,11 +745,11 @@ const KitchenDisplay = () => {
                       className={`rounded select-none transition-all duration-700 mb-0.5 text-white ${paused ? "grayscale-[40%]" : ""}`}
                     >
                       {/* Header — ultra-compact when collapsed */}
-                      <div className="flex items-center justify-between cursor-pointer" onClick={toggleExpand} style={{ minHeight: isExpanded ? undefined : "18px" }}>
+                      <div data-tooltip="Expanda ou recolha os detalhes dos pedidos desta mesa." className="flex items-center justify-between cursor-pointer" onClick={toggleExpand} style={{ minHeight: isExpanded ? undefined : "18px" }}>
                         <div className="flex items-center gap-0.5">
                           <span className={`font-black flex items-center gap-0.5 ${isExpanded ? "text-[12px]" : "text-[8px]"}`}>
                             <span className="opacity-80" aria-hidden>▦</span>
-                            M{String(group.tableNumber).padStart(2, "0")}
+                            {group.tableNumber<0 ? `R${Math.abs(group.tableNumber)}` : `M${String(group.tableNumber).padStart(2,"0")}`}
                           </span>
                           {isCritical && (
                             <span className="text-[7px] font-bold bg-white/25 px-0.5 rounded-full animate-pulse">⚠</span>
@@ -760,7 +782,7 @@ const KitchenDisplay = () => {
                             <div
                               key={order.id}
                               draggable={!paused && !isReadOnly}
-                              onDragStart={(e) => !isReadOnly && handleDragStart(e as any, order.id)}
+                              onDragStart={(e) => !isReadOnly && handleDragStart(e, order.id)}
                               onDoubleClick={() => !paused && !isReadOnly && order.status === "pending" && handleStartPreparing(order.id)}
                               className={`rounded-lg bg-black/10 p-2 transition-colors ${isReadOnly ? "" : "cursor-pointer hover:bg-black/15"}`}
                             >
@@ -842,7 +864,7 @@ const KitchenDisplay = () => {
                                             {item.readyQuantity}/{item.quantity}
                                           </span>
                                           {!allDone && !paused && !isReadOnly && !claimedByOther && (
-                                            <button
+                                            <button data-tooltip="Marque uma unidade deste item como pronta." aria-label="Marque uma unidade deste item como pronta."
                                               onClick={(e) => { e.stopPropagation(); handleItemReady(order, item); }}
                                               className="flex h-8 w-8 items-center justify-center rounded-full bg-white/25 hover:bg-white/40 active:scale-90 transition-all"
                                             >
@@ -924,7 +946,7 @@ const KitchenDisplay = () => {
                 };
 
                 return (
-                  <motion.div
+                  <motion.div data-tooltip="Expanda ou recolha os detalhes dos pedidos prontos."
                     key={`finished-table-${group.tableNumber}`}
                     initial={{ opacity: 0, x: 10 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -937,7 +959,7 @@ const KitchenDisplay = () => {
                       <div className="flex items-center gap-0.5">
                         <span className={`font-black flex items-center gap-0.5 text-emerald-300 ${isFinishedExpanded ? "text-[10px]" : "text-[8px]"}`}>
                           <span className="opacity-80" aria-hidden>▦</span>
-                          M{String(group.tableNumber).padStart(2, "0")}
+                          {group.tableNumber<0 ? `R${Math.abs(group.tableNumber)}` : `M${String(group.tableNumber).padStart(2,"0")}`}
                         </span>
                         <span className="text-[7px] bg-white/10 px-0.5 rounded-full leading-none">
                           {group.totalItems}
@@ -1011,7 +1033,7 @@ const KitchenDisplay = () => {
             <Button variant="outline" onClick={() => setActionDialogOpen(false)} className="border-white/20 text-white/60">
               Voltar
             </Button>
-            <Button 
+            <Button data-tooltip="Confirme a ação escolhida para os pedidos da cozinha."
               variant={actionType === "dispatch" ? "default" : "destructive"} 
               onClick={handleActionConfirm}
               className={actionType === "dispatch" ? "bg-emerald-600 hover:bg-emerald-700" : actionType === "pause" ? "bg-yellow-600 hover:bg-yellow-700" : ""}
@@ -1029,7 +1051,8 @@ const KitchenDisplay = () => {
 
 // ── Page wrapper with auth gate ──
 const KitchenPage = () => {
-  const { user, loading } = useAuth();
+  const { user, loading, signOut } = useAuth();
+  const kds = useUnitKds();
 
   if (loading) {
     return (
@@ -1042,6 +1065,26 @@ const KitchenPage = () => {
 
   if (!user) {
     return <Navigate to="/login" replace state={{ from: "/cozinha" }} />;
+  }
+
+  // Só monta a tela da cozinha (pedidos, realtime, som) depois de confirmar que o KDS está ativo.
+  if (!kds.loaded) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[hsl(220,20%,12%)] text-white">
+        <span className="h-12 w-12 animate-pulse text-primary text-4xl inline-block" aria-hidden>🔥</span>
+        <span className="text-sm text-white/70">Carregando...</span>
+      </div>
+    );
+  }
+  if (!kds.enabled) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[hsl(220,20%,12%)] p-6 text-center text-white">
+        <ChefHat className="h-12 w-12 text-white/40" aria-hidden />
+        <h1 className="text-xl font-semibold">KDS desativado nesta unidade</h1>
+        <p className="max-w-md text-sm text-white/70">A cozinha trabalha pela comanda impressa, que sai ao enviar o pedido. O atendimento confirma a entrega direto na lista de pedidos. Um administrador pode reativar em Admin → Unidades.</p>
+        <button type="button" className="text-sm underline text-white/70" onClick={() => void signOut()}>Sair</button>
+      </div>
+    );
   }
 
   return <KitchenDisplay />;

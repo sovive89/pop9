@@ -35,15 +35,15 @@ export function IntegrationCard({
         {isConnected && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7 -mr-1 -mt-1 text-muted-foreground">
+              <Button data-tooltip="Abra as ações e configurações desta integração." aria-label="Abra as ações e configurações desta integração." variant="ghost" size="icon" className="h-7 w-7 -mr-1 -mt-1 text-muted-foreground">
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onOpen}>
+              <DropdownMenuItem data-tooltip="Abra os detalhes e as configurações desta integração." onClick={onOpen}>
                 <Settings className="mr-2 h-4 w-4" /> Configurar
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={onDisconnect} className="text-destructive focus:text-destructive">
+              <DropdownMenuItem data-tooltip="Desconecte esta integração da unidade selecionada." onClick={onDisconnect} className="text-destructive focus:text-destructive">
                 <Unplug className="mr-2 h-4 w-4" /> Desconectar
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -60,10 +60,10 @@ export function IntegrationCard({
       </div>
 
       <div className="mt-auto flex items-center justify-between gap-2 pt-1">
-        <IntegrationStatusBadge status={status} />
+        {definition.implemented ? <IntegrationStatusBadge status={status} /> : <span className="text-xs text-muted-foreground">Em desenvolvimento</span>}
         {!isConnected && (
-          <Button size="sm" variant="outline" onClick={onOpen}>
-            {primaryActionLabel(definition.type)}
+          <Button data-tooltip="Abra os detalhes e as configurações desta integração." size="sm" variant="outline" onClick={onOpen}>
+            {definition.implemented ? primaryActionLabel(definition.type) : "Ver requisitos"}
           </Button>
         )}
       </div>
