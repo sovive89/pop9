@@ -4,7 +4,7 @@ export async function stockDatabase() {
   const db = new PGlite();
   await db.exec(`create role anon;create role authenticated;create schema auth;
     create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('test.user',true),'')::uuid$$;
-    create schema ops_private;create table business_units(id uuid primary key);
+    create schema ops_private;create table business_units(id uuid primary key,active boolean not null default true);
     insert into business_units values('00000000-0000-0000-0000-000000000001'),('00000000-0000-0000-0000-000000000002');create table user_roles(user_id uuid,role text,business_unit_id uuid);
     create function ops_private.staff(p_unit uuid,p_roles text[]) returns boolean language sql stable security definer set search_path='' as $$
       select exists(select 1 from public.user_roles where user_id=auth.uid() and business_unit_id=p_unit and role=any(p_roles))$$;
@@ -41,6 +41,7 @@ export async function stockDatabase() {
   // Replaying it must preserve the new tracked production behavior.
   await db.exec(readFileSync('supabase/migrations/20261013180000_fix_production_stock_movements_business_unit.sql','utf8'));
   await db.exec(readFileSync('supabase/migrations/20261013230958_produced_yield_and_material_units.sql','utf8'));
+  await db.exec(readFileSync('supabase/migrations/20261017130000_transfer_partial_stock_lot.sql','utf8'));
   await db.exec('create trigger cancel_stock after update on orders for each row execute function order_cancel_reverts_stock()');
   return db;
 }

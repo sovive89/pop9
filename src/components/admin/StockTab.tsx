@@ -14,6 +14,7 @@ import {
   Search,
   CalendarClock,
   Boxes,
+  ArrowLeftRight,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,7 @@ import { STOCK_UNITS } from "@/lib/stockUnits";
 import { STOCK_CATEGORIES, stockCategory, type StockCategory } from "@/lib/stockCategories";
 
 import StockOCRDialog, { type StockOCRItem } from "./StockOCRDialog";
+import StockTransferDialog from "./StockTransferDialog";
 
 type SubView = StockCategory | "produzidos" | "producao" | "fornecedores";
 
@@ -77,7 +79,7 @@ const FICHA_TIPO_OPTIONS: { value: FichaTipo; label: string }[] = [
 ];
 
 const UnitStockTab = () => {
-  const { businessUnitId } = useCurrentBusinessUnit();
+  const { businessUnitId, units } = useCurrentBusinessUnit();
   const [removingMaterial,setRemovingMaterial] = useState<string | null>(null);
   const {
     rawMaterials,
@@ -95,6 +97,7 @@ const UnitStockTab = () => {
     createSupplier,
     createRecipe,
     produceBatch,
+    transferStockLot,
     error: stockError,
   } = useStockData();
 
@@ -133,7 +136,15 @@ const UnitStockTab = () => {
   const [newSupplierOpen, setNewSupplierOpen] = useState(false);
   const [newRecipeOpen, setNewRecipeOpen] = useState(false);
   const [produceOpen, setProduceOpen] = useState(false);
+  const [transferLot, setTransferLot] = useState<import("@/hooks/useStockData").Lote | null>(null);
+  const [transferBusy, setTransferBusy] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const submitStockTransfer = async (input: { lotId: string; targetUnitId: string; targetRawMaterialId: string; quantity: number }) => {
+    setTransferBusy(true);
+    try { return await transferStockLot(input); }
+    finally { setTransferBusy(false); }
+  };
 
   const [matName, setMatName] = useState("");
   const [matUnit, setMatUnit] = useState("");
@@ -710,6 +721,13 @@ const UnitStockTab = () => {
                       }}>Excluir</Button>
                     </div>
                   )}
+                  {l.quantidadeRestante > 0 && l.statusValidade !== "vencido" && units.some(unit => unit.id !== businessUnitId) && (
+                    <div className="mb-2">
+                      <Button data-tooltip="Transfira uma quantidade deste lote para outra unidade, mantendo a validade e o histórico." size="sm" variant="outline" disabled={transferBusy || saving} onClick={() => setTransferLot(l)}>
+                        <ArrowLeftRight className="mr-1 h-3.5 w-3.5" /> Transferir parte
+                      </Button>
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     <CalendarClock className="h-3 w-3" />
                     Lote {l.numeroLote} · {l.origem === "compra" ? "compra" : "produção"} ·{" "}
@@ -1114,6 +1132,17 @@ const UnitStockTab = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <StockTransferDialog
+        open={Boolean(transferLot)}
+        lot={transferLot}
+        sourceMaterial={transferLot ? materialsById[transferLot.rawMaterialId] : undefined}
+        units={units}
+        sourceUnitId={businessUnitId}
+        busy={transferBusy}
+        onOpenChange={(open) => { if (!open && !transferBusy) setTransferLot(null); }}
+        onSubmit={submitStockTransfer}
+      />
     </div>
   );
 };

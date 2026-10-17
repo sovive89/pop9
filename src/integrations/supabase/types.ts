@@ -1965,6 +1965,10 @@ export type Database = {
       create_stock_recipe: { Args: { p_unit: string; p_recipe_id: string; p_data: Json }; Returns: string }
       register_stock_purchase: { Args: { p_unit: string; p_lote_id: string; p_data: Json }; Returns: string }
       produce_stock_batch: { Args: { p_unit: string; p_batch_id: string; p_data: Json }; Returns: string }
+      transfer_stock_lot: {
+        Args: { p_transfer_id: string; p_source_lote_id: string; p_target_unit_id: string; p_target_raw_material_id: string; p_quantity: number }
+        Returns: string
+      }
       set_unit_operation: { Args: { p_unit: string; p_open: boolean }; Returns: Json }
       // Requires deployment of the versioned purchase-lot migrations.
       manage_purchase_lot: {
