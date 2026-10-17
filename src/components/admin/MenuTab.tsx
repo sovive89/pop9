@@ -11,6 +11,7 @@ import type { MenuRecipeDraft } from "@/lib/recipeDraft";
 import RecipeBuilder, { type RecipeBuilderHandle } from "@/components/admin/RecipeBuilder";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import { useSearchParams } from "react-router-dom";
+import { useUnitModules } from "@/hooks/useUnitModules";
 import MenuImportDialog from "@/components/admin/MenuImportDialog";
 import MenuPrefixField from '@/components/admin/MenuPrefixField';
 import { useMenuSuggestionCatalog } from '@/hooks/useMenuSuggestionCatalog';
@@ -536,6 +537,7 @@ const MenuItemEditor = ({ item, classificationSchemaSupported, initialDraft, ini
   };
 
   // Sugestão por IA: usa o modo "criar ficha" e aproveita só o que estiver vazio.
+  const aiOn = useUnitModules().isEnabled("assistente");
   const [suggesting, setSuggesting] = useState(false);
   const suggestWithAi = async () => {
     if (!businessUnitId || !name.trim()) return;
@@ -650,12 +652,14 @@ const MenuItemEditor = ({ item, classificationSchemaSupported, initialDraft, ini
       </fieldset>
 
       <div className="flex flex-wrap items-center gap-2">
+{aiOn && (<>
         <Button type="button" size="sm" variant="outline" disabled={suggesting || !name.trim() || !businessUnitId}
           data-tooltip="A IA sugere descrição e ingredientes a partir do nome. Só preenche campos vazios; revise antes de salvar."
           onClick={() => void suggestWithAi()}>
           <Sparkles className="mr-1 h-4 w-4" />{suggesting ? "Sugerindo..." : "Sugerir com IA"}
         </Button>
         <span className="text-[11px] text-muted-foreground">Preenche descrição e ingredientes vazios a partir do nome.</span>
+</>)}
       </div>
 
       <div className="space-y-1">
@@ -711,6 +715,7 @@ const MenuItemEditor = ({ item, classificationSchemaSupported, initialDraft, ini
           </div>}
           <p className="text-xs text-muted-foreground">Fotos enviadas e geradas permanecem salvas, mesmo quando substituídas ou removidas do produto.</p>
         </div>
+{aiOn && (
         <div className="rounded-lg border border-border bg-secondary/20 p-3 space-y-2">
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
             <Sparkles className="h-3.5 w-3.5 text-primary" /> Gerar foto com IA
@@ -749,6 +754,7 @@ const MenuItemEditor = ({ item, classificationSchemaSupported, initialDraft, ini
           </div>
           <p className="text-[11px] text-muted-foreground">{availableModels.length === 0 ? "Conecte Google ou OpenAI em Integrações → Inteligência Artificial para habilitar a geração nesta unidade." : "Usa nome e descrição do item. Cada geração tem custo na sua conta de IA."}</p>
         </div>
+)}
       </div>
 
       <div className="space-y-2">
@@ -841,6 +847,7 @@ const UnitMenuTab = () => {
   const [editingItem, setEditingItem] = useState<DbMenuItem | null>(null);
   const [creating, setCreating] = useState(false);
   const [sourceChoiceOpen, setSourceChoiceOpen] = useState(false);
+  const aiOn = useUnitModules().isEnabled("assistente");
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantMode, setAssistantMode] = useState<"files" | "chat">("chat");
   const [initialAiDraft, setInitialAiDraft] = useState<MenuImportItem | null>(null);
@@ -878,9 +885,11 @@ const UnitMenuTab = () => {
         <Button data-tooltip="Abra ou recolha o cadastro das categorias do cardápio." variant="outline" onClick={() => setShowCategories(!showCategories)} className="gap-2">
           <Tags className="h-4 w-4" /> Categorias ({categories.length})
         </Button>
+{aiOn && (
         <Button data-tooltip="Envie cardápios e fichas técnicas (PDF, foto, planilha). A IA monta um rascunho para você revisar e gravar." variant="outline" onClick={() => setImportOpen(true)} className="gap-2">
           <Sparkles className="h-4 w-4" /> Importar com IA
         </Button>
+)}
       </div>
       <Dialog open={sourceChoiceOpen} onOpenChange={setSourceChoiceOpen}>
         <DialogContent className="sm:max-w-lg">
@@ -892,12 +901,16 @@ const UnitMenuTab = () => {
             <Button type="button" variant="outline" className="h-auto justify-start gap-3 p-4 text-left" onClick={() => { setInitialAiDraft(null); setInitialAiPhoto(null); setSourceChoiceOpen(false); setCreating(true); }}>
               <PenLine className="h-5 w-5 shrink-0 text-primary" /><span><strong className="block">Criar manualmente</strong><span className="text-xs text-muted-foreground">Preencha o item e a ficha técnica do zero.</span></span>
             </Button>
+{aiOn && (
             <Button type="button" variant="outline" className="h-auto justify-start gap-3 p-4 text-left" onClick={() => { setAssistantMode("files"); setSourceChoiceOpen(false); setAssistantOpen(true); }}>
               <FileUp className="h-5 w-5 shrink-0 text-primary" /><span><strong className="block">Usar documento ou foto</strong><span className="text-xs text-muted-foreground">PDF, JPG, PNG, WebP, Word, planilhas e arquivos de texto. A IA monta um rascunho e tenta recortar a foto do produto.</span></span>
             </Button>
+)}
+{aiOn && (
             <Button type="button" variant="outline" className="h-auto justify-start gap-3 p-4 text-left" onClick={() => { setAssistantMode("chat"); setSourceChoiceOpen(false); setAssistantOpen(true); }}>
               <MessageSquareText className="h-5 w-5 shrink-0 text-primary" /><span><strong className="block">Conversar com o assistente de IA</strong><span className="text-xs text-muted-foreground">Descreva o item, peça ajustes e revise nome, preço, ingredientes e ficha antes de gravar.</span></span>
             </Button>
+)}
           </div>
         </DialogContent>
       </Dialog>

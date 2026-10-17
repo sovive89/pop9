@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Banknote, ChefHat, Contact, FolderOpen, Gift, Printer } from "lucide-react";
+import { Banknote, ChefHat, Contact, FolderOpen, Gift, Printer, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { PAGE_HELP } from "@/lib/page-help";
@@ -14,6 +14,7 @@ const OPTIONAL: { key: OptionalModule; icon: typeof ChefHat; title: string; on: 
   { key: "combos", icon: Gift, title: "Combos", on: "Combos aparecem no menu do admin e no pedido do cliente.", off: "A seção Combos some do menu do admin. Os combos já criados continuam salvos." },
   { key: "crm", icon: Contact, title: "CRM", on: "Consulta e organização dos clientes.", off: "A seção CRM some do menu. Os cadastros continuam salvos." },
   { key: "documents", icon: FolderOpen, title: "Central de Documentos", on: "Exportação do cardápio, fichas e documentos.", off: "A seção Documentos some do menu. Os arquivos continuam salvos." },
+  { key: "assistente", icon: Sparkles, title: "Assistente de IA", on: "Sugestões, importação e geração de fotos e fichas com IA.", off: "Os botões de IA somem do cardápio e dos documentos. Nada já salvo é apagado." },
 ];
 
 type ModuleProps = {
