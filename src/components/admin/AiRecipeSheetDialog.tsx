@@ -56,7 +56,7 @@ export default function AiRecipeSheetDialog({ businessUnitId, open, onOpenChange
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" /> Criar ficha técnica com IA</DialogTitle>
           <DialogDescription>Descreva o item vendido, a bebida ou o preparo da casa. A IA sugere insumos e quantidades; você confere e baixa no formato das fichas.</DialogDescription>

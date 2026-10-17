@@ -400,7 +400,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-lg max-h-[90vh] rounded-2xl border border-border bg-card shadow-xl flex flex-col overflow-hidden"
+        className="w-full max-w-lg max-h-[90dvh] rounded-2xl border border-border bg-card shadow-xl flex flex-col overflow-hidden"
       >
         {/* Header */}
         <div className="p-5 pb-3 border-b border-border">
@@ -756,7 +756,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
                           />
                         </div>
                         {/* Quick denomination buttons */}
-                        <div className="grid grid-cols-4 gap-1.5">
+                        <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
                           {(() => {
                             const payVal = useCustomAmount && customAmount ? parseFloat(customAmount) : clientRem;
                             const denoms = [5, 10, 20, 50, 100, 200];

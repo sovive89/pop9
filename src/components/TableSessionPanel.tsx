@@ -204,7 +204,7 @@ const TableSessionPanel = ({
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-lg max-h-[90vh] rounded-2xl border border-border bg-card shadow-xl flex flex-col overflow-hidden"
+        className="w-full max-w-lg max-h-[90dvh] rounded-2xl border border-border bg-card shadow-xl flex flex-col overflow-hidden"
       >
         {/* Header */}
         <div className="p-6 pb-0">

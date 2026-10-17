@@ -25,6 +25,8 @@ export function GlobalTooltips() {
   useEffect(() => { refs.setReference(active?.target ?? null); }, [active, refs]);
 
   useEffect(() => {
+    // Em telas de toque (sem hover) o tooltip só atrapalha; mantém o aria/title nativos.
+    if (typeof window !== "undefined" && window.matchMedia?.("(hover: none)").matches) return;
     let hovered: Element | null = null;
     let focused: Element | null = null;
     let current: Element | null = null;
