@@ -10,6 +10,7 @@ import CloseAccountPanel from "@/components/CloseAccountPanel";
 import {Button} from "@/components/ui/button";
 import {getTableTotal,formatCurrency,statusLabels} from "@/utils/orders";
 import {pickupLabel} from "@/utils/operationalLinks";
+import CustomerOrderLink from "@/components/CustomerOrderLink";
 const minutesSince=(date:Date)=>Math.max(0,Math.floor((Date.now()-date.getTime())/60000));
 function playAlert(){
   try{const ctx=new AudioContext();[0,0.18,0.36].forEach((delay,i)=>{const osc=ctx.createOscillator();const gain=ctx.createGain();osc.connect(gain);gain.connect(ctx.destination);osc.frequency.value=i===2?1320:880;gain.gain.value=0.3;osc.start(ctx.currentTime+delay);osc.stop(ctx.currentTime+delay+0.15);});}catch{/* sem áudio */}
@@ -35,6 +36,7 @@ export default function OnlineOrders(){
   if(!businessUnitId)return <p>Selecione a unidade.</p>;
   const chosen=selected!==null ? sessions[selected] : null;
   return <main className="mx-auto max-w-5xl space-y-4 p-5"><div className="flex flex-wrap items-center justify-between gap-3"><h1 className="text-2xl font-semibold">Pedidos online — retirada</h1><div className="flex gap-3"><Link to="/">Atendimento</Link><Link to="/caixa">Caixa</Link><Button variant="outline" onClick={()=>void reload()}>Atualizar</Button></div></div><p className="text-sm text-muted-foreground">Pedidos do PWA entram na cozinha. Após a retirada, marque como entregue, registre o pagamento e solicite o encerramento ao Caixa.</p>
+    {!chosen && <CustomerOrderLink businessUnitId={businessUnitId}/>}
     {chosen ? <CloseAccountPanel key={chosen.session.dbId} tableId={selected!} sessionId={chosen.session.dbId} clients={chosen.session.clients} orders={chosen.orders} closureRequested={Boolean(chosen.session.closureRequestedAt)} serviceChargeEnabled={Boolean(chosen.session.serviceChargeEnabled)} onRequestCloseSession={charge=>requestCloseSession(selected!,charge)} onBack={()=>setSelected(null)}/> : <>
       {loading && <p role="status">Carregando pedidos...</p>}
       {Object.entries(sessions).filter(([number])=>Number(number)<0).map(([number,entry])=><section key={entry.session.dbId} className="space-y-3 rounded-xl border bg-card p-4"><div className="flex justify-between gap-2"><h2 className="font-semibold">{pickupLabel(Number(number))}</h2><span>{formatCurrency(getTableTotal(entry.orders))}</span></div><p>{entry.session.clients.map(client=>`${client.name}${client.phone ? ` · ${client.phone}` : ""}`).join(", ")}</p>
