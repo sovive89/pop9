@@ -22,9 +22,10 @@ create or replace function public.register_pwa_sms_send(p_unit uuid, p_phone tex
 returns void language plpgsql security definer set search_path = '' as $$
 begin
   if p_phone is null or p_phone !~ '^55[0-9]{10,11}$' then raise exception 'Celular inválido'; end if;
-  if not exists (select 1 from public.business_units where id = p_unit and active) then raise exception 'Pedidos online indisponíveis'; end if;
+  if not exists (select 1 from public.business_units where id = p_unit and active) then raise exception 'Pedidos online indisponíveis' using errcode = 'PT404'; end if;
   perform pg_advisory_xact_lock(hashtextextended('pwa-sms:' || p_unit::text, 0));
   -- Retenção: os limites olham só os últimos 15 min; não guardamos telefone por mais de 1 dia.
+  -- A limpeza é global (qualquer envio de qualquer unidade apaga os antigos de todas).
   delete from ops_private.pwa_sms_sends where sent_at < now() - interval '1 day';
   if exists (select 1 from ops_private.pwa_sms_sends where business_unit_id = p_unit and phone = p_phone and sent_at > now() - interval '30 seconds') then
     raise exception 'Aguarde 30 segundos para pedir outro código.'; end if;
@@ -69,10 +70,10 @@ begin
   if not ops_private.valid_full_name(v_name) then raise exception 'Informe nome e sobrenome'; end if;
   if v_email is not null and (length(v_email) > 120 or v_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$') then raise exception 'E-mail inválido'; end if;
   if v_bairro is not null and length(v_bairro) > 80 then raise exception 'Bairro muito longo'; end if;
-  if not exists (select 1 from public.business_units where id = p_unit and active) then raise exception 'Pedidos online indisponíveis'; end if;
+  if not exists (select 1 from public.business_units where id = p_unit and active) then raise exception 'Pedidos online indisponíveis' using errcode = 'PT404'; end if;
   if not exists (select 1 from public.integrations where business_unit_id = p_unit and provider = 'own-pwa'
                  and status = 'CONNECTED' and config->>'enabled' = 'true') then
-    raise exception 'Pedidos online indisponíveis'; end if;
+    raise exception 'Pedidos online indisponíveis' using errcode = 'PT404'; end if;
   insert into public.whatsapp_contacts (business_unit_id, phone, name, email, bairro, profile_consent_at, marketing_consent_at)
     values (p_unit, p_phone, v_name, v_email, v_bairro, now(), case when p_marketing then now() end)
     on conflict (business_unit_id, phone) do update set

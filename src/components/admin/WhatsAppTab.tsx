@@ -3,13 +3,13 @@ import {toast} from "sonner";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {useOperationalIntegrations,manageOperational,type OperationalConfig} from "@/hooks/useOperationalIntegrations";
-import {orderLink,whatsappLink} from "@/utils/operationalLinks";
+import {orderLink,publicOriginOrEmpty,whatsappLink} from "@/utils/operationalLinks";
 const emptyWhatsApp:OperationalConfig={phoneNumberId:"",businessPhone:"",graphVersion:"",botMode:"crm",botWebhookUrl:"",welcomeMessage:"Olá! Bem-vindo. Envie PEDIR para acessar nosso cardápio."};
 export function CopyLink({label,url,open=true}:{label:string;url:string;open?:boolean}){
   return <div className="space-y-1"><p className="text-sm font-medium">{label}</p><div className="flex flex-wrap gap-2"><Input aria-label={label} readOnly value={url} className="min-w-0 flex-1 font-mono text-xs"/><Button size="sm" variant="outline" disabled={!url} onClick={async()=>{try{await navigator.clipboard.writeText(url);toast.success("Link copiado");}catch{toast.error("Não foi possível copiar. Selecione o endereço.");}}}>Copiar</Button>{open && url && <a href={url} target="_blank" rel="noopener noreferrer" className="rounded-md border px-3 py-2 text-sm">Abrir</a>}</div></div>;
 }
 // Sem domínio próprio, o link de pedidos usa o mesmo endereço do ERP (ex.: https://pop9-lv5p.vercel.app).
-const thisOrigin=()=>{try{return window.location.origin.startsWith("https://") ? window.location.origin : "";}catch{return "";}};
+const thisOrigin=()=>{try{return publicOriginOrEmpty(window.location.origin);}catch{return "";}};
 export default function WhatsAppTab(){
   const {data,loading,error,businessUnitId,scope,reload}=useOperationalIntegrations();
   const [form,setForm]=useState({scope,whatsapp:emptyWhatsApp,pwa:{publicOrigin:"",enabled:false} as OperationalConfig});
