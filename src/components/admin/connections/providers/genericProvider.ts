@@ -13,8 +13,8 @@ export function createGenericProvider(slug: string): IntegrationProvider {
   return {
     slug,
 
-    async getStatus() {
-      const record = await getIntegrationRecord(slug);
+    async getStatus(businessUnitId) {
+      const record = await getIntegrationRecord(slug,businessUnitId);
       return { status: record?.status ?? "NOT_CONNECTED", config: record?.config ?? {} };
     },
 

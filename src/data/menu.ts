@@ -10,6 +10,7 @@ export interface MenuItem {
   price: number;
   category: MenuCategory;
   description?: string;
+  imageUrl?: string;
   ingredients?: Ingredient[];
   /** For drink sub-options (e.g. flavors) shown as read-only info */
   variants?: string[];

@@ -14,6 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      operation_periods: {
+        Row: { id: string; business_unit_id: string; opened_at: string; opened_by: string | null; closed_at: string | null; closed_by: string | null }
+        Insert: { id?: string; business_unit_id: string; opened_at?: string; opened_by?: string | null; closed_at?: string | null; closed_by?: string | null }
+        Update: { closed_at?: string | null; closed_by?: string | null }
+        Relationships: [{ foreignKeyName: "operation_periods_business_unit_id_fkey"; columns: ["business_unit_id"]; isOneToOne: false; referencedRelation: "business_units"; referencedColumns: ["id"] }]
+      }
+      // Verified in public schema; types only, never expose credential rows to UI.
+      ai_provider_credentials: {
+        Row: { id: string; business_unit_id: string; provider: string; encrypted_key: string; iv: string; status: string; validated_at: string | null; created_at: string; updated_at: string }
+        Insert: { id?: string; business_unit_id: string; provider: string; encrypted_key: string; iv: string; status?: string; validated_at?: string | null; created_at?: string; updated_at?: string }
+        Update: { provider?: string; encrypted_key?: string; iv?: string; status?: string; validated_at?: string | null; updated_at?: string }
+        Relationships: []
+      }
+      // Legacy migration 20260226214555. Absent in current production;
+      // useTableZones must retain its fallback when this relation is unavailable.
+      table_zones: {
+        Row: { id: string; key: string; label: string; icon: string; cols: number; table_start: number; table_end: number; sort_order: number; created_at: string; updated_at: string }
+        Insert: { id?: string; key: string; label: string; icon?: string; cols?: number; table_start: number; table_end: number; sort_order?: number; created_at?: string; updated_at?: string }
+        Update: { key?: string; label?: string; icon?: string; cols?: number; table_start?: number; table_end?: number; sort_order?: number; updated_at?: string }
+        Relationships: []
+      }
       app_config: {
         Row: {
           key: string
@@ -167,6 +188,24 @@ export type Database = {
           },
         ]
       }
+      integrations: {
+        Row: { id: string; business_unit_id: string | null; provider: string; status: string; config: Json; connected_at: string | null; last_sync_at: string | null; error_message: string | null; created_at: string; updated_at: string }
+        Insert: { id?: string; business_unit_id?: string | null; provider: string; status?: string; config?: Json; connected_at?: string | null; last_sync_at?: string | null; error_message?: string | null; created_at?: string; updated_at?: string }
+        Update: { business_unit_id?: string | null; provider?: string; status?: string; config?: Json; connected_at?: string | null; last_sync_at?: string | null; error_message?: string | null; updated_at?: string }
+        Relationships: []
+      }
+      whatsapp_contacts: {
+        Row: { id: string; business_unit_id: string; phone: string; name: string; email: string | null; bairro: string | null; preferences: string | null; profile_consent_at: string | null; marketing_consent_at: string | null; opted_out_at: string | null; message_count: number; first_seen_at: string; last_seen_at: string }
+        Insert: { business_unit_id: string; phone: string; name: string }
+        Update: { name?: string; email?: string | null; bairro?: string | null; preferences?: string | null }
+        Relationships: []
+      }
+      whatsapp_events: {
+        Row: { id: string; business_unit_id: string; contact_id: string; received_at: string; message_type: string; reply: string | null; bot_payload: Json | null; delivery_state: string; lease_until: string | null; error_code: string | null }
+        Insert: { id: string; business_unit_id: string; contact_id: string; message_type: string }
+        Update: { delivery_state?: string; lease_until?: string | null; error_code?: string | null }
+        Relationships: []
+      }
       customers: {
         Row: {
           bairro: string | null
@@ -211,6 +250,14 @@ export type Database = {
       }
       lotes: {
         Row: {
+          // Target contract of migration 20261008180000; not deployed by type edits.
+          unidade_compra: string | null
+          quantidade_compra: number | null
+          fator_conversao: number | null
+          custo_total: number | null
+          caixas: number | null
+          conteudo_por_caixa: number | null
+          cancelado_em: string | null
           batch_id: string | null
           business_unit_id: string
           created_at: string
@@ -226,6 +273,13 @@ export type Database = {
           validade: string | null
         }
         Insert: {
+          unidade_compra?: string | null
+          quantidade_compra?: number | null
+          fator_conversao?: number | null
+          custo_total?: number | null
+          caixas?: number | null
+          conteudo_por_caixa?: number | null
+          cancelado_em?: string | null
           batch_id?: string | null
           business_unit_id: string
           created_at?: string
@@ -241,6 +295,13 @@ export type Database = {
           validade?: string | null
         }
         Update: {
+          unidade_compra?: string | null
+          quantidade_compra?: number | null
+          fator_conversao?: number | null
+          custo_total?: number | null
+          caixas?: number | null
+          conteudo_por_caixa?: number | null
+          cancelado_em?: string | null
           batch_id?: string | null
           business_unit_id?: string
           created_at?: string
@@ -772,35 +833,65 @@ export type Database = {
       printer_configs: {
         Row: {
           active: boolean
+          auto_cut: boolean
+          copies: number
+          destinos: string[]
+          encoding: string
+          host: string | null
+          paper_width: number
+          port: number
+          transport: string
           business_unit_id: string | null
           connection_type: string
           created_at: string
           device_identifier: string | null
           gatilho: string
+          gatilhos: string[]
           id: string
           name: string
+          setor: string
           tipo: string
         }
         Insert: {
           active?: boolean
+          auto_cut?: boolean
+          copies?: number
+          destinos?: string[]
+          encoding?: string
+          host?: string | null
+          paper_width?: number
+          port?: number
+          transport?: string
           business_unit_id?: string | null
           connection_type?: string
           created_at?: string
           device_identifier?: string | null
           gatilho: string
+          gatilhos?: string[]
           id?: string
           name: string
+          setor?: string
           tipo: string
         }
         Update: {
           active?: boolean
+          auto_cut?: boolean
+          copies?: number
+          destinos?: string[]
+          encoding?: string
+          host?: string | null
+          paper_width?: number
+          port?: number
+          transport?: string
           business_unit_id?: string | null
           connection_type?: string
           created_at?: string
           device_identifier?: string | null
           gatilho?: string
+          gatilhos?: string[]
           id?: string
           name?: string
+          setor?: string
           tipo?: string
         }
         Relationships: [
@@ -1119,6 +1210,7 @@ export type Database = {
           current_stock: number
           id: string
           is_produced: boolean
+          is_theoretical: boolean
           min_stock: number
           name: string
           tipo: Database["public"]["Enums"]["item_tipo"]
@@ -1128,12 +1220,13 @@ export type Database = {
         Insert: {
           active?: boolean
           average_cost?: number
-          business_unit_id: string
+          business_unit_id?: string
           categoria?: string | null
           created_at?: string
           current_stock?: number
           id?: string
           is_produced?: boolean
+          is_theoretical?: boolean
           min_stock?: number
           name: string
           tipo?: Database["public"]["Enums"]["item_tipo"]
@@ -1149,6 +1242,7 @@ export type Database = {
           current_stock?: number
           id?: string
           is_produced?: boolean
+          is_theoretical?: boolean
           min_stock?: number
           name?: string
           tipo?: Database["public"]["Enums"]["item_tipo"]
@@ -1170,19 +1264,28 @@ export type Database = {
           id: string
           menu_item_id: string
           quantity: number
+          display_quantity: number | null
+          display_unit: string | null
           raw_material_id: string
+          transformacao: string
         }
         Insert: {
           id?: string
           menu_item_id: string
           quantity: number
+          display_quantity?: number | null
+          display_unit?: string | null
           raw_material_id: string
+          transformacao?: string
         }
         Update: {
           id?: string
           menu_item_id?: string
           quantity?: number
+          display_quantity?: number | null
+          display_unit?: string | null
           raw_material_id?: string
+          transformacao?: string
         }
         Relationships: [
           {
@@ -1215,9 +1318,58 @@ export type Database = {
           },
         ]
       }
+      technical_documents: {
+        Row: {
+          business_unit_id: string
+          created_at: string
+          document: Json
+          document_type: string
+          entity_id: string
+          entity_type: string
+          id: string
+          revision: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          business_unit_id: string
+          created_at?: string
+          document?: Json
+          document_type: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          revision?: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          business_unit_id?: string
+          created_at?: string
+          document?: Json
+          document_type?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          revision?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "technical_documents_business_unit_id_fkey"
+            columns: ["business_unit_id"]
+            isOneToOne: false
+            referencedRelation: "business_units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       session_clients: {
         Row: {
           added_at: string
+          faixa_etaria: string | null
+          origem_conhecimento: string | null
           bairro: string | null
           business_unit_id: string
           cep: string | null
@@ -1232,6 +1384,8 @@ export type Database = {
         }
         Insert: {
           added_at?: string
+          faixa_etaria?: string | null
+          origem_conhecimento?: string | null
           bairro?: string | null
           business_unit_id: string
           cep?: string | null
@@ -1246,6 +1400,8 @@ export type Database = {
         }
         Update: {
           added_at?: string
+          faixa_etaria?: string | null
+          origem_conhecimento?: string | null
           bairro?: string | null
           business_unit_id?: string
           cep?: string | null
@@ -1372,8 +1528,17 @@ export type Database = {
           },
         ]
       }
+      session_closures: {
+        Row: { id: string; session_id: string; business_unit_id: string; table_number: number; requested_by: string | null; closed_by: string; closed_by_name: string; closed_at: string; total_consumed: number; total_service: number; total_paid: number; unpaid_total: number; justification: string | null; snapshot: Json }
+        Insert: { id?: string; session_id: string; business_unit_id: string; table_number: number; requested_by?: string | null; closed_by: string; closed_by_name: string; closed_at?: string; total_consumed: number; total_service: number; total_paid: number; unpaid_total: number; justification?: string | null; snapshot: Json }
+        Update: { id?: string; snapshot?: Json }
+        Relationships: []
+      }
       sessions: {
         Row: {
+          closure_requested_at: string | null
+          closure_requested_by: string | null
+          service_charge_enabled: boolean
           business_unit_id: string
           created_at: string
           created_by: string | null
@@ -1386,6 +1551,9 @@ export type Database = {
           zone: string
         }
         Insert: {
+          closure_requested_at?: string | null
+          closure_requested_by?: string | null
+          service_charge_enabled?: boolean
           business_unit_id: string
           created_at?: string
           created_by?: string | null
@@ -1398,6 +1566,9 @@ export type Database = {
           zone: string
         }
         Update: {
+          closure_requested_at?: string | null
+          closure_requested_by?: string | null
+          service_charge_enabled?: boolean
           business_unit_id?: string
           created_at?: string
           created_by?: string | null
@@ -1690,6 +1861,10 @@ export type Database = {
       }
     }
     Views: {
+      stock_lot_balances: {
+        Row: Database["public"]["Tables"]["lotes"]["Row"] & { quantidade_restante: number }
+        Relationships: []
+      }
       client_balances: {
         Row: {
           client_id: string | null
@@ -1783,6 +1958,25 @@ export type Database = {
       }
     }
     Functions: {
+      repair_material_purchase_unit: { Args: { p_raw: string; p_display_unit: string }; Returns: string }
+      save_stock_preparation: { Args: { p_unit: string; p_data: Json }; Returns: string }
+      save_menu_item_with_recipe: { Args: { p_unit: string; p_item_id: string; p_data: Json }; Returns: string }
+      create_stock_recipe: { Args: { p_unit: string; p_recipe_id: string; p_data: Json }; Returns: string }
+      register_stock_purchase: { Args: { p_unit: string; p_lote_id: string; p_data: Json }; Returns: string }
+      produce_stock_batch: { Args: { p_unit: string; p_batch_id: string; p_data: Json }; Returns: string }
+      set_unit_operation: { Args: { p_unit: string; p_open: boolean }; Returns: Json }
+      // Requires deployment of the versioned purchase-lot migrations.
+      manage_purchase_lot: {
+        Args: { p_lote_id: string; p_action: string; p_data?: Json }
+        Returns: undefined
+      }
+      get_session_checkout: { Args: { p_session_id: string }; Returns: Json }
+      request_session_closure: { Args: { p_session_id: string; p_service_charge?: boolean }; Returns: Json }
+
+      create_dining_table: {
+        Args: { p_business_unit_id: string }
+        Returns: Database["public"]["Tables"]["dining_tables"]["Row"]
+      }
       current_user_id: { Args: never; Returns: string }
       has_role: {
         Args: {
@@ -1801,7 +1995,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "attendant" | "kitchen"
+      app_role: "admin" | "attendant" | "kitchen" | "cashier"
       item_tipo: "insumo" | "semiacabado" | "produto_acabado" | "revenda"
     }
     CompositeTypes: {
@@ -1930,7 +2124,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "attendant", "kitchen"],
+      app_role: ["admin", "attendant", "kitchen", "cashier"],
       item_tipo: ["insumo", "semiacabado", "produto_acabado", "revenda"],
     },
   },

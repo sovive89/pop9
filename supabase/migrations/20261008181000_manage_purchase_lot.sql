@@ -31,7 +31,8 @@ begin
     order by created_at limit 1 for update;
   if not found then raise exception 'Entrada original não localizada'; end if;
   select coalesce(sum(quantity),0) into v_consumed from public.stock_movements
-    where lote_id = p_lote_id and type = 'saida';
+    where lote_id = p_lote_id and type = 'saida'
+      and reference_type is distinct from 'lote_correcao';
   v_consumed := v_consumed + (
     select coalesce(sum(quantity_used),0) from public.production_batch_inputs where lote_id = p_lote_id
   );
@@ -98,6 +99,6 @@ begin
     where id=v_lote.raw_material_id and business_unit_id=v_lote.business_unit_id;
   end if;
 end;
-$;
+$$;
 revoke all on function public.manage_purchase_lot(uuid,text,jsonb) from public;
 grant execute on function public.manage_purchase_lot(uuid,text,jsonb) to authenticated;

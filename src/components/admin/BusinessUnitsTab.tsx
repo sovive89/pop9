@@ -1,3 +1,4 @@
+import { PAGE_HELP } from "@/lib/page-help";
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -130,7 +131,7 @@ const BusinessUnitsTab = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+        <h3 tabIndex={0} data-tooltip={PAGE_HELP["units"]} className="text-sm font-semibold text-foreground flex items-center gap-2">
           <Building2 className="h-4 w-4 text-primary" /> Unidades
         </h3>
         <Button size="sm" className="gap-2" onClick={() => setShowForm(!showForm)}>

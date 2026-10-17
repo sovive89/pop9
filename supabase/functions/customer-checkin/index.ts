@@ -11,6 +11,13 @@
 // garçom/admin autenticado (mesmo padrão de supabase/functions/reset-password).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  parseCheckinRequest,
+  type GetTableInfoRequest,
+  type RequestCodeRequest,
+  type StaffGenerateCodeRequest,
+  type VerifyCodeRequest,
+} from "../_shared/checkin-request.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -96,7 +103,7 @@ async function requireStaff(req: Request) {
   return { callerId };
 }
 
-async function getTableInfo(body: any) {
+async function getTableInfo(body: GetTableInfoRequest) {
   const supabase = admin();
   let tableNumber: number | null = body.table_number ?? null;
   let businessUnitId: string | null = null;
@@ -144,7 +151,7 @@ async function getTableInfo(body: any) {
   });
 }
 
-async function staffGenerateCode(req: Request, body: any) {
+async function staffGenerateCode(req: Request, body: StaffGenerateCodeRequest) {
   const auth = await requireStaff(req);
   if (auth.error) return auth.error;
 
@@ -181,7 +188,7 @@ async function staffGenerateCode(req: Request, body: any) {
   return json({ code, expires_at: expiresAt });
 }
 
-async function requestCode(body: any) {
+async function requestCode(body: RequestCodeRequest) {
   const { method, table_number: tableNumber, phone } = body;
   if (method !== "whatsapp_otp") return json({ error: "Método inválido" }, 400);
   if (!tableNumber) return json({ error: "Número da mesa é obrigatório" }, 400);
@@ -224,8 +231,15 @@ async function requestCode(body: any) {
   return json({ success: true });
 }
 
-async function verifyCode(body: any) {
-  const { method, table_number: tableNumber, code, phone, name } = body;
+async function verifyCode(body: VerifyCodeRequest) {
+  const { table_number: tableNumber, code } = body;
+  const method = body.method;
+  let phone: string | undefined;
+  let name: string | undefined;
+  if (body.method === "whatsapp_otp") {
+    phone = body.phone;
+    name = body.name;
+  }
   if (!method || !tableNumber || !code) {
     return json({ error: "Dados incompletos" }, 400);
   }
@@ -347,10 +361,19 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const body = await req.json();
-    const action = body.action;
+    let rawBody: unknown;
+    try {
+      rawBody = await req.json();
+    } catch {
+      return json({ error: "Dados inválidos" }, 400);
+    }
 
-    switch (action) {
+    const parsed = parseCheckinRequest(rawBody);
+    if (!parsed.ok) return json({ error: parsed.error }, 400);
+
+    const body = parsed.value;
+
+    switch (body.action) {
       case "get_table_info":
         return await getTableInfo(body);
       case "staff_generate_code":

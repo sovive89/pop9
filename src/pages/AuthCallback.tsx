@@ -1,3 +1,4 @@
+import { PAGE_HELP } from "@/lib/page-help";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -58,7 +59,7 @@ const AuthCallback = () => {
         <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-primary">
           <Flame className="h-10 w-10 text-primary-foreground" />
         </div>
-        <p className="text-muted-foreground">
+        <p tabIndex={0} data-tooltip={PAGE_HELP["/auth/callback"]} className="text-muted-foreground">
           {status === "loading" && "Confirmando..."}
           {status === "ok" && "Redirecionando..."}
           {status === "error" && "Algo deu errado. Redirecionando para o login."}

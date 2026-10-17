@@ -31,6 +31,9 @@ create table if not exists public.integrations (
 create index if not exists idx_integrations_status
   on public.integrations (status);
 
+-- Ensure row-level policies are enforced before any client accesses this table.
+alter table public.integrations enable row level security;
+
 create policy "Admin manages integrations"
   on public.integrations for all
   to authenticated

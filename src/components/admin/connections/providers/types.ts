@@ -31,20 +31,6 @@ export interface IntegrationProvider {
 
   disconnect(businessUnitId: string | null): Promise<void>;
 
-  /**
-   * Só existe em conectores do tipo IMPORT (Saipos, Colibri, Everest,
-   * Consumer, Linx, Sischef). Puxa cadastro e histórico do sistema de origem,
-   * normaliza e grava no modelo do Pipeline — uma operação pontual de
-   * migração, não uma sincronização contínua.
-   *
-   * Nenhum provider implementa isso ainda, e é de propósito: nenhum desses
-   * PDVs teve API/exportação oficial confirmada até agora. O contrato existe
-   * para que, quando as credenciais de um deles chegarem, o trabalho seja
-   * escrever um provider — sem mexer em tela nenhuma.
-   *
-   * Quem implementar deve devolver a contagem do que entrou por entidade
-   * (ex.: `{ customers: 812, products: 143 }`) para a tela conseguir dizer o
-   * que foi importado em vez de só "sucesso".
-   */
+  /** Optional import support for future providers with a verified data contract. */
   importData?(businessUnitId: string | null): Promise<{ imported: Record<string, number> }>;
 }

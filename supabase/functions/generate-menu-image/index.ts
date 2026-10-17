@@ -1,4 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { findGoogleImageData } from "../_shared/google-image-response.ts";
+import type { AssistantDatabase } from "../_shared/assistant-database.ts";
+import { parseOpenAIImageResponse } from "../_shared/openai-image-response.ts";
 const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Content-Type":"application/json"};
 const reply=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:cors});
 const models:Record<string,{provider:string,apiModel:string}>={
@@ -40,22 +43,20 @@ async function generate(provider:string,model:string,key:string,prompt:string){
    body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseModalities:["TEXT","IMAGE"]}}),
    signal:AbortSignal.timeout(90000)});
   if(!res.ok)throw Error(await apiError(res));
-  const body=await res.json();
-  const parts=body?.candidates?.[0]?.content?.parts??[];
-  const part=parts.find((p:any)=>p.inlineData?.data||p.inline_data?.data);
-  const data=part?.inlineData??part?.inline_data;
-  if(!data?.data)throw Error("Google não retornou imagem");
-  return decode(data.data,data.mimeType??data.mime_type??"image/png");
+  const body: unknown = await res.json();
+  const image = findGoogleImageData(body);
+  if(!image)throw Error("Google não retornou imagem");
+  return decode(image.data,image.mimeType??"image/png");
  }
  const res=await fetch("https://api.openai.com/v1/images/generations",{
   method:"POST",headers:{"Authorization":"Bearer "+key,"Content-Type":"application/json"},
   body:JSON.stringify({model,prompt,n:1,size:"1024x1024"}),
   signal:AbortSignal.timeout(90000)});
  if(!res.ok)throw Error(await apiError(res));
- const body=await res.json();
- const img=body?.data?.[0];
- if(img?.b64_json)return decode(img.b64_json);
- if(img?.url){
+ const body:unknown=await res.json();
+ const img=parseOpenAIImageResponse(body);
+ if(img&&'b64_json' in img)return decode(img.b64_json);
+ if(img&&'url' in img){
   const url=new URL(img.url);
   if(url.protocol!=="https:")throw Error("URL de imagem insegura");
   const download=await fetch(url,{signal:AbortSignal.timeout(30000)});
@@ -77,7 +78,7 @@ Deno.serve(async(req)=>{
   const client=createClient(url,anon,{global:{headers:{Authorization:auth}}});
   const {data:{user},error:authError}=await client.auth.getUser();
   if(authError||!user)return reply({error:"Não autenticado"},401);
-  const admin=createClient(url,service);
+  const admin=createClient<AssistantDatabase>(url,service);
   const body=await req.json();
   const businessUnitId=body.businessUnitId;
   if(typeof businessUnitId!=="string"||! /^[0-9a-f-]{36}$/i.test(businessUnitId))return reply({error:"Unidade inválida"},400);
@@ -86,10 +87,10 @@ Deno.serve(async(req)=>{
   if(!role)return reply({error:"Sem permissão de administrador nesta unidade"},403);
   const {data:connections,error:connectionError}=await admin.from("ai_provider_credentials").select("provider,status,encrypted_key,iv").eq("business_unit_id",businessUnitId).eq("status","connected");
   if(connectionError)throw connectionError;
-  if(body.action==="models")return reply({models:Object.entries(models).filter(([,m])=>connections?.some((c:any)=>c.provider===m.provider)).map(([id,m])=>({id,provider:m.provider}))});
+  if(body.action==="models")return reply({models:Object.entries(models).filter(([,m])=>connections?.some((c)=>c.provider===m.provider)).map(([id,m])=>({id,provider:m.provider}))});
   const config=models[body.model];
   if(!config)return reply({error:"Modelo não suportado para credenciais por tenant"},400);
-  const credential=connections?.find((c:any)=>c.provider===config.provider);
+  const credential=connections?.find((c)=>c.provider===config.provider);
   if(!credential)return reply({error:"Conecte a chave de "+config.provider+" na aba Integrações desta unidade"},409);
   if(typeof body.name!=="string"||!body.name.trim())return reply({error:"Informe o nome do produto"},400);
   const name=body.name.slice(0,120),description=typeof body.description==="string"?body.description.slice(0,500):"";
