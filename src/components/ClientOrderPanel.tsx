@@ -19,6 +19,7 @@ import {
   Pencil,
   Search,
   X,
+  Image as ImageIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -794,23 +795,38 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                           whileHover={{ scale: 1.03 }}
                           whileTap={{ scale: 0.97 }}
                           onClick={() => handleOpenDetail(item)}
-                          className={`relative text-left rounded-xl border-2 p-3 transition-colors ${
+                          className={`relative overflow-hidden text-left rounded-2xl border-2 transition-colors ${
                             qty > 0 ? "border-primary bg-primary/5" : "border-border bg-card hover:border-primary/30"
                           }`}
                         >
-                          {isSearching && (
-                            <span className="text-[9px] text-muted-foreground/70 uppercase tracking-wider">
-                              {categoryLabels[item.category]}
-                            </span>
+                          {item.imageUrl ? (
+                            <img src={item.imageUrl} alt={item.name} referrerPolicy="no-referrer" loading="lazy" className="aspect-[4/3] w-full object-cover" />
+                          ) : (
+                            <div aria-hidden className="flex aspect-[4/3] w-full items-center justify-center bg-muted text-muted-foreground">
+                              <ImageIcon className="h-8 w-8 opacity-50" />
+                            </div>
                           )}
-                          <p className="text-xs font-semibold text-foreground leading-tight line-clamp-2">
-                            {item.name}
-                          </p>
-                          <p className="text-sm font-bold text-primary mt-1.5">
-                            {formatCurrency(item.price)}
-                          </p>
+                          <div className="space-y-1 p-3">
+                            {isSearching && (
+                              <span className="text-[9px] text-muted-foreground/70 uppercase tracking-wider">
+                                {categoryLabels[item.category]}
+                              </span>
+                            )}
+                            <p className="text-sm font-extrabold uppercase text-foreground leading-tight line-clamp-2">
+                              {item.name}
+                            </p>
+                            <p className="text-base font-bold text-primary">
+                              {formatCurrency(item.price)}
+                            </p>
+                            {item.description && (
+                              <p className="text-xs text-muted-foreground leading-snug line-clamp-2">{item.description}</p>
+                            )}
+                            <span className="mt-1 flex h-9 w-full items-center justify-center rounded-full bg-primary text-[11px] font-bold uppercase tracking-wider text-primary-foreground">
+                              + Escolher e adicionar
+                            </span>
+                          </div>
                           {qty > 0 && (
-                            <span className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
+                            <span className="absolute top-2 right-2 h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center">
                               {qty}
                             </span>
                           )}
