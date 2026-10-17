@@ -3,8 +3,6 @@
 -- Reaproveita public.save_menu_item_with_recipe para cada unidade de destino; assim os
 -- insumos nascem como estoque TEÓRICO (is_theoretical=true) e SEM lotes, compras,
 -- movimentações ou saldos (ver resolve_recipe_material).
--- Itens/receitas de PRODUÇÃO (production_recipes, semiacabados) NÃO são exportados: a ficha
--- leva só o insumo (nome/unidade/quantidade); produção continua própria de cada unidade.
 -- Idempotente: se a unidade de destino já tem item com o mesmo nome e categoria, ele é
 -- atualizado em vez de duplicado. Falhas são isoladas por unidade (subtransação).
 create or replace function public.export_menu_item_to_units(p_source_unit uuid, p_item_id text, p_target_units uuid[])
@@ -26,7 +24,14 @@ begin
         'newUnit',coalesce(nullif(ri.display_unit,''),rm.unit),
         'stockUnit',case when rm.unit=any(v_units) then rm.unit end,
         'quantity',coalesce(ri.display_quantity,ri.quantity),
-        'transformation',ri.transformacao
+        'transformation',ri.transformacao,
+        'preparation',(select jsonb_build_object('outputUnit',rm.unit,'outputQuantity',pr.output_quantity,
+            'inputs',coalesce((select jsonb_agg(jsonb_strip_nulls(jsonb_build_object('newName',b.name,'newUnit',b.unit,
+                'stockUnit',case when b.unit=any(v_units) then b.unit end,'quantity',pi.quantity)))
+              from public.production_recipe_inputs pi join public.raw_materials b on b.id=pi.raw_material_id
+              where pi.recipe_id=pr.id),'[]'::jsonb))
+          from public.production_recipes pr where pr.output_raw_material_id=rm.id and pr.active
+            and pr.business_unit_id=p_source_unit order by pr.id limit 1)
       ))),'[]'::jsonb) into v_recipe
     from public.recipe_items ri join public.raw_materials rm on rm.id=ri.raw_material_id
     where ri.menu_item_id=p_item_id;
