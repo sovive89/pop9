@@ -82,6 +82,7 @@ Deno.serve(async (req) => {
     reserved = true;
 
     const attachments: { kind: 'pdf' | 'image'; mime: string; data: string; name: string }[] = [];
+    const cropSources: string[] = [];
     const texts: string[] = []; let total = 0;
     for (const [index, path] of paths.entries()) {
       const ext = path.split('.').pop()!.toLowerCase(); const type = EXT[ext];
@@ -90,7 +91,10 @@ Deno.serve(async (req) => {
       if (blob.size > MAX_FILE_BYTES) throw Error(`O arquivo ${index + 1} passa de 10 MB.`);
       total += blob.size; if (total > MAX_TOTAL_BYTES) throw Error('Os arquivos somam mais de 20 MB. Envie em partes.');
       const bytes = new Uint8Array(await blob.arrayBuffer());
-      if (type.kind === 'pdf' || type.kind === 'image') attachments.push({ kind: type.kind, mime: type.mime, data: toBase64(bytes), name: `arquivo-${index + 1}.${ext}` });
+      if (type.kind === 'pdf' || type.kind === 'image') {
+        attachments.push({ kind: type.kind, mime: type.mime, data: toBase64(bytes), name: `arquivo-${index + 1}.${ext}` });
+        if (type.kind === 'image') cropSources.push(`${cropSources.length + 1} = arquivo selecionado ${index + 1} (${ext})`);
+      }
       else if (type.kind === 'sheet') {
         const book = XLSX.read(bytes, { type: 'array' });
         const csv = book.SheetNames.slice(0, 10).map((name: string) => `# Planilha ${name}\n` + XLSX.utils.sheet_to_csv(book.Sheets[name])).join('\n');
@@ -102,8 +106,11 @@ Deno.serve(async (req) => {
       } else texts.push(`--- Arquivo ${index + 1} (texto) ---\n${new TextDecoder().decode(bytes).slice(0, MAX_TEXT)}`);
     }
     if (pastedText.trim()) texts.push(`--- Texto colado pelo administrador ---\n${pastedText}`);
+    const cropInstructions = create && cropSources.length
+      ? `\nImagens anexadas aptas a recorte (imageCrop.fileIndex usa estes índices, 1-based): ${cropSources.join('; ')}. PDFs não são recortáveis.\n`
+      : '';
     const userText = (create
-      ? `Unidade: ${business.name}. Crie a ficha técnica pedida abaixo.\n`
+      ? `Unidade: ${business.name}. Crie a ficha técnica pedida abaixo.${cropInstructions}`
       : `Unidade: ${business.name}. Extraia o cardápio e as fichas técnicas dos arquivos anexados e do conteúdo abaixo.\n`) +
       (texts.length ? `<conteudo>\n${texts.join('\n\n').slice(0, MAX_TEXT * 2)}\n</conteudo>` : '');
 

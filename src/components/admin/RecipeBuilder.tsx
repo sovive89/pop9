@@ -40,7 +40,7 @@ export interface RecipeBuilderHandle {
   importFromMenuItem: (sourceMenuItemId: string) => Promise<boolean>;
   getDraft: () => MenuRecipeDraft[];
 }
-interface Props { menuItemId?: string; menuItemName?: string; disabled?: boolean }
+interface Props { menuItemId?: string; menuItemName?: string; disabled?: boolean; initialDraft?: MenuRecipeDraft[] }
 
 const emptyInput = (): MaterialInput => ({
   key: crypto.randomUUID(), rawMaterialId: "", newName: "", newUnit: "un", stockUnit: "", quantity: "",
@@ -132,9 +132,10 @@ function MaterialFields({ input, materials, disabled, base = false, onChange, on
   </div>;
 }
 
-const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menuItemName, disabled = false }, ref) => {
+const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menuItemName, disabled = false, initialDraft }, ref) => {
   const { rawMaterials, recipes, ready: stockReady, savePreparation } = useStockData();
   const { businessUnitId } = useCurrentBusinessUnit();
+  const draftUnit = useRef(businessUnitId);
   const materialsRef = useRef(rawMaterials); materialsRef.current = rawMaterials;
   const recipesRef = useRef(recipes); recipesRef.current = recipes;
   const currentUnit = useRef(businessUnitId); currentUnit.current = businessUnitId;
@@ -155,8 +156,10 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
   }), []);
 
   useEffect(() => {
+    if (!menuItemId) {
+      setLoaded(true); setLoadError(""); return;
+    }
     setRows([]);
-    if (!menuItemId) { setLoaded(true); setLoadError(""); return; }
     if (!stockReady) { setLoaded(false); return; }
     let cancelled = false;
     setLoaded(false);
@@ -198,6 +201,27 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
       });
     return () => { cancelled = true; };
   }, [menuItemId, businessUnitId, retry, stockReady, preparationFields]);
+
+  useEffect(() => {
+    if (menuItemId) return;
+    if (draftUnit.current !== businessUnitId) {
+      draftUnit.current = businessUnitId;
+      setRows([]);
+      return;
+    }
+    setRows((initialDraft ?? []).map(line => ({
+      ...emptyRow(), rawMaterialId: line.rawMaterialId, newName: line.newName, newUnit: line.newUnit,
+      stockUnit: line.stockUnit ?? "", quantity: String(line.quantity),
+      transformation: line.transformation ?? (line.preparation ? "producao" : "desconto_direto"),
+      isProduced: Boolean(line.preparation), recipeCreated: false,
+      outputQuantity: String(line.preparation?.outputQuantity ?? 1),
+      outputUnit: line.preparation?.outputUnit ?? line.newUnit,
+      subInputs: (line.preparation?.inputs ?? []).map(input => ({
+        ...emptyInput(), rawMaterialId: input.rawMaterialId, newName: input.newName, newUnit: input.newUnit,
+        stockUnit: input.stockUnit ?? "", quantity: String(input.quantity),
+      })),
+    })));
+  }, [menuItemId, initialDraft, businessUnitId]);
 
   const updateRow = (key: string, patch: Partial<RecipeRow>) =>
     setRows(previous => previous.map(row => row.key === key ? { ...row, ...patch } : row));

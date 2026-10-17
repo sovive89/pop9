@@ -19,6 +19,7 @@ const MIME: Record<string, string> = {
 };
 export const MAX_FILES = 5;
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+export const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
 
 /** Valida tipo e tamanho antes do envio. Retorna a mensagem de erro, ou null se o arquivo é aceito. */
 export function checkImportFile(file: File): string | null {
