@@ -15,6 +15,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
+import RoleRoute from "@/components/RoleRoute";
 import Login from "./pages/Login";
 import AuthCallback from "./pages/AuthCallback";
 import RecuperarSenha from "./pages/RecuperarSenha";
@@ -71,10 +72,10 @@ const UnitRoutes = () => {
           <Route path="/recuperar-senha" element={<RecuperarSenha />} />
           <Route path="/cozinha" element={<Kitchen />} />
           <Route path="/impressao" element={<PrintStation />} />
-          <Route path="/admin" element={<Admin />} />
-          <Route path="/caixa" element={<Cashier />} />
+          <Route path="/admin" element={<RoleRoute roles={["admin"]}><Admin /></RoleRoute>} />
+          <Route path="/caixa" element={<RoleRoute roles={["admin", "cashier"]}><Cashier /></RoleRoute>} />
           <Route path="/inadimplencia" element={<Delinquency />} />
-          <Route path="/relatorios" element={<Reports />} />
+          <Route path="/relatorios" element={<RoleRoute roles={["admin"]}><Reports /></RoleRoute>} />
           <Route path="/pedir/:unit" element={<PublicOrder />} />
           <Route path="/pedidos-online" element={<OnlineOrders />} />
           <Route path="/m" element={<CustomerCheckin />} />

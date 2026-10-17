@@ -33,6 +33,9 @@ export default function OperationControl() {
     finally { locked.current = false;if (mounted.current) setBusy(false); }
   };
   if (!operation.businessUnitId) return null;
+  // Atendente/cozinha só precisam saber o estado: linha compacta em vez do card inteiro.
+  if (!rolesLoading && !rolesError && !canCashier && !operation.loading && !operation.error)
+    return <p className="flex items-center gap-2 text-xs text-muted-foreground" role="status"><Power className="h-3.5 w-3.5" />{operation.open ? `Operação aberta · ${operation.activeSessions} comanda(s)` : "Operação fechada — peça ao Administrador ou Caixa para iniciar."}</p>;
   return <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-3" aria-label="Controle da operação">
     <div><p className="flex items-center gap-2 text-sm font-semibold"><Power className="h-4 w-4" />{operation.loading ? "Consultando operação..." : operation.error ? "Estado da operação indisponível" : operation.open ? "Operação aberta" : "Operação fechada"}</p>
       {!operation.loading && !operation.error && <p className="mt-1 text-xs text-muted-foreground">{operation.open ? `${operation.activeSessions} comanda(s) aberta(s). Finalize todas no Caixa antes de fechar a operação.` : "Inicie a operação para receber novas mesas e pedidos."}</p>}
