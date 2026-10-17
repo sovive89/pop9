@@ -308,5 +308,14 @@ export const useStockData = () => {
     const args: Database["public"]["Functions"]["manage_purchase_lot"]["Args"] = { p_lote_id: loteId, p_action: action, ...(data === undefined ? {} : { p_data: data }) };
     return complete(await supabase.rpc("manage_purchase_lot", args), action === "cancel" ? "Lote cancelado com histórico preservado" : "Lote atualizado");
   };
-  return { ...stock, ready: visible && !state.error, loading: Boolean(businessUnitId) && (!visible || busy), refreshAll, createRawMaterial, createRawMaterialRecord, savePreparation, updateRawMaterialCategory, registerPurchase, createSupplier, createRecipe, produceBatch, managePurchaseLot };
+  const transferStockLot = async (input: { lotId: string; targetUnitId: string; targetRawMaterialId: string; quantity: number }) => {
+    if (!businessUnitId || current.current !== scope || !positive(input.quantity)) return false;
+    const args: Database["public"]["Functions"]["transfer_stock_lot"]["Args"] = {
+      p_transfer_id: requestId("transfer", input), p_source_lote_id: input.lotId,
+      p_target_unit_id: input.targetUnitId, p_target_raw_material_id: input.targetRawMaterialId,
+      p_quantity: input.quantity,
+    };
+    return complete(await supabase.rpc("transfer_stock_lot", args), "Transferência registrada; origem e destino atualizados", "transfer");
+  };
+  return { ...stock, ready: visible && !state.error, loading: Boolean(businessUnitId) && (!visible || busy), refreshAll, createRawMaterial, createRawMaterialRecord, savePreparation, updateRawMaterialCategory, registerPurchase, createSupplier, createRecipe, produceBatch, managePurchaseLot, transferStockLot };
 };
