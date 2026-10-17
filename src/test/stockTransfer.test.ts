@@ -32,6 +32,13 @@ beforeEach(async () => {
 afterAll(async () => { await db?.close(); });
 
 describe("transferência parcial de lote entre unidades", () => {
+  it("permite o motivo de transferência sem remover as restrições de motivos existentes", async () => {
+    await expect(db.query(`insert into stock_movements(raw_material_id,business_unit_id,type,quantity,reason,created_by)
+      values($1,$2,'entrada',1,'invalido',$3)`, [SOURCE,U,A])).rejects.toThrow("stock_movements_reason_check");
+    await transfer();
+    expect(await value("select count(*) from stock_movements where reason='transferencia'")).toBe(2);
+    expect(await value("select count(*) from stock_movements where reason='compra'")).toBe(1);
+  });
   it("baixa a origem e cria lote pareado no destino preservando quantidade, validade e custo", async () => {
     const result = await transfer();
     const targetLotId = result.rows[0].transfer_stock_lot;
