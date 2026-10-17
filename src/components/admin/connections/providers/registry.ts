@@ -1,4 +1,5 @@
 import { whatsappProvider } from "./whatsappProvider";
+import { twilioProvider } from "./twilioProvider";
 import { createGenericProvider } from "./genericProvider";
 import type { IntegrationProvider } from "./types";
 
@@ -14,6 +15,7 @@ import type { IntegrationProvider } from "./types";
  */
 const REAL_PROVIDERS: Record<string, IntegrationProvider> = {
   whatsapp: whatsappProvider,
+  twilio: twilioProvider,
 };
 
 const genericCache = new Map<string, IntegrationProvider>();

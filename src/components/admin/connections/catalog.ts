@@ -102,6 +102,23 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
     docsUrl: "https://developers.facebook.com/docs/whatsapp",
   },
   {
+    id: "twilio",
+    slug: "twilio",
+    domain: "twilio.com",
+    name: "Twilio (SMS)",
+    category: "COMMUNICATION",
+    type: "OPERATIONAL",
+    capabilities: caps({ WRITE: "YES" }),
+    description: "Código de verificação por SMS no PWA de pedidos do cliente.",
+    whatItEnables:
+      "Ao abrir o link de pedidos, o cliente confirma o celular com um código por SMS (Twilio Verify) antes do cadastro e do cardápio. As chaves ficam só no servidor (Supabase → Edge Functions → Secrets: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_VERIFY_SERVICE_SID).",
+    configType: "api_key",
+    simpleIconSlug: "twilio",
+    fields: [],
+    implemented: true,
+    docsUrl: "https://www.twilio.com/docs/verify",
+  },
+  {
     id: "mercadopago",
     slug: "mercadopago",
     domain: "mercadopago.com.br",

@@ -12,6 +12,10 @@ verify_jwt = false
 # Public menu; checkout requires an expiring, single-use WhatsApp token.
 verify_jwt = false
 
+[functions.pwa-verify]
+# Public: SMS verification for the ordering PWA (Twilio Verify, rate limited in the database).
+verify_jwt = false
+
 [functions.manage-operational-integrations]
 # Explicit getUser + unit-scoped admin authorization inside the function.
 verify_jwt = false

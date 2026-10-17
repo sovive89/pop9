@@ -25,10 +25,12 @@ Deno.serve(async(req:Request)=>{
       const {data:items,error}=await db.from("menu_items").select("id,name,description,price,image_url,category").eq("business_unit_id",unit).eq("active",true).eq("status","published").order("name");
       if(error)throw error;
       const {data:whatsapp}=await db.from("integrations").select("config").eq("provider","whatsapp").eq("business_unit_id",unit).maybeSingle();
+      // Código por SMS só quando o Twilio está conectado nesta unidade (Admin › Conexões).
+      const {data:sms}=await db.from("integrations").select("status,config").eq("provider","twilio").eq("business_unit_id",unit).maybeSingle();
       // Marca é opcional: sem a tabela ou sem registro, o cardápio segue com o visual padrão.
       const {data:brandRow,error:brandError}=await db.from("brand_settings").select("*").eq("business_unit_id",unit).maybeSingle();
       const brand=brandError ? EMPTY_BRAND : sanitizeBrand(brandRow,brandAssetPrefix(Deno.env.get("SUPABASE_URL") ?? "",unit));
-      return json({name:store.name,items,businessPhone:whatsapp?.config?.businessPhone ?? "",pickupOnly:true,brand,acceptingOrders:Boolean(period)});
+      return json({name:store.name,items,businessPhone:whatsapp?.config?.businessPhone ?? "",pickupOnly:true,brand,acceptingOrders:Boolean(period),smsVerification:sms?.status==="CONNECTED" && sms?.config?.enabled!==false && ["TWILIO_ACCOUNT_SID","TWILIO_AUTH_TOKEN","TWILIO_VERIFY_SERVICE_SID"].every(name=>Boolean(Deno.env.get(name)))});
     }
     if(body.action!=="submit")return json({error:"Ação inválida"},400);
     if(typeof body.access_token!=="string" || !/^[a-f0-9-]{72}$/.test(body.access_token))return json({error:"Valide seu número enviando PEDIR no WhatsApp da loja"},401);

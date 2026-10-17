@@ -16,7 +16,7 @@ Deno.serve(async(req:Request)=>{
     if(rolesError || !roles?.some(r=>r.business_unit_id===unit || r.business_unit_id===null))return json({error:"Apenas administrador desta unidade"},403);
     const {data:active}=await db.from("business_units").select("id").eq("id",unit).eq("active",true).maybeSingle();
     if(!active)return json({error:"Unidade inativa"},400);
-    const secretNames=["WHATSAPP_VERIFY_TOKEN","WHATSAPP_APP_SECRET","WHATSAPP_ACCESS_TOKEN","BOT_ATENDIMENTO_WEBHOOK","BOT_WEBHOOK_SECRET"];
+    const secretNames=["WHATSAPP_VERIFY_TOKEN","WHATSAPP_APP_SECRET","WHATSAPP_ACCESS_TOKEN","BOT_ATENDIMENTO_WEBHOOK","BOT_WEBHOOK_SECRET","TWILIO_ACCOUNT_SID","TWILIO_AUTH_TOKEN","TWILIO_VERIFY_SERVICE_SID"];
     const {data:capabilities,error:capabilitiesError}=await db.rpc("operational_readiness");if(capabilitiesError)throw capabilitiesError;
     const readiness=Object.fromEntries(secretNames.map(name=>[name,Boolean(Deno.env.get(name))]));
     readiness.CASHIER_WORKFLOW=capabilities?.cashierWorkflow===true;
@@ -25,7 +25,7 @@ Deno.serve(async(req:Request)=>{
       if(error)throw error;return json({readiness,integrations:data,webhookUrl:`${Deno.env.get("SUPABASE_URL")}/functions/v1/whatsapp-webhook`});
     }
     const provider=body.provider;
-    const allowedProviders=["whatsapp","own-pwa","ifood","99food","rappi","aiqfome","instagram","telegram","goomer","mercadopago","stone","cielo","rede","pagbank","asaas","pix","omie","bling","contaazul","focusnfe","nuvemfiscal","shopify","woocommerce","mercadolivre","shopee","webhook","rest-api","graphql","http"];
+    const allowedProviders=["whatsapp","own-pwa","twilio","ifood","99food","rappi","aiqfome","instagram","telegram","goomer","mercadopago","stone","cielo","rede","pagbank","asaas","pix","omie","bling","contaazul","focusnfe","nuvemfiscal","shopify","woocommerce","mercadolivre","shopee","webhook","rest-api","graphql","http"];
     if(!allowedProviders.includes(provider))return json({error:"Provedor não reconhecido"},400);
     if(body.action==="disconnect"){
       const {error}=await db.from("integrations").update({status:"DISCONNECTED",connected_at:null,updated_at:new Date().toISOString()}).eq("provider",provider).eq("business_unit_id",unit);
@@ -41,6 +41,18 @@ Deno.serve(async(req:Request)=>{
         else if(!["CONNECTING","CONNECTED"].includes(whatsapp?.status) || !whatsapp?.config?.businessPhone || !secretNames.slice(0,3).every(name=>readiness[name])){config.enabled=false;issue="PWA pré-configurado. Valide o WhatsApp na Meta antes de receber pedidos.";}
       }
       status=config.enabled ? "CONNECTED" : "NOT_CONNECTED";
+    }else if(provider==="twilio"){
+      // SMS de verificação do PWA. As três chaves ficam só nos Secrets do servidor; aqui só o liga/desliga por unidade.
+      config={enabled:input.enabled!==false,channel:"sms"};
+      const missing=["TWILIO_ACCOUNT_SID","TWILIO_AUTH_TOKEN","TWILIO_VERIFY_SERVICE_SID"].filter(name=>!readiness[name]);
+      if(!config.enabled)status="NOT_CONNECTED";
+      else if(missing.length)issue=`Cadastre no Supabase (Edge Functions → Secrets): ${missing.join(", ")}.`;
+      else if(body.action==="connect"){
+        const service=encodeURIComponent(Deno.env.get("TWILIO_VERIFY_SERVICE_SID") ?? "");
+        const response=await fetch(`https://verify.twilio.com/v2/Services/${service}`,{headers:{Authorization:`Basic ${btoa(`${Deno.env.get("TWILIO_ACCOUNT_SID")}:${Deno.env.get("TWILIO_AUTH_TOKEN")}`)}`},signal:AbortSignal.timeout(10000)});
+        if(!response.ok){status="ERROR";issue="O Twilio recusou as credenciais ou o serviço Verify. Confira as três chaves.";}
+        else{status="CONNECTED";config.validatedAt=new Date().toISOString();}
+      }
     }else if(provider!=="whatsapp"){
       if(body.action==="connect")return json({error:"Conector ainda não implementado; salve uma pré-configuração"},409);
       config={};
@@ -70,6 +82,6 @@ Deno.serve(async(req:Request)=>{
       }
     }
     const {error}=await db.from("integrations").upsert({business_unit_id:unit,provider,config,status,error_message:issue,connected_at:null,updated_at:new Date().toISOString()},{onConflict:"business_unit_id,provider"});
-    if(error)throw error;return json({success:!issue || (provider!=="whatsapp" && body.action==="save"),message:issue ?? (status==="CONNECTING" ? "Meta validada. Assine o evento messages no aplicativo e receba uma mensagem para confirmar o webhook." : "Configuração salva."),status,readiness});
+    if(error)throw error;return json({success:!issue || (provider!=="whatsapp" && body.action==="save"),message:issue ?? (status==="CONNECTING" ? "Meta validada. Assine o evento messages no aplicativo e receba uma mensagem para confirmar o webhook." : status==="CONNECTED" && provider==="twilio" ? "Twilio validado. O código por SMS está ativo no PWA desta unidade." : "Configuração salva."),status,readiness});
   }catch(error){return json({error:error instanceof Error ? error.message : "Falha ao configurar integração"},400);}
 });

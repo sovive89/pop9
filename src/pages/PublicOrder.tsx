@@ -5,6 +5,10 @@ import {formatCurrency} from "@/utils/orders";
 import {whatsappLink} from "@/utils/operationalLinks";
 import {SOCIALS} from "@/lib/brandSocial";
 import {brandCssVars,type Brand} from "../../supabase/functions/_shared/brand";
+import PhoneVerification from "@/components/pwa/PhoneVerification";
+import CustomerProfileForm from "@/components/pwa/CustomerProfileForm";
+import type {PwaProfile} from "@/lib/pwaVerifyApi";
+const EMPTY_PROFILE:PwaProfile={name:null,email:null,bairro:null,marketing:false};
 type Item={id:string;name:string;description:string|null;price:number;image_url:string|null;category:string};
 type Store={name:string;items:Item[];businessPhone:string;brand?:Brand;acceptingOrders?:boolean};
 type Confirmation={orderId:string;pickupNumber:number;total:number};
@@ -21,11 +25,14 @@ export default function PublicOrder(){
   const [note,setNote]=useState("");const [busy,setBusy]=useState(false);const [confirmation,setConfirmation]=useState<{scope:string;data:Confirmation}|null>(null);
   const [submitError,setSubmitError]=useState("");const token=useRef<{scope:string;value:string}>({scope:"",value:""});
   const [attempt,setAttempt]=useState(0);
+  // Fluxo por SMS: 1) confirmar celular 2) formulário (pendente até salvar) 3) cardápio.
+  const [sms,setSms]=useState<{scope:string;pending:boolean;profile:PwaProfile}|null>(null);
   useEffect(()=>{
     let cancelled=false;setNote("");setBusy(false);setSubmitError("");
     const params=new URLSearchParams(window.location.search);const value=params.get("acesso");
     try{if(value && /^[a-f0-9-]{72}$/.test(value))sessionStorage.setItem(`pop9:order-access:${scope}`,value);token.current={scope,value:sessionStorage.getItem(`pop9:order-access:${scope}`) ?? ""};}catch{token.current={scope,value:value ?? ""};}
     if(params.has("acesso")){params.delete("acesso");window.history.replaceState(null,"",`${window.location.pathname}${params.size ? `?${params}` : ""}`);}
+    try{setSms(!value && sessionStorage.getItem(`pop9:order-sms:${scope}`)==="pending" ? {scope,pending:true,profile:EMPTY_PROFILE} : null);}catch{setSms(null);}
     setLoaded({scope,store:null,error:"",loading:true});
     void publicOrderApi({action:"menu",business_unit_id:scope}).then(store=>{if(!cancelled)setLoaded({scope,store,error:"",loading:false});}).catch(error=>{if(!cancelled)setLoaded({scope,store:null,error:error.message,loading:false});});
     let manifest=document.querySelector<HTMLLinkElement>('link[rel="manifest"]');const original=manifest?.href;const created=!manifest;
@@ -44,6 +51,16 @@ export default function PublicOrder(){
     finally{if(current.current===requested)setBusy(false);}
   };
   const whatsapp=whatsappLink(store?.businessPhone ?? "");
+  const smsEnabled=Boolean((store as {smsVerification?:boolean}|null)?.smsVerification);
+  const smsState=sms?.scope===scope ? sms : null;
+  const onVerified=(value:string,profile:PwaProfile)=>{try{sessionStorage.setItem(`pop9:order-access:${scope}`,value);sessionStorage.setItem(`pop9:order-sms:${scope}`,"pending");}catch{/* sem sessionStorage: segue só na memória */}token.current={scope,value};setSms({scope,pending:true,profile});};
+  const onProfile=(profile:PwaProfile)=>{try{sessionStorage.removeItem(`pop9:order-sms:${scope}`);}catch{/* idem */}setSms({scope,pending:false,profile});};
+  const restart=()=>{try{sessionStorage.removeItem(`pop9:order-access:${scope}`);sessionStorage.removeItem(`pop9:order-sms:${scope}`);}catch{/* idem */}token.current={scope,value:""};setConfirmation(null);setSms(null);setSubmitError("");};
+  // Com SMS ativo, o cardápio só aparece depois de confirmar o celular e preencher o nome.
+  const gate=store && smsEnabled && store.acceptingOrders!==false
+    ? (!token.current.value ? <PhoneVerification unit={scope} whatsappUrl={whatsapp} onVerified={onVerified}/>
+      : smsState?.pending ? <CustomerProfileForm unit={scope} token={token.current.value} initial={smsState.profile} onDone={onProfile}/> : null)
+    : null;
   // Marca da loja: só cores e imagens validadas, aplicadas apenas neste contêiner.
   // A função public-order já validou cada campo com a URL do Storage do servidor
   // (que pode ser um domínio próprio diferente de VITE_SUPABASE_URL).
@@ -54,11 +71,13 @@ export default function PublicOrder(){
     {brand && (brand.about_text || brand.address || brand.opening_hours) && <section aria-label="Sobre a loja" className="space-y-2 rounded-xl border bg-card p-4 text-sm">{brand.about_text && <p className="whitespace-pre-line">{brand.about_text}</p>}{brand.address && <p className="whitespace-pre-line"><strong>Endereço:</strong> {brand.address}</p>}{brand.opening_hours && <p className="whitespace-pre-line"><strong>Horário:</strong> {brand.opening_hours}</p>}</section>}
     {(loaded.scope!==scope || loaded.loading) && <p role="status">Carregando cardápio...</p>}
     {loaded.scope===scope && loaded.error && <div role="alert"><p>{loaded.error}</p><Button onClick={()=>setAttempt(v=>v+1)}>Tentar novamente</Button></div>}
-    {confirmation?.scope===scope ? <section className="space-y-3 rounded-xl border bg-card p-5"><h2 className="text-xl font-semibold">Pedido recebido — retirada #{confirmation.data.pickupNumber}</h2><p>Total: {formatCurrency(confirmation.data.total)}. O atendimento confirmará o preparo e a retirada.</p><p className="text-sm text-muted-foreground">Este link já foi usado. Para outro pedido, envie PEDIR novamente no WhatsApp.</p>{whatsapp && <a className="inline-block rounded-md bg-primary p-3 text-primary-foreground" href={whatsapp} rel="noreferrer">Falar com a loja</a>}</section> : store && <>
+    {confirmation?.scope===scope ? <section className="space-y-3 rounded-xl border bg-card p-5"><h2 className="text-xl font-semibold">Pedido recebido — retirada #{confirmation.data.pickupNumber}</h2><p>Total: {formatCurrency(confirmation.data.total)}. O atendimento confirmará o preparo e a retirada.</p>{smsEnabled ? <Button variant="outline" onClick={restart}>Fazer outro pedido</Button> : <p className="text-sm text-muted-foreground">Este link já foi usado. Para outro pedido, envie PEDIR novamente no WhatsApp.</p>}{whatsapp && <a className="inline-block rounded-md bg-primary p-3 text-primary-foreground" href={whatsapp} rel="noreferrer">Falar com a loja</a>}</section> : store && <>
       {store.acceptingOrders===false && <section role="status" className="space-y-2 rounded-xl border bg-card p-4"><h2 className="font-semibold">Loja fechada para novos pedidos</h2><p className="text-sm text-muted-foreground">Você pode consultar o cardápio. Volte quando a loja abrir para fazer seu pedido.</p><Button variant="outline" onClick={()=>setAttempt(value=>value+1)}>Atualizar disponibilidade</Button></section>}
-      {store.acceptingOrders!==false && !token.current.value && <section className="space-y-2 rounded-xl border bg-card p-4"><p>Para finalizar o pedido, confirme seu WhatsApp enviando <strong>PEDIR</strong>. Você receberá um link pessoal.</p>{whatsapp ? <a className="inline-block rounded-md bg-primary p-3 text-primary-foreground" href={whatsapp} rel="noreferrer">Validar WhatsApp e pedir</a> : <p className="text-sm text-muted-foreground">O WhatsApp da loja ainda não está disponível. Fale com o atendimento.</p>}</section>}
+      {store.acceptingOrders!==false && !smsEnabled && !token.current.value && <section className="space-y-2 rounded-xl border bg-card p-4"><p>Para finalizar o pedido, confirme seu WhatsApp enviando <strong>PEDIR</strong>. Você receberá um link pessoal.</p>{whatsapp ? <a className="inline-block rounded-md bg-primary p-3 text-primary-foreground" href={whatsapp} rel="noreferrer">Validar WhatsApp e pedir</a> : <p className="text-sm text-muted-foreground">O WhatsApp da loja ainda não está disponível. Fale com o atendimento.</p>}</section>}
+      {gate ?? <>
       <section aria-label="Cardápio" className="space-y-3">{store.items.map(item=><article key={item.id} className="flex gap-3 rounded-xl border bg-card p-3">{item.image_url && /^https:\/\//.test(item.image_url) && <img src={item.image_url} alt={item.name} referrerPolicy="no-referrer" loading="lazy" className="h-24 w-24 rounded-lg object-cover"/>}<div className="min-w-0 flex-1 space-y-2"><h2 className="font-semibold">{item.name}</h2><p className="text-sm text-muted-foreground">{item.description}</p><p>{formatCurrency(Number(item.price))}</p><div className="flex items-center gap-3"><Button size="sm" variant="outline" disabled={busy || !cart[item.id]} aria-label={`Remover ${item.name}`} onClick={()=>change(item.id,-1)}>−</Button><span aria-label={`Quantidade de ${item.name}`}>{cart[item.id] ?? 0}</span><Button size="sm" disabled={busy || (cart[item.id] ?? 0)>=20} aria-label={`Adicionar ${item.name}`} onClick={()=>change(item.id,1)}>+</Button></div></div></article>)}{!store.items.length && <p>Nenhum item disponível agora.</p>}</section>
       <section className="space-y-3 rounded-xl border bg-card p-4"><h2 className="font-semibold">Seu pedido: {count} item(ns) · {formatCurrency(total)}</h2><label className="block space-y-1 text-sm">Observação<textarea disabled={busy} className="w-full rounded-md border bg-background p-2" maxLength={500} value={note} onChange={e=>setNote(e.target.value)} placeholder="Orientação para o preparo"/></label><p className="text-xs text-muted-foreground">Seu nome e WhatsApp serão usados para identificar o pedido e organizar a retirada. Preferências e campanhas dependem de autorização separada no WhatsApp.</p>{submitError && <p role="alert" className="text-destructive">{submitError}</p>}<Button className="w-full" disabled={busy || !count || !token.current.value || store.acceptingOrders===false} onClick={()=>void submit()}>{busy ? "Enviando pedido..." : "Confirmar pedido para retirada"}</Button></section>
+      </>}
     </>}
   </main></div>;
 }
