@@ -24,6 +24,7 @@ import {
   Building2,
   FolderOpen,
   Receipt,
+  Layers,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -64,9 +65,17 @@ import {
 
 type SectionKey = "menu" | "combos" | "users" | "password" | "connections" | "hub" | "crm" | "stock" | "printers" | "qrcodes" | "units" | "documents" | "settings" | "brand" | "finance";
 
+// Subgrupos do menu "Configurações". `hub` segue fora do menu (acessível por ?sec=hub), como já era.
+const SETTINGS_GROUPS: { label: string; keys: SectionKey[] }[] = [
+  { label: "Equipe e acesso", keys: ["users", "password"] },
+  { label: "Estabelecimento", keys: ["units", "brand", "qrcodes", "printers"] },
+  { label: "Sistema", keys: ["settings", "connections"] },
+];
+const SETTINGS_KEYS: SectionKey[] = SETTINGS_GROUPS.flatMap(group => group.keys);
+
 const SECTIONS: { key: SectionKey; label: string; icon: LucideIcon }[] = [
   { key: "menu", label: "Cardápio", icon: UtensilsCrossed },
-  { key: "combos", label: "Combos", icon: Package },
+  { key: "combos", label: "Combos", icon: Layers },
   { key: "users", label: "Usuários", icon: Users },
   { key: "password", label: "Senha", icon: KeyRound },
   { key: "connections", label: "Conexões", icon: Plug },
@@ -136,7 +145,7 @@ const Admin = () => {
   const setActiveSection=(section:SectionKey)=>setSearchParams({sec:section});
 
   useEffect(() => {
-    if (["settings", "brand", "users", "password", "connections", "printers", "qrcodes", "units"].includes(activeSection)) setShowSettings(true);
+    if (SETTINGS_KEYS.includes(activeSection)) setShowSettings(true);
   }, [activeSection]);
 
   if (loading || rolesLoading) {
@@ -188,9 +197,14 @@ const Admin = () => {
 
           <SidebarGroup>
             <SidebarMenu><SidebarMenuItem><SidebarMenuButton tooltip="Configurações" aria-expanded={showSettings} aria-controls="admin-settings" onClick={() => setShowSettings(value => !value)}><Settings /><span>Configurações</span></SidebarMenuButton></SidebarMenuItem></SidebarMenu>
-            {showSettings && <SidebarGroupContent id="admin-settings"><SidebarMenu>
-              {SECTIONS.filter(section => ["settings", "brand", "users", "password", "connections", "printers", "qrcodes", "units"].includes(section.key)).map(section => <SectionMenuButton key={section.key} section={section} isActive={activeSection === section.key} onSelect={() => setActiveSection(section.key)} />)}
-            </SidebarMenu></SidebarGroupContent>}
+            {showSettings && <SidebarGroupContent id="admin-settings">
+              {SETTINGS_GROUPS.map(group => <div key={group.label} className="mt-1">
+                <p className="px-2 pt-1 text-[10px] font-medium uppercase tracking-widest text-sidebar-foreground/50 group-data-[collapsible=icon]:hidden">{group.label}</p>
+                <SidebarMenu>
+                  {group.keys.map(key => SECTIONS.find(section => section.key === key)).filter((section): section is (typeof SECTIONS)[number] => Boolean(section)).map(section => <SectionMenuButton key={section.key} section={section} isActive={activeSection === section.key} onSelect={() => setActiveSection(section.key)} />)}
+                </SidebarMenu>
+              </div>)}
+            </SidebarGroupContent>}
           </SidebarGroup>
 
           {(navRoles.attendant || navRoles.kitchen || navRoles.admin) && (
@@ -244,17 +258,12 @@ const Admin = () => {
           <h1 tabIndex={0} data-tooltip={PAGE_HELP[activeSection]} className="text-lg font-medium text-foreground truncate">{activeLabel}</h1>
 
           <div className="ml-auto flex items-center gap-1.5">
-            {navRoles.admin && (
-              <span className="hidden sm:flex items-center gap-1.5 rounded-lg border border-primary/50 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary">
-                <Settings className="h-3.5 w-3.5" /> Admin
-              </span>
-            )}
             <button data-tooltip="Consulte os indicadores e relatórios da operação."
               onClick={() => navigate("/relatorios")}
-              className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors md:hidden"
+              aria-label="Relatórios"
             >
               <BarChart3 className="h-4 w-4" />
-              <span className="hidden sm:inline">Relatórios</span>
             </button>
           </div>
         </motion.header>
