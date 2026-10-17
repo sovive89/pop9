@@ -1,14 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Gift, Package, Pencil, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { PAGE_HELP } from "@/lib/page-help";
-import { useMenuItems } from "@/hooks/useMenuItems";
 import { useUnitRoles } from "@/hooks/useUnitRoles";
 import { deleteCombo, saveCombo, useCombos } from "@/hooks/useCombos";
-import { comboListPrice, comboPrice, defaultChoice, type Combo, type ComboPricingMode } from "@/lib/combos";
+import { comboListPrice, comboPrice, defaultChoice, type Combo, type ComboMenuItem, type ComboPricingMode } from "@/lib/combos";
 import { formatCurrency } from "@/utils/orders";
 
 const emptyCombo = (): Combo => ({
@@ -22,7 +22,7 @@ const MODES: { value: ComboPricingMode; label: string }[] = [
 ];
 
 function ComboEditor({ initial, menu, onSaved, onCancel, unit, sortOrder }: {
-  initial: Combo; menu: { id: string; name: string; price: number }[]; onSaved: () => void; onCancel: () => void; unit: string; sortOrder: number;
+  initial: Combo; menu: (ComboMenuItem & { active: boolean; status: string })[]; onSaved: () => void; onCancel: () => void; unit: string; sortOrder: number;
 }) {
   const [combo, setCombo] = useState<Combo>(initial);
   const [busy, setBusy] = useState(false);
@@ -81,7 +81,7 @@ function ComboEditor({ initial, menu, onSaved, onCancel, unit, sortOrder }: {
             <select aria-label="Adicionar item do cardápio" value="" className="w-full rounded-md border border-border bg-background p-2 text-sm"
               onChange={(e) => { const id = e.target.value; if (id && !slot.options.some((o) => o.menuItemId === id)) setSlot(i, { options: [...slot.options, { id: crypto.randomUUID(), menuItemId: id, extraPrice: 0, isFree: false }] }); }}>
               <option value="">+ Adicionar item do cardápio a esta etapa</option>
-              {menu.filter((m) => !slot.options.some((o) => o.menuItemId === m.id)).map((m) => <option key={m.id} value={m.id}>{m.name} — {formatCurrency(m.price)}</option>)}
+              {menu.filter((m) => m.active && !slot.options.some((o) => o.menuItemId === m.id)).map((m) => <option key={m.id} value={m.id}>{m.name}{m.status === "draft" ? " (rascunho)" : ""} — {formatCurrency(m.price)}</option>)}
             </select>
           </div>
         ))}
@@ -89,8 +89,16 @@ function ComboEditor({ initial, menu, onSaved, onCancel, unit, sortOrder }: {
       </div>
 
       {chosen.length === combo.slots.length && chosen.length > 0 && (
-        <p className="text-sm">Com as primeiras opções: <strong className="text-primary">{formatCurrency(comboPrice(combo, chosen, items))}</strong>
-          <span className="text-muted-foreground"> (avulso {formatCurrency(comboListPrice(chosen, items))})</span></p>
+        <div className="rounded-lg bg-muted/60 p-3 text-sm">
+          <p>Preço avulso das primeiras opções: <strong>{formatCurrency(comboListPrice(chosen, items))}</strong></p>
+          <p>Preço calculado do combo: <strong className="text-primary">{formatCurrency(comboPrice(combo, chosen, items))}</strong></p>
+          <p className="text-xs text-muted-foreground">
+            {combo.pricingMode === "fixed" ? "Preço fixo informado acima; acréscimos das opções são somados." : "Preço calculado aplicando o desconto ao valor avulso das opções."}
+            {comboListPrice(chosen, items) > comboPrice(combo, chosen, items)
+              ? ` Economia: ${formatCurrency(comboListPrice(chosen, items) - comboPrice(combo, chosen, items))}.`
+              : ""}
+          </p>
+        </div>
       )}
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-sm"><Switch checked={combo.active} onCheckedChange={(v) => setCombo({ ...combo, active: v })} /> Ativo no cardápio</label>
@@ -107,11 +115,41 @@ function ComboEditor({ initial, menu, onSaved, onCancel, unit, sortOrder }: {
 /** Combos do cardápio: pronto (itens fixos), montar na hora (opções) e cortesias. */
 export default function CombosTab() {
   const { combos, loading, error, reload, businessUnitId } = useCombos();
-  const { menuItems } = useMenuItems();
   const { roles, loading: rolesLoading } = useUnitRoles();
   const canEdit = !rolesLoading && roles.includes("admin");
   const [editing, setEditing] = useState<Combo | null>(null);
+  const [menuItems, setMenuItems] = useState<(ComboMenuItem & { active: boolean; status: string })[]>([]);
+  const [menuLoading, setMenuLoading] = useState(true);
+  const [menuError, setMenuError] = useState("");
+  useEffect(() => {
+    let current = true;
+    const loadMenu = async () => {
+      setMenuLoading(true);
+      setMenuError("");
+      if (!businessUnitId) {
+        setMenuItems([]);
+        setMenuLoading(false);
+        return;
+      }
+      const { data, error: loadError } = await supabase
+        .from("menu_items")
+        .select("id,name,price,active,status")
+        .eq("business_unit_id", businessUnitId)
+        .order("name");
+      if (!current) return;
+      if (loadError) {
+        setMenuItems([]);
+        setMenuError("Não foi possível carregar os itens desta unidade.");
+      } else {
+        setMenuItems((data ?? []).map((item) => ({ ...item, price: Number(item.price) })));
+      }
+      setMenuLoading(false);
+    };
+    void loadMenu();
+    return () => { current = false; };
+  }, [businessUnitId]);
   const items = useMemo(() => new Map(menuItems.map((m) => [m.id, m])), [menuItems]);
+  const selectableMenuItems = useMemo(() => menuItems.filter((item) => item.active), [menuItems]);
   if (!businessUnitId) return <p className="text-sm text-muted-foreground">Selecione uma unidade.</p>;
 
   return (
@@ -124,8 +162,11 @@ export default function CombosTab() {
         {canEdit && !editing && <Button onClick={() => setEditing(emptyCombo())}><Plus className="mr-1 h-4 w-4" /> Novo combo</Button>}
       </div>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      {menuError && <p role="alert" className="text-sm text-destructive">{menuError}</p>}
       {editing && <ComboEditor key={editing.id || "new"} initial={editing} menu={menuItems} unit={businessUnitId} sortOrder={editing.id ? combos.findIndex((c) => c.id === editing.id) : combos.length}
         onCancel={() => setEditing(null)} onSaved={() => { setEditing(null); void reload(); }} />}
+      {editing && menuLoading && <p className="text-xs text-muted-foreground">Carregando itens do cardápio…</p>}
+      {editing && !menuLoading && !menuError && selectableMenuItems.length === 0 && <p className="text-xs text-amber-600">Não há itens ativos nesta unidade. Ative os itens no cadastro do cardápio para adicioná-los ao combo. Rascunhos ativos também aparecem aqui.</p>}
       {loading ? <p className="text-sm text-muted-foreground">Carregando...</p> : !combos.length && !error ? (
         <p className="text-sm text-muted-foreground">Nenhum combo ainda.</p>
       ) : (
