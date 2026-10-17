@@ -68,9 +68,44 @@ describe("verificação por SMS do PWA",()=>{
     await expect(issue(HASH,OTHER)).rejects.toThrow("Pedidos online indisponíveis");
     await expect(issue("curto")).rejects.toThrow("Acesso inválido");
   });
-  it("não é executável pelo navegador",async()=>{
-    await db.exec("set role authenticated");
-    await expect(send()).rejects.toThrow(/permission denied/);
-    await db.exec("reset role");
+  it("limita 60 envios por unidade em 10 min, sem misturar com a cota por número",async()=>{
+    for(let i=0;i<60;i++)await send(`5561${900000000+i}`);
+    await expect(send("5561999999999")).rejects.toThrow("Muitas verificações");
+    await send("5561999999999",OTHER).catch(()=>undefined); // outra unidade (desligada) segue sua própria cota
+    await db.exec("update ops_private.pwa_sms_sends set sent_at=now()-interval '11 minutes'");await send("5561999999999");
+  });
+  it("devolve a vaga quando o SMS não sai e não apaga envios de outros números",async()=>{
+    await send(PHONE);await send("5561911111111");
+    await db.query("select public.release_pwa_sms_send($1,$2)",[UNIT,PHONE]);
+    await send(PHONE); // sem esperar 30 s
+    await db.query("select public.release_pwa_sms_send($1,$2)",[UNIT,"5561922222222"]); // nada a devolver: sem erro
+    expect(Number((await db.query<{n:string}>("select count(*) as n from ops_private.pwa_sms_sends")).rows[0].n)).toBe(2);
+  });
+  it("não guarda telefone de envios com mais de 1 dia",async()=>{
+    await send(PHONE);await db.exec("update ops_private.pwa_sms_sends set sent_at=now()-interval '2 days'");
+    await send("5561911111111");
+    expect((await db.query<{phone:string}>("select phone from ops_private.pwa_sms_sends")).rows.map(r=>r.phone)).toEqual(["5561911111111"]);
+  });
+  it("unidade inativa não envia SMS nem emite acesso",async()=>{
+    await db.query("update business_units set active=false where id=$1",[UNIT]);
+    await expect(send()).rejects.toThrow("Pedidos online indisponíveis");await expect(issue()).rejects.toThrow("Pedidos online indisponíveis");
+  });
+  it("novidades marcadas de novo limpam a saída anterior (SAIR); sem marcar, mantém",async()=>{
+    await issue(HASH,UNIT,PHONE,"Ana Souza","",true);
+    await db.exec("update whatsapp_contacts set marketing_consent_at=null,profile_consent_at=null,opted_out_at=now()");
+    await issue("b".repeat(64),UNIT,PHONE,"Ana Souza","",false);
+    expect((await db.query<{o:string|null}>("select opted_out_at as o from whatsapp_contacts")).rows[0].o).not.toBeNull();
+    await issue("c".repeat(64),UNIT,PHONE,"Ana Souza","",true);
+    const row=(await db.query<{o:string|null;m:string|null}>("select opted_out_at as o, marketing_consent_at as m from whatsapp_contacts")).rows[0];
+    expect(row.o).toBeNull();expect(row.m).not.toBeNull();
+  });
+  it("nenhuma função de SMS é executável pelo navegador (anon e authenticated)",async()=>{
+    for(const role of ["anon","authenticated"]){
+      await db.exec(`set role ${role}`);
+      await expect(send()).rejects.toThrow(/permission denied/);
+      await expect(db.query("select public.release_pwa_sms_send($1,$2)",[UNIT,PHONE])).rejects.toThrow(/permission denied/);
+      await expect(issue()).rejects.toThrow(/permission denied/);
+      await db.exec("reset role");
+    }
   });
 });

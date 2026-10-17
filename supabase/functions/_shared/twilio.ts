@@ -47,11 +47,14 @@ async function verifyCall(c: TwilioConfig, path: string, params: Record<string, 
     method: "POST",
     headers: { Authorization: authHeader(c), "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(params),
+    signal: AbortSignal.timeout(10000),
   });
 }
 
 export async function startVerification(c: TwilioConfig, phone: string, fetcher: typeof fetch = fetch) {
-  return (await verifyCall(c, "Verifications", { To: `+${phone}`, Channel: "sms", Locale: "pt-BR" }, fetcher)).ok;
+  try {
+    return (await verifyCall(c, "Verifications", { To: `+${phone}`, Channel: "sms", Locale: "pt-BR" }, fetcher)).ok;
+  } catch { return false; } // rede fora do ar ou tempo esgotado
 }
 
 export async function checkVerification(c: TwilioConfig, phone: string, code: string, fetcher: typeof fetch = fetch) {
