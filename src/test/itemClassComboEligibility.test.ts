@@ -127,4 +127,22 @@ describe("menu item class and combo eligibility migration", () => {
     const saved = await db.query<{ id: string }>("select public.save_menu_combo($1,null,$2::jsonb,0) as id", [A, valid]);
     expect(saved.rows[0].id).toBeTruthy();
   });
+
+  it.each([
+    ["fixed", 35.9, 0], ["percent", null, 15], ["amount", null, 5],
+  ])("persists and edits ready combos using %s pricing without creating menu items", async (mode, price, discount) => {
+    const before = (await db.query<{ count: number }>("select count(*)::int as count from menu_items")).rows[0].count;
+    const data = { name: `Pronto ${mode}`, pricing_mode: mode, price, discount, active: true,
+      slots: [{ label: "Primeiro", options: [{ menu_item_id: "burger" }] }, { label: "Segundo", options: [{ menu_item_id: "burger" }] }] };
+    const id = (await db.query<{ id: string }>("select public.save_menu_combo($1,null,$2::jsonb,0) as id", [A, JSON.stringify(data)])).rows[0].id;
+    const saved = (await db.query<{ pricing_mode: string; price: string | null; discount: string }>(
+      "select pricing_mode,price,discount from menu_combos where id=$1", [id],
+    )).rows[0];
+    expect(saved.pricing_mode).toBe(mode);
+    expect(saved.price === null ? null : Number(saved.price)).toBe(price);
+    expect(Number(saved.discount)).toBe(discount);
+    await db.query("select public.save_menu_combo($1,$2,$3::jsonb,0)", [A, id, JSON.stringify({ ...data, name: "Editado", active: false })]);
+    expect((await db.query<{ count: number }>("select count(*)::int as count from menu_combo_slots where combo_id=$1", [id])).rows[0].count).toBe(2);
+    expect((await db.query<{ count: number }>("select count(*)::int as count from menu_items")).rows[0].count).toBe(before);
+  });
 });

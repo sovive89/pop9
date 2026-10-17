@@ -3,7 +3,7 @@ import { ArrowLeft, Gift, Package, Plus, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatCurrency, type OrderItem } from "@/utils/orders";
-import { comboAvailable, comboListPrice, comboPrice, comboToOrderItems, defaultChoice, onTheFlyComboListPrice, onTheFlyComboPrice, onTheFlyComboToOrderItems, type Combo, type ComboMenuItem, type ComboOption } from "@/lib/combos";
+import { comboAvailable, comboChoiceValid, comboListPrice, comboPrice, comboToOrderItems, defaultChoice, isReadyCombo, onTheFlyComboListPrice, onTheFlyComboPrice, onTheFlyComboToOrderItems, type Combo, type ComboMenuItem, type ComboOption } from "@/lib/combos";
 
 type Props = {
   combos: Combo[];
@@ -47,22 +47,24 @@ export default function ComboBuilder({ combos, menuItems, categoryLabels = {}, o
           className="w-full rounded-xl border border-primary/50 bg-primary/5 p-3 text-left hover:border-primary transition-colors">
           <div className="flex items-center gap-3"><Plus className="h-5 w-5 text-primary" aria-hidden /><div><p className="text-sm font-semibold text-foreground">Montar combo na hora</p><p className="text-[11px] text-muted-foreground">Escolha os itens do pedido e aplique um desconto. Não precisa cadastrar antes.</p></div></div>
         </button>
-        {!available.length && <p className="text-sm text-muted-foreground">Não há combos fixos ativos. Você ainda pode montar um combo na hora.</p>}
+        {!available.length && <p className="text-sm text-muted-foreground">Não há combos cadastrados ativos. Você ainda pode montar um combo na hora.</p>}
         {available.map((c) => {
-          const def = c.slots.map((slot) => slot.options.find((o) => items.has(o.menuItemId) && items.get(o.menuItemId)?.comboEligible !== false)).filter((o): o is ComboOption => Boolean(o));
+          const def = defaultChoice(c, items);
           const price = comboPrice(c, def, items);
           const list = comboListPrice(def, items);
           return (
-            <button key={c.id} onClick={() => { setSelected(c); setChoice(c.slots.map((s) => s.options.find((o) => items.has(o.menuItemId) && items.get(o.menuItemId)?.comboEligible !== false)!)); }}
+            <button key={c.id} onClick={() => { setSelected(c); setChoice(defaultChoice(c, items)); }}
               className="w-full rounded-xl border border-border bg-card p-3 text-left hover:border-primary/60 transition-colors">
               <div className="flex items-center gap-3">
                 <Package className="h-5 w-5 text-primary shrink-0" aria-hidden />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-foreground">{c.name}</p>
+                  <p className="text-[11px] text-primary">{isReadyCombo(c) ? "Combo pronto" : "Combo com escolhas"}</p>
                   <p className="text-[11px] text-muted-foreground truncate">{c.description || c.slots.map((s) => s.label).join(" + ")}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-bold text-primary">{c.slots.some((s) => s.options.length > 1) ? "a partir de " : ""}{formatCurrency(price)}</p>
+                  <p className="text-sm font-bold text-primary">{formatCurrency(price)}</p>
+                  {!isReadyCombo(c) && <p className="text-[10px] text-muted-foreground">com as opções iniciais</p>}
                   {list > price && <p className="text-[10px] text-muted-foreground line-through">{formatCurrency(list)}</p>}
                 </div>
               </div>
@@ -132,7 +134,7 @@ export default function ComboBuilder({ combos, menuItems, categoryLabels = {}, o
 
   const price = comboPrice(selected, choice, items);
   const list = comboListPrice(choice, items);
-  const choiceValid = choice.length === selected.slots.length && choice.every((option) => items.get(option.menuItemId)?.comboEligible !== false && items.has(option.menuItemId));
+  const choiceValid = selected.active && comboChoiceValid(selected, choice, items);
   return (
     <div className="p-4 space-y-4">
       <button onClick={() => setSelected(null)} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
@@ -141,6 +143,7 @@ export default function ComboBuilder({ combos, menuItems, categoryLabels = {}, o
       <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
         <div>
           <h3 className="text-2xl text-foreground" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>{selected.name}</h3>
+          <p className="text-xs text-primary">{isReadyCombo(selected) ? "Combo pronto — os itens abaixo estão incluídos" : "Escolha uma opção por etapa"}</p>
           {selected.description && <p className="text-sm text-muted-foreground">{selected.description}</p>}
         </div>
         {selected.slots.map((slot, i) => (
@@ -150,7 +153,7 @@ export default function ComboBuilder({ combos, menuItems, categoryLabels = {}, o
               const active = choice[i]?.id === o.id;
               return (
                 <label key={o.id} className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer border ${active ? "border-primary bg-primary/10" : "border-border"}`}>
-                  <input type="radio" name={`slot-${slot.id}`} checked={active} onChange={() => setChoice((prev) => prev.map((p, j) => (j === i ? o : p)))} className="accent-[hsl(var(--primary))]" />
+                  {slot.options.length > 1 && <input type="radio" name={`slot-${slot.id}`} checked={active} onChange={() => setChoice((prev) => prev.map((p, j) => (j === i ? o : p)))} className="accent-[hsl(var(--primary))]" />}
                   <span className="flex-1">{items.get(o.menuItemId)?.name}</span>
                   {o.isFree && <span className="inline-flex items-center gap-1 text-xs text-emerald-500"><Gift className="h-3 w-3" /> Grátis</span>}
                   {o.extraPrice > 0 && <span className="text-xs text-muted-foreground">+{formatCurrency(o.extraPrice)}</span>}

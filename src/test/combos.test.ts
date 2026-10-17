@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { comboAvailable, comboListPrice, comboPrice, comboToOrderItems, onTheFlyComboListPrice, onTheFlyComboPrice, onTheFlyComboToOrderItems, type Combo, type ComboMenuItem } from "@/lib/combos";
+import { comboAvailable, comboChoiceValid, comboListPrice, comboPrice, comboToOrderItems, defaultChoice, isReadyCombo, onTheFlyComboListPrice, onTheFlyComboPrice, onTheFlyComboToOrderItems, type Combo, type ComboMenuItem } from "@/lib/combos";
 
 const items = new Map([
   ["burger", { id: "burger", name: "Burger", price: 30 }],
@@ -49,11 +49,49 @@ describe("combos", () => {
   });
 
   it("splits the combo price across order lines summing exactly", () => {
-    const lines = comboToOrderItems(combo(), [opt("burger"), opt("fries"), opt("coke", 0, true)], items, "g1");
+    const ready = combo({ slots: ["burger", "fries", "coke"].map((id) => ({ id, label: id, options: [opt(id, 0, id === "coke")] })) });
+    const lines = comboToOrderItems(ready, defaultChoice(ready), items, "g1");
     expect(lines.map((l) => l.name)).toEqual(["Burger", "Fritas", "Coca"]);
     expect(lines.every((l) => l.comboGroupId === "g1" && l.comboName === "Combo Casa" && l.quantity === 1)).toBe(true);
     expect(Math.round(lines.reduce((s, l) => s + l.price, 0) * 100)).toBe(3990);
     expect(lines[0].price).toBeGreaterThan(lines[1].price);
+  });
+
+  it.each([
+    ["fixed", 39.9, 0, 39.9],
+    ["percent", null, 10, 46.8],
+    ["amount", null, 5, 47],
+  ] as const)("sells a ready combo using %s pricing and keeps each component for stock deduction", (mode, price, discount, expected) => {
+    const ready = combo({ pricingMode: mode, price, discount,
+      slots: ["burger", "fries", "coke"].map((id) => ({ id, label: id, options: [opt(id)] })) });
+    const lines = comboToOrderItems(ready, defaultChoice(ready), items, "ready-group");
+    expect(isReadyCombo(ready)).toBe(true);
+    expect(lines.map((line) => line.menuItemId)).toEqual(["burger", "fries", "coke"]);
+    expect(lines.every((line) => line.quantity === 1 && line.comboGroupId === "ready-group")).toBe(true);
+    expect(Math.round(lines.reduce((sum, line) => sum + line.price, 0) * 100)).toBe(Math.round(expected * 100));
+  });
+
+  it("keeps repeated components as separate order lines", () => {
+    const ready = combo({ slots: [{ id: "a", label: "Burger 1", options: [opt("burger")] }, { id: "b", label: "Burger 2", options: [opt("burger")] }] });
+    const lines = comboToOrderItems(ready, defaultChoice(ready), items, "double");
+    expect(lines).toHaveLength(2);
+    expect(lines.reduce((sum, line) => sum + line.quantity, 0)).toBe(2);
+    expect(Math.round(lines.reduce((sum, line) => sum + line.price, 0) * 100)).toBe(3990);
+  });
+
+  it("rejects incomplete selections, options from another step, modified prices and inactive combos", () => {
+    const c = combo();
+    expect(isReadyCombo(c)).toBe(false);
+    for (const chosen of [[opt("burger")], [opt("coke"), opt("burger")], [opt("burger"), opt("juice", 0)]]) {
+      expect(comboChoiceValid(c, chosen, items)).toBe(false);
+      expect(comboToOrderItems(c, chosen, items, "invalid")).toEqual([]);
+    }
+    expect(comboToOrderItems(combo({ active: false }), defaultChoice(c), items, "inactive")).toEqual([]);
+  });
+
+  it("selects an available eligible alternative when the first option was removed", () => {
+    const c = combo({ slots: [{ id: "drink", label: "Bebida", options: [opt("gone"), opt("coke")] }] });
+    expect(defaultChoice(c, items)).toEqual([opt("coke")]);
   });
 
   it("is available only with options for every step that exist in the menu", () => {
