@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Building2, Plus, Loader2 } from "lucide-react";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 
 interface BusinessUnit {
   id: string;
@@ -24,6 +25,7 @@ const DEFAULT_CATEGORIES = [
 ];
 
 const BusinessUnitsTab = () => {
+  const { businessUnitId } = useCurrentBusinessUnit();
   const [units, setUnits] = useState<BusinessUnit[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -66,36 +68,40 @@ const BusinessUnitsTab = () => {
       toast.error("Informe o nome da unidade");
       return;
     }
+    if (!businessUnitId) {
+      toast.error("Selecione uma unidade atribuída para criar outra no mesmo negócio");
+      return;
+    }
     setSaving(true);
     try {
-      // Só existe 1 `businesses` hoje — todo negócio novo pendura nela
-      // até o app ter de fato um fluxo de cadastro de businesses.
-      const { data: business, error: businessErr } = await supabase
-        .from("businesses")
-        .select("id")
-        .limit(1)
+      // A nova filial herda o negócio da unidade selecionada; o banco
+      // valida o vínculo admin e associa automaticamente o criador à unidade.
+      const { data: sourceUnit, error: businessErr } = await supabase
+        .from("business_units")
+        .select("business_id")
+        .eq("id", businessUnitId)
         .maybeSingle();
 
-      if (businessErr || !business) {
-        toast.error("Nenhum negócio (businesses) encontrado para vincular a unidade");
+      if (businessErr || !sourceUnit) {
+        toast.error("Não foi possível identificar o negócio da unidade selecionada");
         return;
       }
 
-      const { data: unit, error: unitErr } = await supabase
-        .from("business_units")
-        .insert({
-          business_id: business.id,
+      const newUnitId = crypto.randomUUID();
+      // Sem RETURNING: o vínculo admin é criado por uma trigger AFTER INSERT,
+      // então a leitura da nova linha só fica autorizada após concluir o INSERT.
+      const { error: unitErr } = await supabase.from("business_units").insert({
+          id: newUnitId,
+          business_id: sourceUnit.business_id,
           name: name.trim(),
           establishment_type: establishmentType.trim() || null,
           address: address.trim() || null,
           city: city.trim() || null,
           state: state.trim() || null,
           table_count: tableCount ? Number(tableCount) : null,
-        })
-        .select()
-        .single();
+        });
 
-      if (unitErr || !unit) {
+      if (unitErr) {
         toast.error("Erro ao criar unidade: " + unitErr?.message);
         return;
       }
@@ -105,7 +111,7 @@ const BusinessUnitsTab = () => {
       // precisar o admin recriar manualmente. Nenhum menu_item/raw_material
       // de exemplo é criado — só a estrutura, não conteúdo fake.
       const { error: catErr } = await supabase.from("menu_categories").insert(
-        DEFAULT_CATEGORIES.map((c) => ({ ...c, business_unit_id: unit.id }))
+        DEFAULT_CATEGORIES.map((c) => ({ ...c, business_unit_id: newUnitId }))
       );
       if (catErr) {
         toast.error("Unidade criada, mas erro ao provisionar categorias padrão: " + catErr.message);
