@@ -82,6 +82,12 @@ export function ConnectionsTab() {
         </p>
       </div>
 
+      <AIConnectionsPanel />
+      <p className="text-sm text-muted-foreground">Os conectores abaixo estão em desenvolvimento. Os requisitos podem ser consultados, mas salvar uma pré-configuração não ativa pedidos, pagamentos ou emissão fiscal.</p>
+
+      <details className="rounded-xl border border-border p-4">
+        <summary className="cursor-pointer font-medium">Integrações externas em desenvolvimento</summary>
+        <div className="mt-4 space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <div className="relative min-w-[200px] flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -119,13 +125,9 @@ export function ConnectionsTab() {
         </Select>
       </div>
 
-      <AIConnectionsPanel />
-
       {tableMissing && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-muted-foreground">
-          A tabela <code className="font-mono">integrations</code> ainda não existe neste ambiente — aplique a
-          migration para habilitar o histórico de conexões. A galeria continua navegável, mas nada aparece como
-          conectado até lá.
+          Não foi possível carregar o histórico de conexões. Verifique sua conexão e recarregue a página.
         </div>
       )}
 
@@ -134,6 +136,9 @@ export function ConnectionsTab() {
       ) : (
         <IntegrationGrid views={filtered} onOpen={handleOpen} onDisconnect={handleDisconnectFromCard} />
       )}
+
+        </div>
+      </details>
 
       <IntegrationConfigModal
         view={activeView}

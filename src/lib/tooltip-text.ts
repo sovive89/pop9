@@ -1,3 +1,4 @@
+import { fieldHelp } from "@/lib/field-help";
 /** Default help for shared controls; data-tooltip supplies context-specific help. */
 const actions: Record<string, string> = {
   atendimento: "Abra o atendimento para acompanhar mesas e pedidos.",
@@ -25,6 +26,12 @@ export function getTooltipText(element: Element): string {
   if (element.getAttribute("data-tooltip") === "false") return "";
   const explicit = normalize(element.getAttribute("data-tooltip"));
   if (explicit) return explicit;
+
+  // Campos de formulário: explica o que preencher (dicionário de ajuda + rótulo + exemplo).
+  if (element.matches("input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=file]), select, textarea")) {
+    const help = fieldHelp(element);
+    if (help) return element.matches(":disabled") ? `${help} Campo bloqueado agora (sem permissão ou não editável).` : help;
+  }
 
   // Never use input values: passwords, phone numbers and other user data are
   // not descriptions of a control.

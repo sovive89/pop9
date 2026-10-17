@@ -2,7 +2,9 @@
 import {readFileSync} from "node:fs";
 import ts from "typescript";
 import {describe,it,expect,vi} from "vitest";
-import * as helpers from "../../supabase/functions/_shared/operational";
+import * as operational from "../../supabase/functions/_shared/operational";
+import * as brand from "../../supabase/functions/_shared/brand";
+const helpers={...operational,...brand};
 const UNIT="00000000-0000-0000-0000-000000000001";
 function endpoint(name:string,options:{authorized?:boolean;secrets?:Record<string,string>;duplicate?:boolean}={}){
   const rpc=vi.fn(async(name:string,args:Record<string,unknown>)=>({data:name==="ingest_whatsapp_message" ? {id:args.p_id} : name==="claim_whatsapp_reply" ? options.duplicate ? null : {id:args.p_id,reply:"Olá"} : {orderId:"order",total:25},error:null}));
@@ -10,7 +12,7 @@ function endpoint(name:string,options:{authorized?:boolean;secrets?:Record<strin
   const db={auth:{getUser:async()=>({data:{user:{id:"admin"}},error:null})},rpc,from:(table:string)=>{
     const filters:Record<string,unknown>={};let values:Record<string,unknown>|null=null;
     const result=()=>({data:table==="user_roles" ? options.authorized===false ? [{business_unit_id:"other"}] : [{business_unit_id:UNIT}] : table==="business_units" ? {id:UNIT,name:"Loja"} : table==="integrations" ? filters.provider==="own-pwa" ? {provider:"own-pwa",status:"CONNECTED",config:{enabled:true,publicOrigin:"https://loja.com"}} : {business_unit_id:UNIT,status:"CONNECTED",config:{phoneNumberId:"12345",businessPhone:"5511999999999",botMode:"welcome",graphVersion:"v24.0"}} : table==="menu_items" ? [{id:"burger",name:"Burger",price:25}] : [],error:null});
-    const query={select:()=>query,eq:(key:string,value:unknown)=>{filters[key]=value;return query;},in:()=>query,order:()=>query,maybeSingle:async()=>result(),upsert:async(value:Record<string,unknown>)=>{writes.push(value);return {error:null};},update:(value:Record<string,unknown>)=>{values=value;writes.push(values);return query;},then:(resolve:(value:unknown)=>unknown,reject:(error:unknown)=>unknown)=>Promise.resolve(result()).then(resolve,reject)};return query;
+    const query={select:()=>query,eq:(key:string,value:unknown)=>{filters[key]=value;return query;},in:()=>query,order:()=>query,is:()=>query,maybeSingle:async()=>result(),upsert:async(value:Record<string,unknown>)=>{writes.push(value);return {error:null};},update:(value:Record<string,unknown>)=>{values=value;writes.push(values);return query;},then:(resolve:(value:unknown)=>unknown,reject:(error:unknown)=>unknown)=>Promise.resolve(result()).then(resolve,reject)};return query;
   }};
   let handler!:(request:Request)=>Promise<Response>;
   const source=readFileSync(`supabase/functions/${name}/index.ts`,"utf8").replace(/^import .*;\r?\n/gm,"");

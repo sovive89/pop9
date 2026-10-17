@@ -1,9 +1,11 @@
 import { PAGE_HELP } from "@/lib/page-help";
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import DebtsReport from "@/components/DebtsReport";
 import { useAuth } from "@/hooks/useAuth";
 import { Navigate, useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { useUnitRoles } from "@/hooks/useUnitRoles";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
+import { useOperationalReportData } from "@/hooks/useOperationalReportData";
 import { motion } from "framer-motion";
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -17,29 +19,6 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import type { TooltipProps } from "recharts";
 
 type PeriodPreset = "today" | "week" | "month" | "custom";
-
-interface OrderItemData {
-  name: string;
-  price: number;
-  quantity: number;
-  destination: string;
-  menu_item_id: string;
-}
-
-interface OrderData {
-  id: string;
-  placed_at: string;
-  status: string;
-  order_items: OrderItemData[];
-}
-
-interface PaymentData {
-  id: string;
-  amount: number;
-  service_charge: number;
-  method: string;
-  paid_at: string;
-}
 
 const CHART_COLORS = [
   "hsl(32, 95%, 52%)",
@@ -73,24 +52,13 @@ type CustomTooltipProps = Pick<TooltipProps<number, string>, "active" | "payload
 const Reports = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const { roles, loading: rolesLoading, error: rolesError } = useUnitRoles();
+  const { businessUnitId, units, selectBusinessUnit } = useCurrentBusinessUnit();
+  const isAdmin = roles.includes("admin");
   const [preset, setPreset] = useState<PeriodPreset>("today");
   const [dateFrom, setDateFrom] = useState<Date>(startOfDay(new Date()));
   const [dateTo, setDateTo] = useState<Date>(endOfDay(new Date()));
-  const [orders, setOrders] = useState<OrderData[]>([]);
-  const [payments, setPayments] = useState<PaymentData[]>([]);
-  const [loadingData, setLoadingData] = useState(true);
-
-  useEffect(() => {
-    if (!user) return;
-    supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .eq("role", "admin")
-      .maybeSingle()
-      .then(({ data }) => setIsAdmin(!!data));
-  }, [user]);
+  const { orders, payments, loading: loadingData, error: dataError, reload } = useOperationalReportData(dateFrom, dateTo);
 
   const applyPreset = useCallback((p: PeriodPreset) => {
     setPreset(p);
@@ -106,39 +74,6 @@ const Reports = () => {
       setDateTo(endOfMonth(now));
     }
   }, []);
-
-  const fetchOrders = useCallback(async () => {
-    setLoadingData(true);
-    const { data, error } = await supabase
-      .from("orders")
-      .select("id, placed_at, status, order_items(name, price, quantity, destination, menu_item_id)")
-      .gte("placed_at", dateFrom.toISOString())
-      .lte("placed_at", dateTo.toISOString())
-      .in("status", ["pending", "preparing", "ready", "delivered"])
-      .order("placed_at", { ascending: true });
-
-    if (!error && data) {
-      setOrders(data as OrderData[]);
-    }
-
-    // Fetch payments
-    const { data: payData } = await supabase
-      .from("payments")
-      .select("id, amount, service_charge, method, paid_at")
-      .gte("paid_at", dateFrom.toISOString())
-      .lte("paid_at", dateTo.toISOString())
-      .order("paid_at", { ascending: true });
-
-    if (payData) {
-      setPayments(payData as PaymentData[]);
-    }
-
-    setLoadingData(false);
-  }, [dateFrom, dateTo]);
-
-  useEffect(() => {
-    if (user && isAdmin) fetchOrders();
-  }, [user, isAdmin, fetchOrders]);
 
   // ── Computed metrics ──
   const totalRevenue = useMemo(() => {
@@ -234,7 +169,7 @@ const Reports = () => {
     return { heatMapGrid: grid, heatMapMax: max || 1 };
   }, [orders]);
 
-  if (loading) {
+  if (loading || rolesLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <Flame className="h-10 w-10 animate-pulse text-primary" />
@@ -242,14 +177,9 @@ const Reports = () => {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
-  if (isAdmin === false) return <Navigate to="/" replace />;
-  if (isAdmin === null) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <Flame className="h-10 w-10 animate-pulse text-primary" />
-      </div>
-    );
-  }
+  if (rolesError) return <p role="alert" className="p-6">Não foi possível verificar suas permissões. Recarregue a página.</p>;
+  if (!businessUnitId) return <div className="space-y-3 p-6"><p>Selecione uma unidade para consultar os relatórios.</p><select aria-label="Unidade dos relatórios" value="" onChange={event => selectBusinessUnit(event.target.value)} className="rounded-md border bg-background p-2"><option value="">Selecione uma unidade</option>{units.map(unit => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</select></div>;
+  if (!isAdmin) return <Navigate to="/" replace />;
 
   const formatCurrency = (v: number) =>
     v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -298,6 +228,7 @@ const Reports = () => {
       </motion.header>
 
       <main className="mx-auto max-w-7xl p-4 space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted-foreground">{units.find(unit => unit.id === businessUnitId)?.name} · dados da unidade selecionada</p>{units.length > 1 && <select aria-label="Unidade dos relatórios" value={businessUnitId} onChange={event => selectBusinessUnit(event.target.value)} className="rounded-md border bg-background p-2 text-sm">{units.map(unit => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</select>}<Button variant="outline" disabled={loadingData} onClick={reload}>Atualizar relatórios</Button></div>
         {/* Period filters */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -363,6 +294,8 @@ const Reports = () => {
           <div className="flex items-center justify-center py-20">
             <Flame className="h-8 w-8 animate-pulse text-primary" />
           </div>
+        ) : dataError ? (
+          <div role="alert" className="space-y-3 rounded-xl border p-4"><p>{dateFrom > dateTo ? "A data inicial deve ser anterior à data final." : "Não foi possível carregar vendas e pagamentos desta unidade."}</p><Button variant="outline" onClick={reload}>Tentar novamente</Button></div>
         ) : (
           <>
             {/* KPI Cards */}

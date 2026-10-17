@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { MenuRecipeDraft } from "@/lib/recipeDraft";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
@@ -54,6 +55,14 @@ type Role = Database["public"]["Enums"]["app_role"];
 
 export const useAdminData = () => {
   const { businessUnitId } = useCurrentBusinessUnit();
+  const unitEpoch = useRef({ unit: businessUnitId, version: 0 });
+  if (unitEpoch.current.unit !== businessUnitId) unitEpoch.current = { unit: businessUnitId, version: unitEpoch.current.version + 1 };
+  const unitScope = `${businessUnitId ?? ''}:${unitEpoch.current.version}`;
+  const currentScope = useRef(unitScope);
+  currentScope.current = unitScope;
+  const menuRequest = useRef(0), categoryRequest = useRef(0);
+  const [menuScope, setMenuScope] = useState('');
+  const [categoriesScope, setCategoriesScope] = useState('');
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [menuItems, setMenuItems] = useState<DbMenuItem[]>([]);
   const [categories, setCategories] = useState<DbMenuCategory[]>([]);
@@ -96,28 +105,36 @@ export const useAdminData = () => {
   }, []);
 
   const loadMenu = useCallback(async () => {
+    const request = ++menuRequest.current;
+    const isCurrent = () => currentScope.current === unitScope && menuRequest.current === request;
+    setMenuScope(unitScope); setMenuItems([]);
+    if (!businessUnitId) { setLoadingMenu(false); return; }
     setLoadingMenu(true);
     const { data: items, error: iErr } = await supabase
       .from("menu_items")
       .select("*")
+      .eq("business_unit_id", businessUnitId)
       .order("category")
       .order("sort_order");
 
+    if (!isCurrent()) return;
     if (iErr) {
       toast.error("Erro ao carregar cardápio");
       setLoadingMenu(false);
       return;
     }
 
-    const { data: ingredients } = await supabase
-      .from("menu_item_ingredients")
-      .select("*")
-      .order("sort_order");
-
-    const { data: variants } = await supabase
-      .from("menu_item_variants")
-      .select("*")
-      .order("sort_order");
+    const itemIds = (items ?? []).map(item => item.id);
+    const [ingredientResult, variantResult] = itemIds.length ? await Promise.all([
+      supabase.from("menu_item_ingredients").select("*").in("menu_item_id", itemIds).order("sort_order"),
+      supabase.from("menu_item_variants").select("*").in("menu_item_id", itemIds).order("sort_order"),
+    ]) : [{ data: [], error: null }, { data: [], error: null }];
+    if (!isCurrent()) return;
+    if (ingredientResult.error || variantResult.error) {
+      toast.error("Erro ao carregar ingredientes ou variantes do cardápio");
+      setLoadingMenu(false); return;
+    }
+    const ingredients = ingredientResult.data, variants = variantResult.data;
 
     const mapped: DbMenuItem[] = (items ?? []).map((item) => ({
       id: item.id,
@@ -150,14 +167,19 @@ export const useAdminData = () => {
 
     setMenuItems(mapped);
     setLoadingMenu(false);
-  }, []);
+  }, [businessUnitId, unitScope]);
 
   const loadCategories = useCallback(async () => {
+    const request = ++categoryRequest.current;
+    setCategoriesScope(unitScope); setCategories([]);
+    if (!businessUnitId) { setLoadingCategories(false); return; }
     setLoadingCategories(true);
     const { data, error } = await supabase
       .from("menu_categories")
       .select("*")
+      .eq("business_unit_id", businessUnitId)
       .order("sort_order");
+    if (currentScope.current !== unitScope || categoryRequest.current !== request) return;
     if (error) {
       toast.error("Erro ao carregar categorias");
     } else {
@@ -170,7 +192,7 @@ export const useAdminData = () => {
       })));
     }
     setLoadingCategories(false);
-  }, []);
+  }, [businessUnitId, unitScope]);
 
   useEffect(() => {
     loadUsers();
@@ -234,92 +256,27 @@ export const useAdminData = () => {
   };
 
   // ── Menu CRUD ──
-  // Retorna o ID do item salvo (gerado pelo banco quando é novo) ou, em caso de
-  // erro, { failedId } quando o item ficou gravado no banco (item novo cujo
-  // rollback falhou, ou item existente com o update já aplicado) — assim o
-  // editor reaproveita esse ID em vez de criar outro e sabe o que foi salvo — ou false.
-  // id, sku e sort_order de itens novos são preenchidos pelo banco
-  // (default + trigger menu_items_fill_system_fields).
-  type MenuItemSaveResult = string | false | { failedId: string };
+  // Retorna o ID salvo ou false. Item, opções, insumos e ficha são atômicos.
+  type MenuItemSaveResult = string | false;
   type MenuItemInput = Omit<DbMenuItem, "id" | "sku" | "sort_order" | "ingredients" | "variants"> & {
     id?: string;
     sort_order?: number;
     ingredients: Omit<DbIngredient, "id">[];
     variants: Omit<DbVariant, "id">[];
+    recipe: MenuRecipeDraft[];
   };
   const saveMenuItem = async (input: MenuItemInput, isNew: boolean): Promise<MenuItemSaveResult> => {
-    const { ingredients, variants, ...itemData } = input;
-    let itemId = itemData.id;
-
-    if (isNew) {
-      if (!businessUnitId) { toast.error("Nenhuma unidade ativa encontrada"); return false; }
-      const { id: _ignored, sort_order: _ignoredOrder, ...newItem } = itemData;
-      const { data, error } = await supabase
-        .from("menu_items")
-        .insert({ ...newItem, business_unit_id: businessUnitId })
-        .select("id")
-        .single();
-      if (error || !data) { toast.error("Erro ao criar item: " + (error?.message ?? "sem retorno")); return false; }
-      itemId = data.id;
-    } else {
-      const { error } = await supabase.from("menu_items").update({
-        name: itemData.name,
-        price: itemData.price,
-        category: itemData.category,
-        description: itemData.description,
-        image_url: itemData.image_url,
-        sort_order: itemData.sort_order,
-        active: itemData.active,
-        status: itemData.status,
-      }).eq("id", itemData.id);
-      if (error) { toast.error("Erro ao atualizar item: " + error.message); return false; }
-    }
-
-    // Item novo que falha depois do insert é desfeito: o ID vem do banco, então
-    // tentar de novo criaria um segundo item e deixaria este pela metade.
-    const rollbackNew = async (): Promise<MenuItemSaveResult> => {
-      if (!itemId) return false;
-      // Item existente: o update de nome/foto/status já foi gravado e não se
-      // desfaz. Devolve o ID para o editor saber o que ficou salvo (foto, status).
-      if (!isNew) return { failedId: itemId };
-      await supabase.from("menu_item_ingredients").delete().eq("menu_item_id", itemId);
-      await supabase.from("menu_item_variants").delete().eq("menu_item_id", itemId);
-      const { error } = await supabase.from("menu_items").delete().eq("id", itemId);
-      // Não conseguiu desfazer: devolve o ID pra próxima tentativa atualizar este item.
-      return error ? { failedId: itemId } : false;
-    };
-
-    // Replace ingredients
-    await supabase.from("menu_item_ingredients").delete().eq("menu_item_id", itemId);
-    if (ingredients.length > 0) {
-      const { error } = await supabase.from("menu_item_ingredients").insert(
-        ingredients.map((ing, idx) => ({
-          menu_item_id: itemId,
-          name: ing.name,
-          removable: ing.removable,
-          extra_price: ing.extra_price,
-          sort_order: idx,
-        }))
-      );
-      if (error) { toast.error("Erro ao salvar ingredientes"); return rollbackNew(); }
-    }
-
-    // Replace variants
-    await supabase.from("menu_item_variants").delete().eq("menu_item_id", itemId);
-    if (variants.length > 0) {
-      const { error } = await supabase.from("menu_item_variants").insert(
-        variants.map((v, idx) => ({
-          menu_item_id: itemId,
-          name: v.name,
-          sort_order: idx,
-        }))
-      );
-      if (error) { toast.error("Erro ao salvar variantes"); return rollbackNew(); }
-    }
-
-    toast.success(isNew ? "Item criado" : "Item atualizado");
+    if (!businessUnitId || currentScope.current !== unitScope) return false;
+    const requestScope = unitScope;
+    const { id, ...data } = input;
+    const { data: savedId, error } = await supabase.rpc("save_menu_item_with_recipe", {
+      p_unit: businessUnitId, p_item_id: id ?? crypto.randomUUID(), p_data: data,
+    });
+    if (currentScope.current !== requestScope) return false;
+    if (error || !savedId) { toast.error("Erro ao salvar item e ficha técnica: " + (error?.message ?? "sem retorno")); return false; }
+    toast.success(isNew ? "Item e ficha técnica criados" : "Item e ficha técnica atualizados");
     await loadMenu();
-    return itemId!;
+    return savedId;
   };
 
   const deleteMenuItem = async (id: string) => {
@@ -368,11 +325,11 @@ export const useAdminData = () => {
 
   return {
     users,
-    menuItems,
-    categories,
+    menuItems: menuScope === unitScope ? menuItems : [],
+    categories: categoriesScope === unitScope ? categories : [],
     loadingUsers,
-    loadingMenu,
-    loadingCategories,
+    loadingMenu: loadingMenu || (Boolean(businessUnitId) && menuScope !== unitScope),
+    loadingCategories: loadingCategories || (Boolean(businessUnitId) && categoriesScope !== unitScope),
     addRole,
     removeRole,
     resetPassword,

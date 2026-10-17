@@ -22,3 +22,7 @@ verify_jwt = false
 [functions.menu-import]
 # Explicit getUser + unit-scoped admin authorization inside the function.
 verify_jwt = false
+
+[functions.stock-ocr]
+# Autenticação e autorização por unidade verificadas com getUser dentro da função.
+verify_jwt = false

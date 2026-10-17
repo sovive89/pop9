@@ -1,5 +1,6 @@
 /** Shared page descriptions for contextual help across the PWA. */
 export const PAGE_HELP: Record<string, string> = {
+  combos: "Combos: junte itens do cardápio (fixos ou à escolha do cliente), com preço fixo ou desconto, e itens grátis. No pedido, cada item vai para o seu setor e baixa estoque normalmente; o garçom pode retirar ingredientes, pôr extras e escolher variantes de cada item.",
   "/": "Acompanhe mesas, clientes e pedidos. Abra uma mesa para iniciar o atendimento ou consultar a conta.",
   "/login": "Entre com sua conta, cadastre-se ou solicite a recuperação de senha.",
   "/recuperar-senha": "Defina uma nova senha usando o link de recuperação enviado por e-mail.",
@@ -15,8 +16,11 @@ export const PAGE_HELP: Record<string, string> = {
   hub: "Consulte a proposta de integração futura com o Pop9 Hub. A conexão ainda está em preparação.",
   crm: "Consulte o histórico de consumo e os relatórios por cliente.",
   stock: "Cadastre insumos e receitas sem movimentar saldo. Registre compras e produção para atualizar o estoque real; acompanhe lotes e validade.",
-  printers: "Cadastre impressoras e configure os gatilhos de impressão disponíveis.",
+  printers: "Cadastre impressoras e escolha um ou mais gatilhos para cada uma (ex.: comanda da cozinha e conta da mesa na mesma térmica).",
   documents: "Exporte o cardápio em PDF e pacotes para iFood/99Food, baixe imagens dos itens e consulte links operacionais.",
   qrcodes: "Gere e baixe os códigos QR para o acesso dos clientes ao estabelecimento e às mesas.",
   units: "Cadastre e organize as unidades do estabelecimento.",
+  settings: "Ative ou desative módulos da unidade: KDS da cozinha e estação de impressão central.",
+  finance: "Financeiro: CMV e margem por item, preço sugerido por meta de CMV, taxas e canais, custos fixos e ponto de equilíbrio, com previsão de faturamento e insights. Hoje mostra dados de amostra; ligar aos dados reais é a próxima etapa.",
+  brand: "Logo, imagem de fundo e cores do cardápio do cliente (/pedir). Não muda a estrutura das páginas nem o painel interno.",
 };

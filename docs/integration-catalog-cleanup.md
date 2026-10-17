@@ -12,11 +12,15 @@
 
 Consolidar configurações duplicadas de IA no painel próprio. A revisão do catálogo não apaga registros de integração nem credenciais de nenhuma unidade, não desconecta serviços e não modifica webhooks ou emissão/pagamentos. As integrações mantidas que ainda dependem de desenvolvimento continuam identificadas como indisponíveis para conexão real.
 
-A galeria mantém iFood, 99Food, Mercado Pago, Stone, Cielo, Rede, PagBank, Asaas, Pix, Focus NFe e Nuvem Fiscal. O painel de IA mantém OpenAI, Google, xAI e Anthropic. WhatsApp, webhook Meta, bot externo e PWA de pedidos continuam no painel dedicado.
+A galeria mantém iFood, 99Food, Mercado Pago, Stone, Cielo, Rede, PagBank, Asaas, Pix, Focus NFe e Nuvem Fiscal. O painel de IA mantém os três provedores compartilhados: OpenAI, Google/Gemini e Anthropic. WhatsApp, webhook Meta, bot externo e PWA de pedidos continuam no painel dedicado.
 
 Retirados da galeria: Rappi, Aiqfome, Instagram, Telegram, Goomer, Omie, Bling, Conta Azul, Shopify, WooCommerce, Mercado Livre, Shopee, Webhook genérico, REST API genérica, GraphQL e HTTP genérico, além dos cards duplicados de IA. As opções de ativação FLUX e Ideogram saem do seletor do painel de IA, sem alterar o backend ou apagar credenciais legadas.
 
 Os filtros de categoria passam a ser derivados das entradas restantes. O filtro de tipo é retirado porque todas as opções da galeria agora são operacionais. Categorias/contratos compartilhados continuam disponíveis para registros existentes.
+
+## Ajuste solicitado em 13/10
+
+Main já incorpora a revisão do MVP e as melhorias de Pedidos online/Central de Documentos (PRs #53 e #57). Não reimplementar essas entregas. Ainda há xAI/Grok no seletor e xAI/FLUX/Ideogram aceitos pela função de credenciais. Limitar frontend e API aos três provedores solicitados: Anthropic, Google/Gemini e OpenAI, usando uma lista compartilhada. A listagem de credenciais também deve retornar apenas esses provedores, sem apagar credenciais legadas. Anthropic suporta texto e leitura de documentos; geração de imagens usa Google ou OpenAI. As APIs de assistente, importação e imagens já usam esses três provedores.
 
 ## Validação
 

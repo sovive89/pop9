@@ -9,10 +9,13 @@ export type ApplyResult = {
   recipesCreated: number; recipeLines: number; published: boolean; repeated: boolean;
 };
 
-export const ACCEPTED_FILES = ".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.csv,.txt";
+export const ACCEPTED_FILES = ".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls,.ods,.docx,.csv,.txt,.md";
 const MIME: Record<string, string> = {
   pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp",
-  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", csv: "text/csv", txt: "text/plain",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  xls: "application/vnd.ms-excel", ods: "application/vnd.oasis.opendocument.spreadsheet",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  csv: "text/csv", txt: "text/plain", md: "text/markdown",
 };
 export const MAX_FILES = 5;
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -20,7 +23,7 @@ export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 /** Valida tipo e tamanho antes do envio. Retorna a mensagem de erro, ou null se o arquivo é aceito. */
 export function checkImportFile(file: File): string | null {
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-  if (!MIME[ext]) return `"${file.name}": formato não aceito. Use PDF, imagem (JPG, PNG, WebP), planilha (XLSX, CSV) ou TXT.`;
+  if (!MIME[ext]) return `"${file.name}": formato não aceito. Use PDF, JPG, PNG, WebP, XLSX, XLS, ODS, DOCX, CSV, TXT ou MD.`;
   if (file.size > MAX_FILE_BYTES) return `"${file.name}" passa de 10 MB.`;
   if (file.size === 0) return `"${file.name}" está vazio.`;
   return null;
@@ -36,7 +39,7 @@ async function errorMessage(error: unknown, fallback: string) {
 }
 
 export async function listImportModels(businessUnitId: string): Promise<{ models: ImportModel[]; warning: string }> {
-  const { data, error } = await supabase.functions.invoke("admin-assistant", { body: { action: "models", businessUnitId } });
+  const { data, error } = await supabase.functions.invoke("menu-import", { body: { action: "models", businessUnitId } });
   if (error) throw Error(await errorMessage(error, "Não foi possível consultar os modelos de IA."));
   if (data?.error) throw Error(data.error);
   return { models: Array.isArray(data?.models) ? data.models : [], warning: (data?.warnings ?? []).join(" ") };
@@ -60,9 +63,9 @@ export async function uploadImportFiles(businessUnitId: string, files: File[]): 
   return paths;
 }
 
-export async function extractMenuDraft(input: { businessUnitId: string; model: string; files: string[]; text: string }): Promise<ExtractResult> {
+export async function extractMenuDraft(input: { businessUnitId: string; model: string; files: string[]; text: string; mode?: "create" | "catalog" }): Promise<ExtractResult> {
   const { data, error } = await supabase.functions.invoke("menu-import", {
-    body: { action: "extract", businessUnitId: input.businessUnitId, model: input.model, files: input.files, text: input.text, requestId: crypto.randomUUID() },
+    body: { action: "extract", mode: input.mode, businessUnitId: input.businessUnitId, model: input.model, files: input.files, text: input.text, requestId: crypto.randomUUID() },
   });
   if (error) throw Error(await errorMessage(error, "Não foi possível ler os arquivos. Verifique sua conexão e tente novamente."));
   if (data?.error) throw Error(data.error);
@@ -74,7 +77,7 @@ export async function extractMenuDraft(input: { businessUnitId: string; model: s
  * segurança após uma falha de rede: o banco devolve o resultado já salvo, sem duplicar.
  */
 export async function applyMenuImport(input: { businessUnitId: string; requestId: string; draft: MenuImportDraft; publish: boolean }): Promise<ApplyResult> {
-  const rpc = supabase.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: ApplyResult | null; error: { message: string } | null }>;
+  const rpc = supabase.rpc.bind(supabase) as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: ApplyResult | null; error: { message: string } | null }>;
   const { data, error } = await rpc("apply_menu_import", {
     p_unit: input.businessUnitId, p_request: input.requestId,
     p_payload: { categories: input.draft.categories, items: input.draft.items }, p_publish: input.publish,
