@@ -263,8 +263,23 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   const [savedStatus, setSavedStatus] = useState(item?.status);
   const isPublished = savedStatus === "published";
   const [uploading, setUploading] = useState(false);
-  const { businessUnitId } = useCurrentBusinessUnit();
+  const { businessUnitId, units } = useCurrentBusinessUnit();
   const { user } = useAuth();
+  // Exportação: unidades (além desta) onde o usuário é admin. O servidor revalida.
+  const [adminUnitIds, setAdminUnitIds] = useState<string[]>([]);
+  const [exportTo, setExportTo] = useState<string[]>([]);
+  useEffect(() => {
+    if (!user?.id) return;
+    let disposed = false;
+    void supabase.from("user_roles").select("business_unit_id").eq("user_id", user.id).eq("role", "admin").then(({ data }) => {
+      if (disposed) return;
+      const rows = data ?? [];
+      const global = rows.some((r) => !r.business_unit_id);
+      setAdminUnitIds(global ? units.map((u) => u.id) : rows.map((r) => r.business_unit_id).filter((id): id is string => Boolean(id)));
+    });
+    return () => { disposed = true; };
+  }, [user?.id, units]);
+  const exportableUnits = units.filter((u) => u.id !== businessUnitId && adminUnitIds.includes(u.id));
   const { roles, loading: rolesLoading } = useUnitRoles();
   const catalog = useMenuSuggestionCatalog(businessUnitId, user?.id, !rolesLoading && roles.includes('admin'));
   const [categorySearch, setCategorySearch] = useState('');
@@ -455,6 +470,21 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
     if (typeof savedId !== "string") return;
     persistedImage.current = finalImage;
     setSavedStatus(status);
+
+    // Exporta a cópia exata (categoria, ficha, insumos teóricos sem lotes) para as unidades marcadas.
+    if (exportTo.length && businessUnitId) {
+      const { data: result, error } = await supabase.rpc("export_menu_item_to_units", {
+        p_source_unit: businessUnitId, p_item_id: savedId, p_target_units: exportTo,
+      });
+      if (error) toast.error("Item salvo, mas a exportação falhou: " + error.message);
+      else {
+        const rows = (result ?? []) as { unit_id: string; ok: boolean; error?: string }[];
+        const name = (id: string) => units.find((u) => u.id === id)?.name ?? "unidade";
+        const okCount = rows.filter((r) => r.ok).length;
+        if (okCount) toast.success(`Exportado para ${okCount} unidade(s)`);
+        rows.filter((r) => !r.ok).forEach((r) => toast.error(`${name(r.unit_id)}: ${r.error}`));
+      }
+    }
 
     // Salvo: apaga a foto antiga (se foi trocada) e as tentativas descartadas.
     const stale = [item?.image_url, ...sessionImages.current].filter((u) => u && u !== finalImage);
@@ -684,6 +714,20 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
           </div>
         ))}
       </div>
+
+      {exportableUnits.length > 0 && (
+        <div className="space-y-2 rounded-lg border border-border p-3">
+          <p className="text-sm font-medium">Exportar para outras unidades</p>
+          <p className="text-xs text-muted-foreground">Ao salvar, cria cópia exata (categoria, ficha técnica e insumos com estoque teórico, sem lotes).</p>
+          {exportableUnits.map((u) => (
+            <label key={u.id} className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={exportTo.includes(u.id)}
+                onChange={(e) => setExportTo((prev) => e.target.checked ? [...prev, u.id] : prev.filter((id) => id !== u.id))} />
+              {u.name}
+            </label>
+          ))}
+        </div>
+      )}
 
       <div className="flex gap-2 pt-2">
         {isPublished ? (

@@ -1960,6 +1960,7 @@ export type Database = {
     Functions: {
       repair_material_purchase_unit: { Args: { p_raw: string; p_display_unit: string }; Returns: string }
       save_stock_preparation: { Args: { p_unit: string; p_data: Json }; Returns: string }
+      export_menu_item_to_units: { Args: { p_source_unit: string; p_item_id: string; p_target_units: string[] }; Returns: Json }
       save_menu_item_with_recipe: { Args: { p_unit: string; p_item_id: string; p_data: Json }; Returns: string }
       create_stock_recipe: { Args: { p_unit: string; p_recipe_id: string; p_data: Json }; Returns: string }
       register_stock_purchase: { Args: { p_unit: string; p_lote_id: string; p_data: Json }; Returns: string }
