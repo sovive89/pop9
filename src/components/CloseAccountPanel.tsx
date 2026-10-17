@@ -387,7 +387,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
               onClick={() => { setPayingClientId(clientId); setPaymentMethod("dinheiro"); setUseCustomAmount(false); setCustomAmount(""); setCashReceived(""); }}
             >
               <CreditCard className="h-4 w-4" />
-              Registrar Pgto
+              Registrar pagamento
             </Button>
           )}
         </div>
@@ -411,7 +411,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
               </button>
               <Receipt className="h-5 w-5 text-primary" />
               <h3 className="text-2xl text-foreground font-bold" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>
-                FECHAR CONTA — {pickupLabel(tableId).toLocaleUpperCase("pt-BR")}
+                PAGAMENTOS E FECHAMENTO — {pickupLabel(tableId).toLocaleUpperCase("pt-BR")}
               </h3>
             </div>
             <button data-tooltip="Volte para a tela anterior." aria-label="Volte para a tela anterior." onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors">
@@ -538,7 +538,7 @@ const CloseAccountPanel = ({ tableId, sessionId, clients, orders, onRequestClose
                           onClick={() => { setPayingClientId(client.id); setPaymentMethod("dinheiro"); setUseCustomAmount(false); setCustomAmount(""); setCashReceived(""); }}
                           className="h-7 px-2 rounded-md bg-primary text-primary-foreground text-[10px] font-semibold hover:bg-primary/90 transition-colors"
                         >
-                          Pagar
+                          Registrar pagamento
                         </button>
                       )}
                     </div>

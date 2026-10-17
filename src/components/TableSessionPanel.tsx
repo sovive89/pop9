@@ -504,7 +504,7 @@ const TableSessionPanel = ({
               {tableTotal > 0 ? (
                 <Button className="flex-1 gap-2" onClick={() => setShowCloseAccount(true)}>
                   <Receipt className="h-4 w-4" />
-                  Fechar Conta
+                  Pagamentos e fechamento
                 </Button>
               ) : (
                 <Button data-tooltip="Solicite ao caixa o encerramento desta sessão." variant="destructive" className="flex-1" onClick={handleRequestClosure} disabled={isRequesting}>

@@ -1,7 +1,15 @@
-import type { LucideIcon } from "lucide-react";
+import { createLucideIcon, type LucideIcon } from "lucide-react";
+
+const Hamburger = createLucideIcon("Hamburger", [
+  ["path", { d: "M4 10a8 6 0 0 1 16 0Z", key: "bun" }],
+  ["path", { d: "M3 14h18M4 18h16v2H4ZM9 6h.01M15 6h.01", key: "filling" }],
+]);
 import { Sandwich, Pizza, CookingPot, Coffee, CupSoda, IceCreamCone, Salad, Soup, CakeSlice, Utensils, Wine, Fish, Beef, Cookie, PlusCircle, Package, Beer, Croissant, Flame, GlassWater, Popcorn, Apple, Drumstick, EggFried, Milk, Martini, Citrus, Cherry, Grape, Candy, Donut, Dessert, IceCreamBowl, Wheat, Carrot, Banana, Popsicle, Ham, Egg, Cake, Vegan, Leaf, Baby, Gift, Percent, Star, Sun, Moon, ChefHat, UtensilsCrossed, Snowflake, Sparkles, Heart, Boxes, Nut } from "lucide-react";
 
 export const CATEGORY_ICON_OPTIONS: { name: string; label: string; Icon: LucideIcon }[] = [
+  { name: "hamburger", label: "Hambúrgueres", Icon: Hamburger },
+  { name: "shot", label: "Doses e destilados", Icon: GlassWater },
+  { name: "non-alcoholic", label: "Sem álcool", Icon: CupSoda },
   { name: "sandwich", label: "Lanches", Icon: Sandwich },
   { name: "pizza", label: "Pizzas", Icon: Pizza },
   { name: "cooking-pot", label: "Porções", Icon: CookingPot },
@@ -72,7 +80,7 @@ export const suggestCategoryIcon = (value: string): string => {
     [/vinho/, "grape"], [/drink|coquetel|caipirinha|gin/, "martini"], [/agua/, "glass-water"],
     [/cafe da manha|breakfast/, "egg-fried"], [/cafe|cappuccino|espresso/, "coffee"],
     [/bebida|refrigerante|refri/, "cup-soda"],
-    [/hamburg|burger|lanche|sanduich|sandu/, "sandwich"], [/pizza/, "pizza"],
+    [/hamburg|burger/, "hamburger"], [/dose|destilad|whisky|vodka|cachaca/, "shot"], [/sem alcool/, "non-alcoholic"], [/lanche|sanduich|sandu/, "sandwich"], [/pizza/, "pizza"],
     [/frango|chicken|asa|coxa/, "drumstick"], [/peixe|frutos? do mar|camarao|sushi/, "fish"],
     [/churrasco|grelhad|brasa/, "flame"], [/carne|bife|picanha/, "beef"], [/frios|presunto|embutid/, "ham"],
     [/massa|macarr|lasanha|risoto/, "wheat"], [/prato|executivo|refei/, "utensils-crossed"],

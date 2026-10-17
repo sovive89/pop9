@@ -1,38 +1,27 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+const mock = vi.hoisted(() => ({ error: false, payments: [] as {amount:number;service_charge:number}[], reload: vi.fn() }));
+vi.mock("@/hooks/useCurrentBusinessUnit", () => ({ useCurrentBusinessUnit: () => ({ businessUnitId: "unit-1", units: [{id:"unit-1",name:"Bar teste"}] }) }));
+vi.mock("@/hooks/useOperationalReportData", () => ({ useOperationalReportData: () => ({ payments: mock.payments, orders: [], loading: false, error: mock.error, reload: mock.reload }) }));
+vi.mock("@/components/admin/WasteSection", () => ({ default: () => <p>Perdas reais</p> }));
 import FinanceTab from "@/components/admin/FinanceTab";
-
-vi.mock("@/hooks/useCurrentBusinessUnit", () => ({ useCurrentBusinessUnit: () => ({ businessUnitId: "unit-1" }) }));
-vi.mock("@/hooks/useStockData", () => ({ useStockData: () => ({ rawMaterials: [{ id: "m1", name: "Tomate", unit: "g", active: true, isTheoretical: false }] }) }));
-vi.mock("@/hooks/useWaste", async (orig) => ({
-  ...(await orig<typeof import("@/hooks/useWaste")>()),
-  useWaste: () => ({ unit: "unit-1", loaded: true, error: false, reload: async () => {}, summary: [{ rawMaterialId: "m1", name: "Tomate", unit: "g", quantity: 900, cost: 9, events: 3, topMotivo: "Vencimento" }] }),
-}));
-
-class ResizeObserverStub { observe() {} unobserve() {} disconnect() {} }
-beforeAll(() => { vi.stubGlobal("ResizeObserver", ResizeObserverStub); });
-afterAll(() => { vi.unstubAllGlobals(); });
-afterEach(cleanup);
-
-describe("Financeiro", () => {
-  it("mostra cada item como card ligado ao cardápio, à ficha e ao desperdício", () => {
+afterEach(() => { cleanup(); mock.payments = []; mock.error = false; });
+describe("Financeiro sem demonstração", () => {
+  it("shows the empty active unit without invented products or fixed costs", () => {
     render(<MemoryRouter><FinanceTab /></MemoryRouter>);
-    expect(screen.getByText(/Dados de amostra/)).toBeInTheDocument();
-    const card = screen.getByRole("article", { name: "Batata Frita" });
-    expect(card).toHaveTextContent("Desperdício");
-    expect(card).toHaveTextContent("CMV real");
-    expect(card.querySelector('a[href="/admin?sec=menu"]')).not.toBeNull();
-    expect(card.querySelector('a[href="/admin?sec=stock"]')).not.toBeNull();
-    expect(screen.getAllByText("Sugerir foto").length).toBeGreaterThan(0); // amostra não tem foto
+    expect(screen.getByText(/Nenhum pagamento confirmado/)).toBeInTheDocument();
+    expect(screen.queryByText("Batata Frita")).not.toBeInTheDocument();
+    expect(screen.queryByText(/amostra/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", {name:"Atualizar financeiro"}));expect(mock.reload).toHaveBeenCalled();
   });
-  it("mostra as perdas reais por insumo e o formulário de registro", () => {
+  it("separates actual principal receipts from service charges", () => {
+    mock.payments = [{amount:20,service_charge:2},{amount:30,service_charge:3}];
     render(<MemoryRouter><FinanceTab /></MemoryRouter>);
-    const card = screen.getByRole("article", { name: "Tomate" });
-    expect(card).toHaveTextContent("900 g perdidos em 3 registros");
-    expect(card).toHaveTextContent("Vencimento");
-    fireEvent.click(screen.getByRole("button", { name: "Registrar perda" }));
-    expect(screen.getByLabelText("Insumo perdido")).toBeInTheDocument();
-    expect(screen.getByLabelText("Motivo da perda")).toBeInTheDocument();
+    expect(screen.getByText(/50,00/)).toBeInTheDocument();expect(screen.getByText(/5,00/)).toBeInTheDocument();
+  });
+  it("does not present a failed lookup as zero revenue", () => {
+    mock.error=true;render(<MemoryRouter><FinanceTab /></MemoryRouter>);
+    expect(screen.getByRole("alert")).toBeInTheDocument();expect(screen.queryByText("Recebimentos confirmados")).not.toBeInTheDocument();
   });
 });

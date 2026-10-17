@@ -92,7 +92,7 @@ export async function zipFiles(files: Record<string, string>): Promise<Uint8Arra
 /** Exporta cada ficha cadastrada como JSON independente, com referências entre fichas. */
 export async function exportJsonFiles(businessUnitId: string): Promise<Record<string,string>> {
   const [{data:items,error:itemError},{data:recipes,error:recipeError}] = await Promise.all([
-    supabase.from("menu_items").select("id,name,description,price,category,recipe_items(raw_material_id,quantity,raw_materials(name,unit))")
+    supabase.from("menu_items").select("id,name,description,price,category,recipe_items(raw_material_id,quantity,display_quantity,display_unit,raw_materials(name,unit))")
       .eq("business_unit_id",businessUnitId).order("name"),
     supabase.from("production_recipes").select("id,name,tipo,output_quantity,output_raw_material_id,raw_materials(name,unit),production_recipe_inputs(raw_material_id,quantity,raw_materials(name,unit))")
       .eq("business_unit_id",businessUnitId).eq("active",true).order("name")
@@ -115,7 +115,7 @@ export async function exportJsonFiles(businessUnitId: string): Promise<Record<st
       componentes:(item.recipe_items??[]).map(i=>{
         const r=byOutput.get(i.raw_material_id);
         return {tipo:r?"ficha_referenciada":"insumo",insumo_id:i.raw_material_id,nome:i.raw_materials?.name??null,
-          quantidade:Number(i.quantity),unidade:i.raw_materials?.unit??null,...(r?{ficha_id:r.id}: {})};
+          quantidade:Number(i.display_quantity ?? i.quantity),unidade:i.display_unit ?? i.raw_materials?.unit??null,...(r?{ficha_id:r.id}: {})};
       })
     },null,2);
   }

@@ -13,7 +13,7 @@ export type PrinterGatilho =
   | "pedido_pronto"
   | "etiqueta_producao";
 export type PrinterConnectionType = "browser" | "qz_tray" | "webusb";
-export type PrinterSector = "cozinha" | "bar" | "caixa" | "expedicao" | "producao" | "geral";
+export type PrinterSector = string;
 export const SECTOR_LABELS: Record<PrinterSector, string> = { cozinha: "Cozinha", bar: "Bar", caixa: "Caixa", expedicao: "Expedição", producao: "Produção", geral: "Geral" };
 
 export interface PrinterConfig {
