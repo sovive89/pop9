@@ -1,0 +1,22 @@
+{
+  "environment": "isolated-staging",
+  "ref": "dkuinacpyjdzqlczzoiy",
+  "schema": "replayed-production-history-20261017021917",
+  "results": [
+    {
+      "id": "RLS-01",
+      "account": "admin-a",
+      "table": "sessions",
+      "query": "select=id&id=eq.1f33348f-8891-4228-a410-4b4b2c8981ff",
+      "expected": "own fixture visible",
+      "status": 403,
+      "returnedIds": [],
+      "errorCode": "42501",
+      "result": "failed",
+      "timestamp": "2026-10-17T02:36:07.463Z"
+    }
+  ],
+  "stopped": true,
+  "validForRlsDecision": false,
+  "reason": "Staging did not yet have the operational GRANTs present in production; excluded from RLS approval."
+}

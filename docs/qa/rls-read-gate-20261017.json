@@ -1,0 +1,141 @@
+{
+  "environment": "isolated-staging",
+  "ref": "dkuinacpyjdzqlczzoiy",
+  "schema": "replayed-production-history-20261017021917",
+  "results": [
+    {
+      "id": "RLS-01",
+      "account": "admin-a",
+      "table": "sessions",
+      "query": "select=id&id=eq.1f33348f-8891-4228-a410-4b4b2c8981ff",
+      "expected": "own fixture visible",
+      "status": 200,
+      "returnedIds": [
+        "1f33348f-8891-4228-a410-4b4b2c8981ff"
+      ],
+      "errorCode": null,
+      "errorMessage": null,
+      "result": "passed",
+      "timestamp": "2026-10-17T02:36:42.831Z"
+    },
+    {
+      "id": "RLS-02",
+      "account": "admin-a",
+      "table": "sessions",
+      "query": "select=id&id=eq.a072c845-9b04-4573-89dc-6da8fe34812e",
+      "expected": "other unit hidden",
+      "status": 200,
+      "returnedIds": [],
+      "errorCode": null,
+      "errorMessage": null,
+      "result": "passed",
+      "timestamp": "2026-10-17T02:36:42.983Z"
+    },
+    {
+      "id": "RLS-01",
+      "account": "cashier-a",
+      "table": "sessions",
+      "query": "select=id&id=eq.1f33348f-8891-4228-a410-4b4b2c8981ff",
+      "expected": "own fixture visible",
+      "status": 200,
+      "returnedIds": [
+        "1f33348f-8891-4228-a410-4b4b2c8981ff"
+      ],
+      "errorCode": null,
+      "errorMessage": null,
+      "result": "passed",
+      "timestamp": "2026-10-17T02:36:43.099Z"
+    },
+    {
+      "id": "RLS-02",
+      "account": "cashier-a",
+      "table": "sessions",
+      "query": "select=id&id=eq.a072c845-9b04-4573-89dc-6da8fe34812e",
+      "expected": "other unit hidden",
+      "status": 200,
+      "returnedIds": [],
+      "errorCode": null,
+      "errorMessage": null,
+      "result": "passed",
+      "timestamp": "2026-10-17T02:36:43.215Z"
+    },
+    {
+      "id": "RLS-01",
+      "account": "attendant-a",
+      "table": "sessions",
+      "query": "select=id&id=eq.1f33348f-8891-4228-a410-4b4b2c8981ff",
+      "expected": "own fixture visible",
+      "status": 200,
+      "returnedIds": [
+        "1f33348f-8891-4228-a410-4b4b2c8981ff"
+      ],
+      "errorCode": null,
+      "errorMessage": null,
+      "result": "passed",
+      "timestamp": "2026-10-17T02:36:43.395Z"
+    },
+    {
+      "id": "RLS-02",
+      "account": "attendant-a",
+      "table": "sessions",
+      "query": "select=id&id=eq.a072c845-9b04-4573-89dc-6da8fe34812e",
+      "expected": "other unit hidden",
+      "status": 200,
+      "returnedIds": [],
+      "errorCode": null,
+      "errorMessage": null,
+      "result": "passed",
+      "timestamp": "2026-10-17T02:36:43.510Z"
+    },
+    {
+      "id": "RLS-14",
+      "account": "no-role",
+      "table": "sessions",
+      "query": "select=id&id=eq.1f33348f-8891-4228-a410-4b4b2c8981ff",
+      "expected": "no role hidden",
+      "status": 200,
+      "returnedIds": [],
+      "errorCode": null,
+      "errorMessage": null,
+      "result": "passed",
+      "timestamp": "2026-10-17T02:36:43.622Z"
+    },
+    {
+      "id": "RLS-15",
+      "account": "anon",
+      "table": "sessions",
+      "query": "select=id&id=eq.1f33348f-8891-4228-a410-4b4b2c8981ff",
+      "expected": "anonymous hidden",
+      "status": 200,
+      "returnedIds": [],
+      "errorCode": null,
+      "errorMessage": null,
+      "result": "passed",
+      "timestamp": "2026-10-17T02:36:43.715Z"
+    },
+    {
+      "id": "RLS-12",
+      "account": "admin-a",
+      "table": "business_units",
+      "query": "select=id&id=eq.c6f7de87-da81-4be6-8644-e900c567e5cc",
+      "expected": "other unit hidden",
+      "status": 200,
+      "returnedIds": [
+        "c6f7de87-da81-4be6-8644-e900c567e5cc"
+      ],
+      "errorCode": null,
+      "errorMessage": null,
+      "result": "failed",
+      "timestamp": "2026-10-17T02:36:43.931Z"
+    }
+  ],
+  "stopped": true,
+  "authorizedControl": {
+    "account": "admin-b",
+    "status": 200,
+    "returnedIds": [
+      "c6f7de87-da81-4be6-8644-e900c567e5cc"
+    ],
+    "timestamp": "2026-10-17T02:37:10.634Z"
+  }
+}
