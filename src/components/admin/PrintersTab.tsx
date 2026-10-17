@@ -304,7 +304,7 @@ const PrintersTab = () => {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId ? "Editar impressora" : "Nova impressora"}</DialogTitle>
             <DialogDescription>
