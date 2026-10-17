@@ -125,8 +125,19 @@ Deno.serve(async (req) => {
       });
     }
 
+    // A service-role client bypasses RLS: authorize the target explicitly.
+    const authorizeTarget = async (userId: unknown) => {
+      if (typeof userId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userId)) return false;
+      const { data, error } = await supabaseAdmin.from("user_roles")
+        .select("business_unit_id").eq("user_id", userId);
+      if (error || !data?.length) return false;
+      // A unit administrator must not mutate identities belonging to another unit.
+      return Boolean(adminRole.business_unit_id) && data.every(role => role.business_unit_id === adminRole.business_unit_id);
+    };
+
     if (action === "update") {
       const { user_id, full_name, new_password } = body;
+      if (!(await authorizeTarget(user_id))) return new Response(JSON.stringify({ error: "Usuário fora da unidade autorizada" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
       // Update profile
       if (full_name) {
@@ -157,6 +168,7 @@ Deno.serve(async (req) => {
 
     if (action === "delete") {
       const { user_id } = body;
+      if (!(await authorizeTarget(user_id))) return new Response(JSON.stringify({ error: "Usuário fora da unidade autorizada" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
       // Prevent self-delete
       if (user_id === caller.id) {
