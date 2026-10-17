@@ -60,6 +60,10 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Executor de tarefas PØP9
+
+A [arquitetura do executor](docs/task-executor-architecture.md) define capacidades, preparação no formulário, preview, confirmação e comando transacional para novos itens de cardápio em rascunho. A base de contratos compartilhados está testada; handlers, adapters e gravação pelo executor ainda não estão ativados.
+
 ## Conectar ao banco de dados (Supabase)
 
 O app usa o **Supabase** como banco de dados e o SDK oficial (`@supabase/supabase-js`).
