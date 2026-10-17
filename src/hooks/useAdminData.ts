@@ -17,6 +17,7 @@ export interface DbMenuItem {
   name: string;
   price: number;
   category: string;
+  destination: string | null;
   description: string | null;
   image_url: string | null;
   sort_order: number;
@@ -141,6 +142,7 @@ export const useAdminData = () => {
       name: item.name,
       price: Number(item.price),
       category: item.category,
+      destination: item.destination ?? null,
       description: item.description,
       image_url: item.image_url ?? null,
       sort_order: item.sort_order,

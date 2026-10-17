@@ -40,7 +40,7 @@ export interface RecipeBuilderHandle {
   importFromMenuItem: (sourceMenuItemId: string) => Promise<boolean>;
   getDraft: () => MenuRecipeDraft[];
 }
-interface Props { menuItemId?: string; menuItemName?: string; disabled?: boolean }
+interface Props { menuItemId?: string; menuItemName?: string; destination?: string; disabled?: boolean }
 
 const emptyInput = (): MaterialInput => ({
   key: crypto.randomUUID(), rawMaterialId: "", newName: "", newUnit: "un", stockUnit: "", quantity: "",
@@ -49,13 +49,14 @@ const emptyRow = (): RecipeRow => ({ ...emptyInput(), isProduced: false, transfo
 const positive = (value: string) => Number.isFinite(Number(value)) && Number(value) > 0;
 const labelClass = "block min-w-0 space-y-1 text-xs text-muted-foreground";
 
-function MaterialFields({ input, materials, disabled, base = false, onChange, onRemove }: {
-  input: MaterialInput; materials: RawMaterial[]; disabled: boolean; base?: boolean;
+function MaterialFields({ input, materials, disabled, base = false, stockItemLabel = false, onChange, onRemove }: {
+  input: MaterialInput; materials: RawMaterial[]; disabled: boolean; base?: boolean; stockItemLabel?: boolean;
   onChange: (patch: Partial<MaterialInput>) => void; onRemove: () => void;
 }) {
   const material = materials.find(item => item.id === input.rawMaterialId);
   const unit = input.newUnit || material?.unit || "un";
-  const name = base ? "Insumo-base" : "Insumo";
+  const name = base ? "Insumo-base" : stockItemLabel ? "Item do estoque" : "Insumo";
+  const selectorType = stockItemLabel && !base ? "item de estoque" : "insumo";
   const canDefineUnit = !material || (material.isTheoretical && material.currentStock === 0);
   const stockUnit = input.stockUnit || material?.unit || unit;
   return <div className="min-w-0 space-y-2 rounded-lg border border-border bg-background/50 p-3">
@@ -63,10 +64,10 @@ function MaterialFields({ input, materials, disabled, base = false, onChange, on
       <label className={`${labelClass} flex-1`} htmlFor={`${input.key}-material`}>
         <span>{name}</span>
         <select id={`${input.key}-material`} aria-label={name} disabled={disabled}
-          data-tooltip="Selecione um insumo desta unidade ou crie um novo aqui. O cadastro novo terá saldo zero até uma compra ou produção."
+          data-tooltip={stockItemLabel && !base ? "Selecione pelo nome um item de estoque desta unidade ou crie um novo item teórico. Use Desconto direto para baixar o estoque por venda." : "Selecione um insumo desta unidade ou crie um novo aqui. O cadastro novo terá saldo zero até uma compra ou produção."}
           value={input.rawMaterialId} onChange={event => { const selected = materials.find(item => item.id === event.target.value); onChange({ rawMaterialId: event.target.value, newName: "", newUnit: selected?.unit ?? "un", stockUnit: "" }); }}
           className="h-9 w-full min-w-0 rounded-md border border-border bg-muted px-2 text-xs text-foreground">
-          <option value="">Criar novo insumo</option>
+          <option value="">Criar novo {selectorType}</option>
           {materials.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select>
       </label>
@@ -80,7 +81,7 @@ function MaterialFields({ input, materials, disabled, base = false, onChange, on
         value={input.newName} onChange={value => onChange({ newName: value })} mode="whole"
         suggestions={materials.map(row => ({ id: row.id, label: row.name, value: row.name, kind: 'material', unit: row.unit }))}
         onPick={suggestion => onChange({ rawMaterialId: suggestion.id, newName: '', newUnit: suggestion.unit ?? '', stockUnit: '' })}
-        placeholder={base ? "Ex.: tomate" : "Ex.: molho da casa"} className="h-9 min-w-0 text-xs" />
+        placeholder={base ? "Ex.: tomate" : stockItemLabel ? "Ex.: cerveja lata" : "Ex.: molho da casa"} className="h-9 min-w-0 text-xs" />
     </label>}
     <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
       <p>Estoque controlado em <strong className="font-medium">{stockUnit}</strong></p>
@@ -91,8 +92,8 @@ function MaterialFields({ input, materials, disabled, base = false, onChange, on
         </DialogTrigger>
         <DialogContent className="w-[calc(100%-2rem)] max-w-sm p-4">
           <DialogHeader>
-            <DialogTitle>Cadastro do insumo</DialogTitle>
-            <DialogDescription>{material?.name || input.newName.trim() || "Novo insumo"} — escolha como o saldo será contado no estoque.</DialogDescription>
+            <DialogTitle>Cadastro do {name.toLowerCase()}</DialogTitle>
+            <DialogDescription>{material?.name || input.newName.trim() || `Novo ${selectorType}`} — escolha como o saldo será contado no estoque.</DialogDescription>
           </DialogHeader>
           <label className={labelClass} htmlFor={`${input.key}-stock-unit`}>
             <span>Unidade-base inicial do {name.toLowerCase()}</span>
@@ -132,7 +133,7 @@ function MaterialFields({ input, materials, disabled, base = false, onChange, on
   </div>;
 }
 
-const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menuItemName, disabled = false }, ref) => {
+const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menuItemName, destination, disabled = false }, ref) => {
   const { rawMaterials, recipes, ready: stockReady, savePreparation } = useStockData();
   const { businessUnitId } = useCurrentBusinessUnit();
   const materialsRef = useRef(rawMaterials); materialsRef.current = rawMaterials;
@@ -284,9 +285,10 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
         </Button>
       </div>
       <Button type="button" variant="outline" size="sm" disabled={disabled || !loaded} onClick={() => setRows(previous => [...previous, emptyRow()])}
-        data-tooltip="Adicione um insumo existente ou crie um novo com saldo zero, diretamente no cardápio."><Plus className="h-3 w-3" /> Adicionar insumo</Button>
+        data-tooltip="Adicione um item existente do estoque ou crie um novo cadastro teórico, sem movimentar saldo."><Plus className="h-3 w-3" /> {destination === "bar" ? "Adicionar item do estoque" : "Adicionar insumo"}</Button>
     </div>
     <p className="text-xs text-muted-foreground">Monte os insumos e as quantidades por item. Os novos cadastros e receitas serão salvos junto com o item, sem movimentar estoque.</p>
+    {destination === "bar" && <p className="rounded-md border border-border bg-background/50 p-2 text-xs text-muted-foreground">Bebida pronta: selecione pelo nome o item do estoque e use <strong>Desconto direto</strong>. Se for preparada na cozinha, selecione o setor Cozinha no item e configure <strong>Produção</strong> nesta ficha.</p>}
     {!loaded && !loadError && <p className="text-xs text-muted-foreground" role="status">Carregando ficha técnica…</p>}
     {loadError && <div role="alert" className="space-y-2 text-xs text-destructive">{loadError}<br />
       <Button type="button" variant="outline" size="sm" onClick={() => setRetry(value => value + 1)}>Tentar novamente</Button></div>}
@@ -294,7 +296,7 @@ const RecipeBuilder = forwardRef<RecipeBuilderHandle, Props>(({ menuItemId, menu
     {rows.map(row => {
       const unit = row.outputUnit;
       return <div key={row.key} className="min-w-0 space-y-3 rounded-lg bg-secondary/30 p-3">
-        <MaterialFields input={row} materials={rawMaterials} disabled={disabled}
+        <MaterialFields input={row} materials={rawMaterials} disabled={disabled} stockItemLabel={destination === "bar"}
           onChange={patch => {
             if (patch.rawMaterialId !== undefined) {
               const material = rawMaterials.find(m => m.id === patch.rawMaterialId);
