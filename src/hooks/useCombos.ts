@@ -52,32 +52,29 @@ export function useCombos() {
 
 /** Grava o combo inteiro: dados, etapas e opções (substitui etapas antigas ao editar). */
 export async function saveCombo(unit: string, combo: Combo, sortOrder: number) {
-  const fields = {
-    business_unit_id: unit, name: combo.name.trim(), description: combo.description?.trim() || null,
-    pricing_mode: combo.pricingMode, price: combo.pricingMode === "fixed" ? combo.price : null,
-    discount: combo.pricingMode === "fixed" ? 0 : combo.discount, active: combo.active, sort_order: sortOrder,
-  };
-  let id = combo.id;
-  if (id) {
-    const { error } = await table("menu_combos").update(fields).eq("id", id);
-    if (error) throw new Error(error.message);
-    const { error: delError } = await table("menu_combo_slots").delete().eq("combo_id", id);
-    if (delError) throw new Error(delError.message);
-  } else {
-    const { data, error } = await table("menu_combos").insert(fields).select("id").single();
-    if (error || !data) throw new Error(error?.message ?? "Não foi possível criar o combo");
-    id = data.id;
-  }
-  for (const [i, slot] of combo.slots.entries()) {
-    const { data, error } = await table("menu_combo_slots").insert({ combo_id: id, business_unit_id: unit, label: slot.label.trim(), sort_order: i }).select("id").single();
-    if (error || !data) throw new Error(error?.message ?? "Não foi possível salvar a etapa");
-    const rows = slot.options.map((o, j) => ({ slot_id: data.id, business_unit_id: unit, menu_item_id: o.menuItemId, extra_price: o.extraPrice, is_free: o.isFree, sort_order: j }));
-    if (rows.length) {
-      const { error: optError } = await table("menu_combo_options").insert(rows);
-      if (optError) throw new Error(optError.message);
-    }
-  }
-  return id;
+  const { data, error } = await supabase.rpc("save_menu_combo", {
+    p_unit: unit,
+    p_combo_id: combo.id || null,
+    p_sort_order: sortOrder,
+    p_data: {
+      name: combo.name.trim(),
+      description: combo.description?.trim() || null,
+      pricing_mode: combo.pricingMode,
+      price: combo.pricingMode === "fixed" ? combo.price : null,
+      discount: combo.pricingMode === "fixed" ? 0 : combo.discount,
+      active: combo.active,
+      slots: combo.slots.map((slot) => ({
+        label: slot.label.trim(),
+        options: slot.options.map((option) => ({
+          menu_item_id: option.menuItemId,
+          extra_price: option.extraPrice,
+          is_free: option.isFree,
+        })),
+      })),
+    },
+  });
+  if (error || !data) throw new Error(error?.message ?? "Não foi possível salvar o combo");
+  return data;
 }
 
 export async function deleteCombo(id: string) {

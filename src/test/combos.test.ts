@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { comboAvailable, comboListPrice, comboPrice, comboToOrderItems, type Combo } from "@/lib/combos";
+import { comboAvailable, comboListPrice, comboPrice, comboToOrderItems, onTheFlyComboListPrice, onTheFlyComboPrice, onTheFlyComboToOrderItems, type Combo, type ComboMenuItem } from "@/lib/combos";
 
 const items = new Map([
   ["burger", { id: "burger", name: "Burger", price: 30 }],
@@ -32,6 +32,17 @@ describe("combos", () => {
     expect(comboPrice(discounted, chosen, items)).toBe(39);
   });
 
+  it("calculates an on-the-fly combo with percent or currency discount and allocates exact total", () => {
+    const ids = ["burger", "fries"];
+    expect(onTheFlyComboListPrice(ids, items)).toBe(45);
+    expect(onTheFlyComboPrice(ids, items, { mode: "percent", value: 10 })).toBe(40.5);
+    expect(onTheFlyComboPrice(ids, items, { mode: "amount", value: 5 })).toBe(40);
+    const lines = onTheFlyComboToOrderItems("Combo montado na hora", ids, items, { mode: "percent", value: 10 }, "g2");
+    expect(lines.map((line) => line.name)).toEqual(["Burger", "Fritas"]);
+    expect(lines.every((line) => line.comboGroupId === "g2" && line.comboName === "Combo montado na hora")).toBe(true);
+    expect(Math.round(lines.reduce((sum, line) => sum + line.price, 0) * 100)).toBe(4050);
+  });
+
   it("free item (Coca grátis) is not charged", () => {
     expect(comboPrice(combo({ pricingMode: "percent", discount: 0, price: null }), [opt("burger"), opt("coke", 0, true)], items)).toBe(30);
     expect(comboListPrice([opt("burger"), opt("coke", 0, true)], items)).toBe(37);
@@ -49,5 +60,15 @@ describe("combos", () => {
     expect(comboAvailable(combo(), items)).toBe(true);
     expect(comboAvailable(combo({ slots: [{ id: "s", label: "X", options: [opt("gone")] }] }), items)).toBe(false);
     expect(comboAvailable(combo({ active: false }), items)).toBe(false);
+  });
+
+  it("excludes special/seasonal items by default but respects an explicit admin exception", () => {
+    const classified = new Map<string, ComboMenuItem>(items);
+    classified.set("special", { id: "special", name: "Prato sazonal", price: 42, comboEligible: false });
+    classified.set("released", { id: "released", name: "Especial liberado", price: 39, comboEligible: true });
+    expect(comboAvailable(combo({ slots: [{ id: "s", label: "Prato", options: [opt("special")] }] }), classified)).toBe(false);
+    expect(comboAvailable(combo({ slots: [{ id: "s", label: "Prato", options: [opt("released")] }] }), classified)).toBe(true);
+    expect(comboToOrderItems(combo(), [opt("special")], classified, "g3")).toEqual([]);
+    expect(onTheFlyComboToOrderItems("Na hora", ["burger", "special"], classified, { mode: "amount", value: 2 }, "g4")).toEqual([]);
   });
 });

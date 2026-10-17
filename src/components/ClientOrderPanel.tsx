@@ -66,7 +66,7 @@ interface Props {
 type View = "menu" | "cart" | "orders" | "item-detail" | "combos";
 
 const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder, onBack }: Props) => {
-  const { menuItems, categories: dbCategories, categoryLabels, loading: menuLoading, error: menuError } = useMenuItems();
+  const { menuItems, categories: dbCategories, categoryLabels, loading: menuLoading, error: menuError, classificationSchemaSupported } = useMenuItems();
   const [activeCategory, setActiveCategory] = useState<MenuCategory>("burgers");
   const [view, setView] = useState<View>("menu");
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
@@ -75,7 +75,8 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
   const [meatPoint, setMeatPoint] = useState<string | null>(null);
   // Variante escolhida (sabor, molho...). Obrigatória quando o item tem variantes.
   const [variant, setVariant] = useState<string | null>(null);
-  const { combos } = useCombos();
+  const { combos, loading: combosLoading, error: combosError } = useCombos();
+  const combosReady = classificationSchemaSupported && !combosLoading && !combosError;
   // Index of cart entry being edited (null = adding new)
   const [editingCartIndex, setEditingCartIndex] = useState<number | null>(null);
   // Search
@@ -347,7 +348,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
             animate={{ opacity: 1, x: 0 }}
             className="w-16 sm:w-20 border-r border-border bg-card/50 flex flex-col items-center py-3 gap-1 shrink-0 overflow-y-auto"
           >
-            {combos.some((c) => c.active) && (
+            {combosReady && (
               <button data-tooltip="Combos do cardápio." aria-label="Combos"
                 onClick={() => setView("combos")}
                 className={`flex flex-col items-center gap-1 rounded-xl px-2 py-2.5 w-full transition-colors ${view === "combos" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"}`}>
@@ -386,10 +387,16 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
         {/* Main content */}
         <div className="flex-1 overflow-y-auto">
           <AnimatePresence mode="wait">
-            {view === "combos" ? (
+            {view === "combos" && !combosReady ? (
+              <div role="status" className="p-4 text-sm text-muted-foreground">
+                Combos indisponíveis até que o schema de elegibilidade e as tabelas de combos estejam instalados.
+                <Button variant="ghost" size="sm" onClick={() => setView("menu")}>Voltar ao cardápio</Button>
+              </div>
+            ) : view === "combos" ? (
               <ComboBuilder
                 combos={combos}
                 menuItems={menuItems}
+                categoryLabels={categoryLabels}
                 onBack={() => setView("menu")}
                 onAdd={(lines) => {
                   onUpdateOrder({ ...order, cart: [...order.cart, ...lines] });

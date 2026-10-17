@@ -17,6 +17,8 @@ export interface DbMenuItem {
   name: string;
   price: number;
   category: string;
+  item_kind: "regular" | "special" | "seasonal";
+  combo_eligible: boolean;
   destination: string | null;
   description: string | null;
   image_url: string | null;
@@ -66,6 +68,7 @@ export const useAdminData = () => {
   const [categoriesScope, setCategoriesScope] = useState('');
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [menuItems, setMenuItems] = useState<DbMenuItem[]>([]);
+  const [classificationSchemaSupported, setClassificationSchemaSupported] = useState(false);
   const [categories, setCategories] = useState<DbMenuCategory[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [loadingMenu, setLoadingMenu] = useState(true);
@@ -109,8 +112,16 @@ export const useAdminData = () => {
     const request = ++menuRequest.current;
     const isCurrent = () => currentScope.current === unitScope && menuRequest.current === request;
     setMenuScope(unitScope); setMenuItems([]);
+    setClassificationSchemaSupported(false);
     if (!businessUnitId) { setLoadingMenu(false); return; }
     setLoadingMenu(true);
+    const { error: classificationError } = await supabase
+      .from("menu_items")
+      .select("item_kind,combo_eligible")
+      .eq("business_unit_id", businessUnitId);
+    if (!isCurrent()) return;
+    const supportsClassification = !classificationError;
+    setClassificationSchemaSupported(supportsClassification);
     const { data: items, error: iErr } = await supabase
       .from("menu_items")
       .select("*")
@@ -142,6 +153,8 @@ export const useAdminData = () => {
       name: item.name,
       price: Number(item.price),
       category: item.category,
+      item_kind: (item.item_kind ?? "regular") as DbMenuItem["item_kind"],
+      combo_eligible: item.combo_eligible ?? true,
       destination: item.destination ?? null,
       description: item.description,
       image_url: item.image_url ?? null,
@@ -271,9 +284,10 @@ export const useAdminData = () => {
     if (!businessUnitId || currentScope.current !== unitScope) return false;
     const requestScope = unitScope;
     const { id, ...data } = input;
-    const { data: savedId, error } = await supabase.rpc("save_menu_item_with_recipe", {
-      p_unit: businessUnitId, p_item_id: id ?? crypto.randomUUID(), p_data: data,
-    });
+    const args = { p_unit: businessUnitId, p_item_id: id ?? crypto.randomUUID(), p_data: data };
+    const { data: savedId, error } = classificationSchemaSupported
+      ? await supabase.rpc("save_menu_item_with_recipe_and_class", args)
+      : await supabase.rpc("save_menu_item_with_recipe", args);
     if (currentScope.current !== requestScope) return false;
     if (error || !savedId) { toast.error("Erro ao salvar item e ficha técnica: " + (error?.message ?? "sem retorno")); return false; }
     toast.success(isNew ? "Item e ficha técnica criados" : "Item e ficha técnica atualizados");
@@ -328,6 +342,7 @@ export const useAdminData = () => {
   return {
     users,
     menuItems: menuScope === unitScope ? menuItems : [],
+    classificationSchemaSupported: menuScope === unitScope && classificationSchemaSupported,
     categories: categoriesScope === unitScope ? categories : [],
     loadingUsers,
     loadingMenu: loadingMenu || (Boolean(businessUnitId) && menuScope !== unitScope),

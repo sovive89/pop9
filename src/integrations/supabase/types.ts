@@ -494,6 +494,8 @@ export type Database = {
           external_id: string | null
           id: string
           image_url: string | null
+          item_kind: string
+          combo_eligible: boolean
           name: string
           price: number
           sku: string | null
@@ -512,6 +514,8 @@ export type Database = {
           external_id?: string | null
           id?: string
           image_url?: string | null
+          item_kind?: string
+          combo_eligible?: boolean
           name: string
           price: number
           sku?: string | null
@@ -530,6 +534,8 @@ export type Database = {
           external_id?: string | null
           id?: string
           image_url?: string | null
+          item_kind?: string
+          combo_eligible?: boolean
           name?: string
           price?: number
           sku?: string | null
@@ -1964,7 +1970,10 @@ export type Database = {
       repair_material_purchase_unit: { Args: { p_raw: string; p_display_unit: string }; Returns: string }
       save_stock_preparation: { Args: { p_unit: string; p_data: Json }; Returns: string }
       export_menu_item_to_units: { Args: { p_source_unit: string; p_item_id: string; p_target_units: string[] }; Returns: Json }
+      export_menu_item_to_units_with_classification: { Args: { p_source_unit: string; p_item_id: string; p_target_units: string[] }; Returns: Json }
+      save_menu_item_with_recipe_and_class: { Args: { p_unit: string; p_item_id: string; p_data: Json }; Returns: string }
       save_menu_item_with_recipe: { Args: { p_unit: string; p_item_id: string; p_data: Json }; Returns: string }
+      save_menu_combo: { Args: { p_unit: string; p_combo_id: string | null; p_data: Json; p_sort_order: number }; Returns: string }
       create_stock_recipe: { Args: { p_unit: string; p_recipe_id: string; p_data: Json }; Returns: string }
       register_stock_purchase: { Args: { p_unit: string; p_lote_id: string; p_data: Json }; Returns: string }
       produce_stock_batch: { Args: { p_unit: string; p_batch_id: string; p_data: Json }; Returns: string }
