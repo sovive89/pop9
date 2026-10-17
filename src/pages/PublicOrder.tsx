@@ -42,7 +42,8 @@ export default function PublicOrder(){
     return ()=>{cancelled=true;if(manifest && created)manifest.remove();else if(manifest && original)manifest.href=original;};
   },[scope,attempt]);
   const store=loaded.scope===scope ? loaded.store : null;const cart=cartState.scope===scope ? cartState.cart : {};
-  const combos=store?.combos ?? [];
+  // Só combos prontos no formato novo (components); o formato antigo do servidor (slots) não é oferecido por aqui.
+  const combos=(store?.combos ?? []).filter(combo=>Array.isArray(combo?.components) && Number.isFinite(Number(combo.price)));
   const total=(store?.items.reduce((sum,item)=>sum+Number(item.price)*(cart[itemKey(item.id)] ?? 0),0) ?? 0)+combos.reduce((sum,combo)=>sum+Number(combo.price)*(cart[comboKey(combo.id)] ?? 0),0);
   const count=Object.values(cart).reduce((a,b)=>a+b,0);
   const change=(id:string,amount:number)=>setCart(prev=>{const previous=prev.scope===scope ? prev.cart : {};return {scope,cart:{...previous,[id]:Math.max(0,Math.min(20,(previous[id] ?? 0)+amount))}};});
