@@ -28,7 +28,9 @@ Deno.serve(async(req:Request)=>{
       // Marca é opcional: sem a tabela ou sem registro, o cardápio segue com o visual padrão.
       const {data:brandRow,error:brandError}=await db.from("brand_settings").select("*").eq("business_unit_id",unit).maybeSingle();
       const brand=brandError ? EMPTY_BRAND : sanitizeBrand(brandRow,brandAssetPrefix(Deno.env.get("SUPABASE_URL") ?? "",unit));
-      return json({name:store.name,items,businessPhone:whatsapp?.config?.businessPhone ?? "",pickupOnly:true,brand,acceptingOrders:Boolean(period)});
+      // Combos prontos são opcionais: sem a migration, o cardápio segue só com itens avulsos.
+      const {data:combos,error:combosError}=await db.rpc("list_pwa_ready_combos",{p_unit:unit});
+      return json({name:store.name,items,combos:combosError ? [] : combos ?? [],businessPhone:whatsapp?.config?.businessPhone ?? "",pickupOnly:true,brand,acceptingOrders:Boolean(period)});
     }
     if(body.action!=="submit")return json({error:"Ação inválida"},400);
     if(typeof body.access_token!=="string" || !/^[a-f0-9-]{72}$/.test(body.access_token))return json({error:"Valide seu número enviando PEDIR no WhatsApp da loja"},401);
