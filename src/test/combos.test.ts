@@ -25,6 +25,13 @@ describe("combos", () => {
     expect(comboPrice(combo({ pricingMode: "amount", discount: 100, price: null }), [opt("burger")], items)).toBe(0);
   });
 
+  it("calculates the selected options' list price and discounted combo value including surcharge", () => {
+    const chosen = [opt("burger"), opt("juice", 3)];
+    const discounted = combo({ pricingMode: "percent", discount: 10, price: null });
+    expect(comboListPrice(chosen, items)).toBe(43);
+    expect(comboPrice(discounted, chosen, items)).toBe(39);
+  });
+
   it("free item (Coca grátis) is not charged", () => {
     expect(comboPrice(combo({ pricingMode: "percent", discount: 0, price: null }), [opt("burger"), opt("coke", 0, true)], items)).toBe(30);
     expect(comboListPrice([opt("burger"), opt("coke", 0, true)], items)).toBe(37);
