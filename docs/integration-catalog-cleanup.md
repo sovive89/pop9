@@ -12,7 +12,7 @@
 
 Consolidar configurações duplicadas de IA no painel próprio. A revisão do catálogo não apaga registros de integração nem credenciais de nenhuma unidade, não desconecta serviços e não modifica webhooks ou emissão/pagamentos. As integrações mantidas que ainda dependem de desenvolvimento continuam identificadas como indisponíveis para conexão real.
 
-A galeria mantém iFood, 99Food, Mercado Pago, Stone, Cielo, Rede, PagBank, Asaas, Pix, Focus NFe e Nuvem Fiscal. O painel de IA mantém OpenAI, Google/Gemini e Anthropic. WhatsApp, webhook Meta, bot externo e PWA de pedidos continuam no painel dedicado.
+A galeria mantém iFood, 99Food, Mercado Pago, Stone, Cielo, Rede, PagBank, Asaas, Pix, Focus NFe e Nuvem Fiscal. O painel de IA mantém os três provedores compartilhados: OpenAI, Google/Gemini e Anthropic. WhatsApp, webhook Meta, bot externo e PWA de pedidos continuam no painel dedicado.
 
 Retirados da galeria: Rappi, Aiqfome, Instagram, Telegram, Goomer, Omie, Bling, Conta Azul, Shopify, WooCommerce, Mercado Livre, Shopee, Webhook genérico, REST API genérica, GraphQL e HTTP genérico, além dos cards duplicados de IA. As opções de ativação FLUX e Ideogram saem do seletor do painel de IA, sem alterar o backend ou apagar credenciais legadas.
 

@@ -86,6 +86,6 @@ export function AIConnectionsPanel() {
       {connections.some(c=>c.provider===provider)&&<Button data-tooltip="Desconecte esta integração da unidade selecionada." variant="destructive" disabled={busy} onClick={()=>void disconnect()}>Desconectar</Button>}
     </div>
     <p className="text-sm">Status: {connections.find(c=>c.provider===provider)?.status==="connected"?"Conectado":"Não conectado"}</p>
-    <p className="text-xs text-muted-foreground">Estas credenciais atendem ao assistente e à geração de cardápios/fichas e leitura de documentos. Imagens usam Google ou OpenAI. Ler uma nota fiscal não emite uma nota.</p>
+    <p className="text-xs text-muted-foreground">Estas credenciais atendem ao assistente e à geração de cardápios/fichas e leitura de documentos. A geração de imagem usa as credenciais Google ou OpenAI desta unidade. Ler uma nota fiscal não emite uma nota.</p>
   </section>;
 }
