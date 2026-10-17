@@ -3,6 +3,8 @@
 -- Reaproveita public.save_menu_item_with_recipe para cada unidade de destino; assim os
 -- insumos nascem como estoque TEÓRICO (is_theoretical=true) e SEM lotes, compras,
 -- movimentações ou saldos (ver resolve_recipe_material).
+-- Limitação: a receita de produção é exportada em 1 nível; um semiacabado que seja
+-- insumo de outro semiacabado chega como insumo simples (sem receita própria).
 -- Idempotente: se a unidade de destino já tem item com o mesmo nome e categoria, ele é
 -- atualizado em vez de duplicado. Falhas são isoladas por unidade (subtransação).
 create or replace function public.export_menu_item_to_units(p_source_unit uuid, p_item_id text, p_target_units uuid[])
