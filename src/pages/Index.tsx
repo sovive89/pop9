@@ -7,7 +7,7 @@ import { useUnitPrintMode } from "@/hooks/useUnitPrintMode";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import { useAuth } from "@/hooks/useAuth";
 import { Navigate, useNavigate } from "react-router-dom";
-import { Flame, LogOut, Settings, Map, ClipboardList, ChefHat, Bell, Package, Wallet, Printer } from "lucide-react";
+import { Flame, LogOut, Settings, Map, ClipboardList, ChefHat, Bell, Package, Wallet, Printer, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import TableMap from "@/components/TableMap";
@@ -142,7 +142,6 @@ const Index = () => {
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
             {profileName && (
               <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={()=>navigate("/pedidos-online")}>Pedidos online</Button>
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold uppercase">
                   {profileName.split(" ").filter(Boolean).map(n => n[0]).slice(0, 2).join("")}
                 </div>
@@ -153,17 +152,9 @@ const Index = () => {
             )}
             {(roles.attendant || roles.kitchen || roles.admin || roles.cashier) && (
               <div className="flex items-center gap-1.5">
-                {roles.attendant && (
-                  <Button data-tooltip="Abra o atendimento e acompanhe mesas e pedidos."
-                    variant="outline"
-                    size="sm"
-                    onClick={() => navigate("/atendimento")}
-                    className="gap-1.5 border-primary/50 bg-primary/10 text-primary hover:bg-primary/20"
-                  >
-                    <Map className="h-4 w-4" />
-                    <span className="hidden sm:inline">Atendimento</span>
-                  </Button>
-                )}
+                <Button variant="outline" size="sm" aria-label="Pedidos online" className="gap-1.5" onClick={() => navigate("/pedidos-online")}>
+                  <Globe className="h-4 w-4" /><span className="hidden sm:inline">Pedidos online</span>
+                </Button>
                 {(roles.kitchen || roles.admin) && kds.loaded && kds.enabled && (
                   <Button data-tooltip="Abra a cozinha e acompanhe o preparo dos pedidos."
                     variant="outline"
@@ -175,8 +166,8 @@ const Index = () => {
                     <span className="hidden sm:inline">Cozinha</span>
                   </Button>
                 )}
-                {printMode.mode === "station" && <Button variant="outline" size="sm" data-tooltip="Abra a Estação de impressão no aparelho ligado à impressora." onClick={() => navigate("/impressao")}><Printer className="mr-1.5 h-4 w-4" />Impressão</Button>}
-                {(roles.cashier || roles.admin) && <Button variant="outline" size="sm" onClick={() => navigate("/caixa")}><Wallet className="mr-1.5 h-4 w-4" />Caixa</Button>}
+                {printMode.mode === "station" && <Button variant="outline" size="sm" data-tooltip="Abra a Estação de impressão no aparelho ligado à impressora." onClick={() => navigate("/impressao")}><Printer className="h-4 w-4 sm:mr-1.5" /><span className="hidden sm:inline">Impressão</span></Button>}
+                {(roles.cashier || roles.admin) && <Button variant="outline" size="sm" aria-label="Caixa" onClick={() => navigate("/caixa")}><Wallet className="h-4 w-4 sm:mr-1.5" /><span className="hidden sm:inline">Caixa</span></Button>}
                 {roles.admin && (
                   <Button data-tooltip="Abra a administração do estabelecimento."
                     variant="outline"
@@ -190,14 +181,14 @@ const Index = () => {
                 )}
               </div>
             )}
-            <Button data-tooltip="Encerre sua sessão e volte para a tela de entrada."
+            <Button data-tooltip="Encerre sua sessão e volte para a tela de entrada." aria-label="Sair"
               variant="outline"
               size="sm"
               onClick={signOut}
               className="gap-2 border-border text-muted-foreground hover:text-foreground"
             >
               <LogOut className="h-4 w-4" />
-              Sair
+              <span className="hidden sm:inline">Sair</span>
             </Button>
           </div>
         </div>
