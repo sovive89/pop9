@@ -24,8 +24,10 @@ Deno.serve(async(req)=>{
   const page=typeof body.page==='string'?body.page.slice(0,200):'';
   const currentPage=findAgentPage(page);
   if(!currentPage||!canAccessAgentPage(unitRoles,currentPage))return json({error:'O agente não está disponível nesta página para o seu perfil'},403);
-  const {data:business,error:businessError}=await admin.from('business_units').select('id,name').eq('id',unit).eq('active',true).maybeSingle();
+  const {data:business,error:businessError}=await admin.from('business_units').select('id,name,disabled_modules').eq('id',unit).eq('active',true).maybeSingle();
   if(businessError)throw Error('Não foi possível consultar a unidade.');if(!business)return json({error:'Unidade indisponível'},404);
+  if(!Array.isArray((business as {disabled_modules?:unknown}).disabled_modules))return json({error:'Não foi possível verificar a disponibilidade do assistente'},503);
+  if((business as {disabled_modules:string[]}).disabled_modules.includes('assistente'))return json({error:'Assistente de IA desativado nesta unidade'},403);
   const {data:credentials,error:credentialError}=await admin.from('ai_provider_credentials').select('provider,encrypted_key,iv').eq('business_unit_id',unit).eq('status','connected');
   if(credentialError)throw Error('Não foi possível verificar a configuração da IA.');
   if(body.action==='models'){
