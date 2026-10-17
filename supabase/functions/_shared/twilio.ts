@@ -42,25 +42,43 @@ export function normalizeBrPhone(value: unknown): string {
 
 const authHeader = (c: TwilioConfig) => `Basic ${btoa(`${c.accountSid}:${c.authToken}`)}`;
 
-async function verifyCall(c: TwilioConfig, path: string, params: Record<string, string>, fetcher: typeof fetch) {
+/** Tempo máximo de espera por uma resposta do Twilio. */
+export const TWILIO_TIMEOUT_MS = 10000;
+
+async function verifyCall(c: TwilioConfig, path: string, params: Record<string, string>, fetcher: typeof fetch, timeoutMs: number) {
   return await fetcher(`https://verify.twilio.com/v2/Services/${encodeURIComponent(c.verifyServiceSid)}/${path}`, {
     method: "POST",
     headers: { Authorization: authHeader(c), "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(params),
-    signal: AbortSignal.timeout(10000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
 }
 
-export async function startVerification(c: TwilioConfig, phone: string, fetcher: typeof fetch = fetch) {
+/**
+ * "sent": o Twilio aceitou. "rejected": o Twilio recusou (4xx), o SMS não saiu.
+ * "unavailable": rede, tempo esgotado ou erro do Twilio (5xx) — não dá para saber se o SMS saiu.
+ */
+export type SendResult = "sent" | "rejected" | "unavailable";
+
+export async function startVerification(c: TwilioConfig, phone: string, fetcher: typeof fetch = fetch, timeoutMs = TWILIO_TIMEOUT_MS): Promise<SendResult> {
   try {
-    return (await verifyCall(c, "Verifications", { To: `+${phone}`, Channel: "sms", Locale: "pt-BR" }, fetcher)).ok;
-  } catch { return false; } // rede fora do ar ou tempo esgotado
+    const response = await verifyCall(c, "Verifications", { To: `+${phone}`, Channel: "sms", Locale: "pt-BR" }, fetcher, timeoutMs);
+    if (response.ok) return "sent";
+    if (response.status >= 400 && response.status < 500) return "rejected";
+    console.error("Twilio Verify indisponível ao enviar o código", response.status);
+    return "unavailable";
+  } catch (error) {
+    console.error("Twilio Verify sem resposta ao enviar o código", error instanceof Error ? error.name : error);
+    return "unavailable";
+  }
 }
 
-export async function checkVerification(c: TwilioConfig, phone: string, code: string, fetcher: typeof fetch = fetch) {
-  const response = await verifyCall(c, "VerificationCheck", { To: `+${phone}`, Code: code }, fetcher);
-  if (!response.ok) return false;
-  const data = await response.json().catch(() => null);
+/** true = aprovado; false = código errado ou expirado. Lança quando o Twilio está indisponível (rede, 5xx, resposta ilegível). */
+export async function checkVerification(c: TwilioConfig, phone: string, code: string, fetcher: typeof fetch = fetch, timeoutMs = TWILIO_TIMEOUT_MS) {
+  const response = await verifyCall(c, "VerificationCheck", { To: `+${phone}`, Code: code }, fetcher, timeoutMs);
+  if (response.status >= 500) throw new Error(`Twilio Verify ${response.status}`);
+  if (!response.ok) return false; // 404 = código expirado/inexistente; 429 = tentativas demais
+  const data = await response.json();
   return data?.status === "approved";
 }
 
