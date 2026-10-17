@@ -79,3 +79,11 @@ de executar novamente a aceitação real. Não reescrever movimentos existentes.
   esperado e o combo de R$39,90 gerou três linhas somando exatamente 3990 centavos.
   Não foi realizado login de operador no navegador; autenticação e RLS foram
   verificados diretamente no PostgreSQL em transação revertida.
+
+O Advisor identificou que os grants padrão do projeto concederam `SELECT` a
+`anon` na nova `stock_transfers`. A RLS já bloqueia linhas anônimas; ainda assim,
+remover o grant não utilizado na nova tabela para mantê-la restrita à API
+autenticada, sem alterar tabelas legadas. Referência:
+[exposição GraphQL anônima](https://supabase.com/docs/guides/database/database-linter?lint=0026_pg_graphql_anon_table_exposed).
+A leitura autenticada permanece protegida pela policy de administrador na
+origem ou destino; a RPC exige administração em ambas as unidades.
