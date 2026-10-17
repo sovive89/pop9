@@ -56,7 +56,11 @@ returns numeric language sql stable security definer set search_path='' as $$
 $$;
 revoke all on function ops_private.lot_remaining(uuid) from public,anon,authenticated;
 
-create or replace view public.stock_lot_balances with (security_invoker=true) as
+-- drop + create (não create or replace): a ordem das colunas da view diverge entre o
+-- histórico do repositório (business_unit_id 2ª coluna) e produção/QA (13ª coluna), e
+-- create or replace view não aceita reordenar colunas. Nenhuma view depende desta.
+drop view if exists public.stock_lot_balances;
+create view public.stock_lot_balances with (security_invoker=true) as
 select l.id,l.business_unit_id,l.raw_material_id,l.numero_lote,l.origem,l.quantidade_entrada,
   l.validade,l.data_entrada,l.created_at,l.fornecedor_id,l.preco_unitario,l.receita_id,l.batch_id,
   l.unidade_compra,l.quantidade_compra,l.fator_conversao,l.custo_total,l.caixas,l.conteudo_por_caixa,
