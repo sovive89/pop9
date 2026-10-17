@@ -20,6 +20,7 @@ import { usePrintSectors, sectorName } from '@/hooks/usePrintSectors';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import MenuItemAiAssistantDialog from "@/components/admin/MenuItemAiAssistantDialog";
 import type { MenuImportItem, MenuImportRecipeLine } from "@/lib/menuImport";
+import { ingredientsFromDescription } from "@/lib/menuIngredients";
 
 // ── Image Upload Helper ──
 // O nome do arquivo é gerado aqui (não depende do ID do item, que só existe
@@ -92,12 +93,6 @@ const categoryKeyFrom = (label: string, taken: string[] = []) => {
   let candidate = base;
   for (let n = 2; taken.includes(candidate); n++) candidate = `${base}_${n}`;
   return candidate;
-};
-
-const ingredientsFromDescription = (description: string, fallback: Omit<DbIngredient, "id">[]) => {
-  const names = description.split(",").map(value => value.trim()).filter(Boolean);
-  if (names.length < 2) return fallback;
-  return names.map((name, sort_order) => ({ name, removable: false, extra_price: null, sort_order }));
 };
 
 const CategoryEditor = ({ category, existingKeys = [], onSave, onCancel }: CategoryEditorProps) => {
@@ -337,6 +332,13 @@ const MenuItemEditor = ({ item, initialDraft, initialImage, categories, onSave, 
       name: ingredient.name, removable: ingredient.removable, extra_price: ingredient.extraPrice, sort_order,
     })) ?? []
   );
+  const addIngredient = () => setIngredients(current => [...current, {
+    name: "", removable: false, extra_price: 0, sort_order: current.length,
+  }]);
+  const updateIngredient = (index: number, patch: Partial<Omit<DbIngredient, "id">>) =>
+    setIngredients(current => current.map((ingredient, rowIndex) => rowIndex === index ? { ...ingredient, ...patch } : ingredient));
+  const removeIngredient = (index: number) => setIngredients(current =>
+    current.filter((_, rowIndex) => rowIndex !== index).map((ingredient, sort_order) => ({ ...ingredient, sort_order })));
   const visibleIngredients=ingredients.map(i=>i.name.trim()).filter(Boolean);
   const suggestedAssembly=visibleIngredients.length ? visibleIngredients.join(" → ") : "";
   const suggestedHighlights=visibleIngredients.slice(0,3).join(", ");
@@ -619,8 +621,51 @@ const MenuItemEditor = ({ item, initialDraft, initialImage, categories, onSave, 
           onChange={setDescription} suggestions={catalog.suggestions.words}
           className="w-full rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
         />
-        <p className="text-[11px] text-muted-foreground">Para exibir ingredientes no cardápio, separe-os por vírgulas. Ex.: pão brioche, carne, queijo, molho especial.</p>
+        <p className="text-[11px] text-muted-foreground">Adicione os ingredientes nas linhas abaixo; descrições antigas separadas por vírgulas continuam sendo importadas automaticamente.</p>
       </div>
+
+      <section aria-label="Ingredientes do cardápio" className="space-y-3 rounded-lg border border-border p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Ingredientes do item</h3>
+            <p className="text-[11px] text-muted-foreground">Cadastre o que aparece no cardápio e, se necessário, marque se pode ser removido ou tem preço extra.</p>
+          </div>
+          <Button type="button" variant="outline" size="sm" disabled={saving || uploading || generating} onClick={addIngredient} className="gap-1">
+            <Plus className="h-3.5 w-3.5" /> Adicionar ingrediente
+          </Button>
+        </div>
+        {ingredients.length === 0 ? (
+          <p className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">Nenhum ingrediente adicionado.</p>
+        ) : (
+          <div className="space-y-2">
+            {ingredients.map((ingredient, index) => (
+              <div key={`ingredient-${index}`} className="grid grid-cols-1 items-end gap-2 rounded-md bg-muted/30 p-2 sm:grid-cols-[minmax(0,1fr)_auto_9rem_auto]">
+                <div className="space-y-1">
+                  <label htmlFor={`menu-ingredient-${index}`} className="text-[11px] text-muted-foreground">Ingrediente {index + 1}</label>
+                  <Input id={`menu-ingredient-${index}`} value={ingredient.name} disabled={saving}
+                    onChange={event => updateIngredient(index, { name: event.target.value })}
+                    placeholder="Ex.: queijo cheddar" className="h-9 text-sm" />
+                </div>
+                <label className="flex h-9 items-center gap-2 text-xs text-foreground">
+                  <input type="checkbox" checked={ingredient.removable} disabled={saving}
+                    onChange={event => updateIngredient(index, { removable: event.target.checked })} />
+                  Pode remover
+                </label>
+                <div className="space-y-1">
+                  <label htmlFor={`menu-ingredient-extra-${index}`} className="text-[11px] text-muted-foreground">Preço extra (R$)</label>
+                  <Input id={`menu-ingredient-extra-${index}`} type="number" min="0" step="0.01" value={ingredient.extra_price ?? ""} disabled={saving}
+                    onChange={event => updateIngredient(index, { extra_price: event.target.value === "" ? null : Math.max(0, Number(event.target.value) || 0) })}
+                    className="h-9 text-sm" />
+                </div>
+                <Button type="button" variant="ghost" size="icon" aria-label={`Remover ingrediente ${index + 1}`} disabled={saving}
+                  onClick={() => removeIngredient(index)} className="h-9 w-9 text-muted-foreground hover:text-destructive">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* Image Upload */}
       <p className="text-xs text-muted-foreground">{catalog.loading ? 'Carregando sugestões…' : catalog.error ? 'Autocomplete indisponível. Você pode continuar digitando.' : catalog.limited ? 'Autocomplete limitado aos primeiros 500 cadastros por tipo.' : 'Digite duas letras para ver sugestões desta unidade.'}</p>
