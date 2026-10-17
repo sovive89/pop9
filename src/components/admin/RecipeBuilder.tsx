@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, forwardRef, useImperativeHandle } fro
 import { Plus, Trash2, ChefHat, Sparkles, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useStockData, type RawMaterial, type ProductionRecipe } from "@/hooks/useStockData";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
@@ -57,6 +57,7 @@ function MaterialFields({ input, materials, disabled, base = false, onChange, on
   const unit = input.newUnit || material?.unit || "un";
   const name = base ? "Insumo-base" : "Insumo";
   const canDefineUnit = !material || (material.isTheoretical && material.currentStock === 0);
+  const stockUnit = input.stockUnit || material?.unit || unit;
   return <div className="min-w-0 space-y-2 rounded-lg border border-border bg-background/50 p-3">
     <div className="flex min-w-0 items-end gap-2">
       <label className={`${labelClass} flex-1`} htmlFor={`${input.key}-material`}>
@@ -81,16 +82,31 @@ function MaterialFields({ input, materials, disabled, base = false, onChange, on
         onPick={suggestion => onChange({ rawMaterialId: suggestion.id, newName: '', newUnit: suggestion.unit ?? '', stockUnit: '' })}
         placeholder={base ? "Ex.: tomate" : "Ex.: molho da casa"} className="h-9 min-w-0 text-xs" />
     </label>}
-    <label className={labelClass} htmlFor={`${input.key}-stock-unit`}>
-      <span>Unidade-base inicial do {name.toLowerCase()}</span>
-      <select id={`${input.key}-stock-unit`} aria-label={`Unidade-base inicial do ${name.toLowerCase()}`}
-        disabled={disabled || !canDefineUnit} value={input.stockUnit || material?.unit || unit}
-        onChange={event => onChange({ stockUnit: event.target.value, ...(!input.quantity ? { newUnit: event.target.value } : {}) })}
-        className="h-9 w-full rounded-md border border-border bg-muted px-2 text-xs text-foreground">
-        {STOCK_UNITS.map(option => <option key={option} value={option}>{option}</option>)}
-      </select>
-      <span>{canDefineUnit ? "Escolha a medida do estoque no cadastro inicial. A ficha pode usar outra medida compatível, como g para estoque em kg." : "Medida definida no estoque. A quantidade da ficha pode usar outra medida compatível."}</span>
-    </label>
+    <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+      <p>Estoque controlado em <strong className="font-medium">{stockUnit}</strong></p>
+      {canDefineUnit && <Dialog>
+        <DialogTrigger asChild>
+          <Button type="button" variant="link" size="sm" disabled={disabled}
+            aria-label={`Alterar unidade do estoque do ${name.toLowerCase()}`} className="h-7 px-0 text-xs">Alterar</Button>
+        </DialogTrigger>
+        <DialogContent className="w-[calc(100%-2rem)] max-w-sm p-4">
+          <DialogHeader>
+            <DialogTitle>Cadastro do insumo</DialogTitle>
+            <DialogDescription>{material?.name || input.newName.trim() || "Novo insumo"} — escolha como o saldo será contado no estoque.</DialogDescription>
+          </DialogHeader>
+          <label className={labelClass} htmlFor={`${input.key}-stock-unit`}>
+            <span>Unidade-base inicial do {name.toLowerCase()}</span>
+            <select id={`${input.key}-stock-unit`} aria-label={`Unidade-base inicial do ${name.toLowerCase()}`}
+              disabled={disabled} value={stockUnit}
+              onChange={event => onChange({ stockUnit: event.target.value, ...(!input.quantity ? { newUnit: event.target.value } : {}) })}
+              className="h-9 w-full rounded-md border border-border bg-muted px-2 text-xs text-foreground">
+              {STOCK_UNITS.map(option => <option key={option} value={option}>{option}</option>)}
+            </select>
+          </label>
+          <p className="text-xs text-muted-foreground">A ficha pode usar outra medida compatível. Ex.: estoque em kg e consumo em g.</p>
+        </DialogContent>
+      </Dialog>}
+    </div>
     <div className="min-w-0 space-y-1">
       <span className="text-xs text-muted-foreground">Quantidade usada na receita</span>
       <div className="flex min-w-0 items-center gap-2">
