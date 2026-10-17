@@ -65,13 +65,13 @@ describe("verificação por SMS do PWA",()=>{
     expect(Number((await db.query<{n:string}>("select count(*) as n from whatsapp_contacts")).rows[0].n)).toBe(1);
   });
   it("recusa loja com pedidos online desligados e hash malformado",async()=>{
-    await expect(issue(HASH,OTHER)).rejects.toThrow("Pedidos online indisponíveis");
+    await expect(issue(HASH,OTHER)).rejects.toMatchObject({code:"PT404",message:"Pedidos online indisponíveis"});
     await expect(issue("curto")).rejects.toThrow("Acesso inválido");
   });
   it("limita 60 envios por unidade em 10 min, sem misturar com a cota por número",async()=>{
     for(let i=0;i<60;i++)await send(`5561${900000000+i}`);
     await expect(send("5561999999999")).rejects.toThrow("Muitas verificações");
-    await send("5561999999999",OTHER).catch(()=>undefined); // outra unidade (desligada) segue sua própria cota
+    await send("5561999999999",OTHER); // outra unidade usa a própria cota
     await db.exec("update ops_private.pwa_sms_sends set sent_at=now()-interval '11 minutes'");await send("5561999999999");
   });
   it("devolve a vaga quando o SMS não sai e não apaga envios de outros números",async()=>{
@@ -88,7 +88,7 @@ describe("verificação por SMS do PWA",()=>{
   });
   it("unidade inativa não envia SMS nem emite acesso",async()=>{
     await db.query("update business_units set active=false where id=$1",[UNIT]);
-    await expect(send()).rejects.toThrow("Pedidos online indisponíveis");await expect(issue()).rejects.toThrow("Pedidos online indisponíveis");
+    await expect(send()).rejects.toMatchObject({code:"PT404",message:"Pedidos online indisponíveis"});await expect(issue()).rejects.toMatchObject({code:"PT404"});
   });
   it("novidades marcadas de novo limpam a saída anterior (SAIR); sem marcar, mantém",async()=>{
     await issue(HASH,UNIT,PHONE,"Ana Souza","",true);
