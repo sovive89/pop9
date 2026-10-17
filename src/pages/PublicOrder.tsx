@@ -16,8 +16,13 @@ const itemKey=(id:string)=>`item:${id}`;
 const comboKey=(id:string)=>`combo:${id}`;
 // Card grande do cardápio: foto em cima, nome, preço, descrição e botão de largura total (vira contador depois de adicionar).
 function MenuCard({name,description,image,price,note,qty,busy,onChange}:{name:string;description:string|null;image:string|null;price:number;note?:string;qty:number;busy:boolean;onChange:(delta:number)=>void}){
+  const [broken,setBroken]=useState(false);
+  const actionRef=useRef<HTMLButtonElement>(null);
+  const had=useRef(qty>0);
+  // O botão focado some quando o card troca entre "Adicionar" e o contador; devolve o foco ao botão novo.
+  useEffect(()=>{if(had.current!==qty>0){had.current=qty>0;actionRef.current?.focus();}},[qty]);
   return <article className="overflow-hidden rounded-2xl border bg-card shadow-sm">
-    {image && /^https:\/\//.test(image) ? <img src={image} alt={name} referrerPolicy="no-referrer" loading="lazy" className="aspect-[4/3] w-full object-cover"/> : <div aria-hidden className="flex aspect-[4/3] w-full items-center justify-center bg-muted text-muted-foreground"><ImageIcon className="h-12 w-12 opacity-50"/></div>}
+    {image && !broken && /^https:\/\//.test(image) ? <img src={image} alt={name} onError={()=>setBroken(true)} referrerPolicy="no-referrer" loading="lazy" className="aspect-[4/3] w-full object-cover"/> : <div aria-hidden className="flex aspect-[4/3] w-full items-center justify-center bg-muted text-muted-foreground"><ImageIcon className="h-12 w-12 opacity-50"/></div>}
     <div className="space-y-3 p-5">
       <h3 className="text-2xl font-extrabold uppercase leading-tight">{name}</h3>
       <p className="text-2xl font-bold text-primary">{formatCurrency(price)}</p>
@@ -26,9 +31,9 @@ function MenuCard({name,description,image,price,note,qty,busy,onChange}:{name:st
       {qty>0 ? <div className="flex items-center justify-between gap-3 rounded-full border-2 border-primary p-1">
           <Button type="button" variant="ghost" className="h-11 w-11 rounded-full text-xl" disabled={busy} aria-label={`Remover ${name}`} onClick={()=>onChange(-1)}>−</Button>
           <span className="text-lg font-bold" aria-label={`Quantidade de ${name}`}>{qty}</span>
-          <Button type="button" variant="ghost" className="h-11 w-11 rounded-full text-xl" disabled={busy || qty>=20} aria-label={`Adicionar ${name}`} onClick={()=>onChange(1)}>+</Button>
+          <Button ref={actionRef} type="button" variant="ghost" className="h-11 w-11 rounded-full text-xl" disabled={busy || qty>=20} aria-label={`Adicionar ${name}`} onClick={()=>onChange(1)}>+</Button>
         </div>
-        : <Button type="button" className="h-14 w-full rounded-full text-base font-bold uppercase tracking-wider" disabled={busy} aria-label={`Adicionar ${name}`} onClick={()=>onChange(1)}>+ Adicionar</Button>}
+        : <Button ref={actionRef} type="button" className="h-14 w-full rounded-full text-base font-bold uppercase tracking-wider" disabled={busy} aria-label={`Adicionar ${name}`} onClick={()=>onChange(1)}>+ Adicionar</Button>}
     </div>
   </article>;
 }

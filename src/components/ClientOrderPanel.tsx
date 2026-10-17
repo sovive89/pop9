@@ -799,7 +799,7 @@ const ClientOrderPanel = ({ client, tableId, order, onUpdateOrder, onPlaceOrder,
                             qty > 0 ? "border-primary bg-primary/5" : "border-border bg-card hover:border-primary/30"
                           }`}
                         >
-                          {item.imageUrl && /^https:\/\//.test(item.imageUrl) ? (
+                          {item.imageUrl ? (
                             <img src={item.imageUrl} alt={item.name} referrerPolicy="no-referrer" loading="lazy" className="aspect-[4/3] w-full object-cover" />
                           ) : (
                             <div aria-hidden className="flex aspect-[4/3] w-full items-center justify-center bg-muted text-muted-foreground">
