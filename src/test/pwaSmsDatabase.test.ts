@@ -37,8 +37,7 @@ beforeEach(async()=>{
 });
 afterAll(async()=>{await db.close();});
 const send=(phone=PHONE,unit=UNIT)=>db.query("select public.register_pwa_sms_send($1,$2)",[unit,phone]);
-const issue=async(hash=HASH,unit=UNIT,phone=PHONE)=>(await db.query<{v:Record<string,unknown>}>("select public.issue_pwa_sms_access($1,$2,$3) as v",[unit,phone,hash])).rows[0].v;
-const profile=(name:string,email="",marketing=false,hash=HASH)=>db.query<{v:Record<string,unknown>}>("select public.save_pwa_profile($1,$2,$3,$4,'Águas Claras',$5) as v",[UNIT,hash,name,email,marketing]);
+const issue=async(hash=HASH,unit=UNIT,phone=PHONE,name="Ana Souza",email="",marketing=false)=>(await db.query<{v:Record<string,unknown>}>("select public.issue_pwa_sms_access($1,$2,$3,$4,$5,'Águas Claras',$6) as v",[unit,phone,hash,name,email,marketing])).rows[0].v;
 describe("verificação por SMS do PWA",()=>{
   it("limita reenvio em 30 s e 3 envios por número em 15 min",async()=>{
     await send();await expect(send()).rejects.toThrow("30 segundos");
@@ -47,22 +46,23 @@ describe("verificação por SMS do PWA",()=>{
     await db.exec("update ops_private.pwa_sms_sends set sent_at=now()-interval '1 minute'");await expect(send()).rejects.toThrow("15 minutos");
     await expect(send("123")).rejects.toThrow("Celular inválido");
   });
-  it("emite acesso para o celular e o pedido sai pelo fluxo de sempre",async()=>{
-    const first=await issue();expect(first.name).toBeNull();
-    await expect(profile("A")).rejects.toThrow("Informe seu nome");
-    await expect(profile("Ana","nao-e-email")).rejects.toThrow("E-mail inválido");
-    await profile("Ana","ana@exemplo.com",true);
-    const contact=(await db.query<{name:string;email:string;bairro:string;marketing_consent_at:string|null;profile_consent_at:string|null}>("select * from whatsapp_contacts where phone=$1",[PHONE])).rows[0];
-    expect(contact.name).toBe("Ana");expect(contact.bairro).toBe("Águas Claras");expect(contact.marketing_consent_at).not.toBeNull();expect(contact.profile_consent_at).not.toBeNull();
-    const order=(await db.query<{v:{total:number}}>("select public.submit_pwa_order($1,$2,'[{\"id\":\"burger\",\"quantity\":1}]','') as v",[UNIT,HASH])).rows[0].v;expect(Number(order.total)).toBe(25);
-    expect((await db.query<{name:string;phone:string}>("select name,phone from session_clients")).rows[0]).toEqual({name:"Ana",phone:PHONE});
-    await expect(profile("Ana")).rejects.toThrow("Acesso expirado");
+  it("exige nome e sobrenome e e-mail válido",async()=>{
+    for(const name of ["Ana","A B","Ana 2 Silva x","  "])await expect(issue(HASH,UNIT,PHONE,name)).rejects.toThrow("nome e sobrenome");
+    await expect(issue(HASH,UNIT,PHONE,"Ana Souza","nao-e-email")).rejects.toThrow("E-mail inválido");
+    expect(Number((await db.query<{n:string}>("select count(*) as n from whatsapp_contacts")).rows[0].n)).toBe(0);
   });
-  it("cliente que volta é reconhecido e pode retirar o consentimento",async()=>{
-    await issue();await profile("Ana","",true);
-    const again=await issue("b".repeat(64));expect(again.name).toBe("Ana");expect(again.marketing).toBe(true);
-    await profile("Ana","",false,"b".repeat(64));
-    expect((await db.query<{m:string|null}>("select marketing_consent_at as m from whatsapp_contacts")).rows[0].m).toBeNull();
+  it("cria o cliente no CRM e o pedido sai pelo fluxo de sempre",async()=>{
+    const first=await issue(HASH,UNIT,PHONE,"  Ana   Souza ","ana@exemplo.com",true);expect(first.name).toBe("Ana Souza");
+    const contact=(await db.query<{name:string;email:string;bairro:string;marketing_consent_at:string|null;profile_consent_at:string|null}>("select * from whatsapp_contacts where phone=$1",[PHONE])).rows[0];
+    expect(contact.name).toBe("Ana Souza");expect(contact.bairro).toBe("Águas Claras");expect(contact.marketing_consent_at).not.toBeNull();expect(contact.profile_consent_at).not.toBeNull();
+    const order=(await db.query<{v:{total:number}}>("select public.submit_pwa_order($1,$2,'[{\"id\":\"burger\",\"quantity\":1}]','') as v",[UNIT,HASH])).rows[0].v;expect(Number(order.total)).toBe(25);
+    expect((await db.query<{name:string;phone:string}>("select name,phone from session_clients")).rows[0]).toEqual({name:"Ana Souza",phone:PHONE});
+  });
+  it("cliente que volta é atualizado sem duplicar e pode retirar o consentimento",async()=>{
+    await issue(HASH,UNIT,PHONE,"Ana Souza","ana@exemplo.com",true);
+    const again=await issue("b".repeat(64),UNIT,PHONE,"Ana Souza Lima","",false);
+    expect(again.name).toBe("Ana Souza Lima");expect(again.email).toBe("ana@exemplo.com");expect(again.marketing).toBe(false);
+    expect(Number((await db.query<{n:string}>("select count(*) as n from whatsapp_contacts")).rows[0].n)).toBe(1);
   });
   it("recusa loja com pedidos online desligados e hash malformado",async()=>{
     await expect(issue(HASH,OTHER)).rejects.toThrow("Pedidos online indisponíveis");

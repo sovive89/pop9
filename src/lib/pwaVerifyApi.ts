@@ -12,3 +12,8 @@ export function formatPhone(value:string){
   if(d.length<=2)return d;if(d.length<=6)return `(${d.slice(0,2)}) ${d.slice(2)}`;
   return d.length<=10 ? `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}` : `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
 }
+/** Mesma regra do servidor: pelo menos nome e sobrenome (2+ letras cada), sem números. */
+export function isFullName(value:string){
+  const name=value.trim().replace(/\s+/g," ");
+  return name.length>=5 && name.length<=80 && !/[0-9@]/.test(name) && name.split(" ").filter(word=>word.length>=2).length>=2;
+}

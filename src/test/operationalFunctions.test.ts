@@ -4,7 +4,8 @@ import ts from "typescript";
 import {describe,it,expect,vi} from "vitest";
 import * as operational from "../../supabase/functions/_shared/operational";
 import * as brand from "../../supabase/functions/_shared/brand";
-const helpers={...operational,...brand};
+import * as twilio from "../../supabase/functions/_shared/twilio";
+const helpers={...operational,...brand,...twilio};
 const UNIT="00000000-0000-0000-0000-000000000001";
 function endpoint(name:string,options:{authorized?:boolean;secrets?:Record<string,string>;duplicate?:boolean}={}){
   const rpc=vi.fn(async(name:string,args:Record<string,unknown>)=>({data:name==="ingest_whatsapp_message" ? {id:args.p_id} : name==="claim_whatsapp_reply" ? options.duplicate ? null : {id:args.p_id,reply:"Olá"} : {orderId:"order",total:25},error:null}));
@@ -30,6 +31,12 @@ describe("operational Edge Function gates",()=>{
     const payload={object:"whatsapp_business_account",entry:[{changes:[{value:{metadata:{phone_number_id:"12345"},contacts:[{wa_id:"5511999999999",profile:{name:"João"}}],messages:[{id:"wamid.1",from:"5511999999999",type:"text",text:{body:"PEDIR"}}]}}]}]};
     const response=await api.post(payload,{"x-hub-signature-256":`sha256=${await helpers.hmac("secret",JSON.stringify(payload))}`});expect(response.status).toBe(200);const args=api.rpc.mock.calls[0][1];expect(args.p_unit).toBe(UNIT);expect(args.p_token_hash).toMatch(/^[a-f0-9]{64}$/);expect(args.p_order_url).toContain(`/pedir/${UNIT}?origem=whatsapp&acesso=`);expect(fetch).toHaveBeenCalledOnce();vi.unstubAllGlobals();
   });
-  it("requires a WhatsApp-issued token to submit, but exposes only public menu data anonymously",async()=>{const api=endpoint("public-order");const menu=await (await api.post({action:"menu",business_unit_id:UNIT})).json();expect(menu.name).toBe("Loja");expect(menu.items).toHaveLength(1);expect((await api.post({action:"submit",business_unit_id:UNIT,items:[{id:"burger",quantity:1}]})).status).toBe(401);expect(api.rpc).not.toHaveBeenCalledWith("submit_pwa_order",expect.anything());expect(api.rpc.mock.calls.every(([name])=>name==="list_pwa_ready_combos")).toBe(true);});
+  it("requires a WhatsApp-issued token to submit, but exposes only public menu data anonymously",async()=>{const api=endpoint("public-order");const menu=await (await api.post({action:"menu",business_unit_id:UNIT})).json();expect(menu.name).toBe("Loja");expect(menu.items).toHaveLength(1);expect((await api.post({action:"submit",business_unit_id:UNIT,items:[{id:"burger",quantity:1}]})).status).toBe(401);expect(api.rpc).not.toHaveBeenCalledWith("submit_pwa_order",expect.anything());expect(api.rpc).toHaveBeenCalledWith("list_pwa_ready_combos",{p_unit:UNIT});});
+  it("guarda as credenciais do Twilio só no Vault, nunca na tabela de integrações",async()=>{
+    const api=endpoint("manage-operational-integrations");const sid="AC"+"a".repeat(32),service="VA"+"b".repeat(32),token="z".repeat(32);
+    await api.post({business_unit_id:UNIT,action:"save",provider:"twilio",config:{enabled:true,accountSid:sid,authToken:token,verifyServiceSid:service}});
+    expect(api.rpc).toHaveBeenCalledWith("save_twilio_credentials",{p_unit:UNIT,p_account_sid:sid,p_auth_token:token,p_service_sid:service});
+    const saved=JSON.stringify(api.writes);expect(saved).not.toContain(token);expect(saved).not.toContain(sid);
+  });
   it("serves a manifest scoped to the store's ordering route",async()=>{const api=endpoint("public-order");const response=await api.handler(new Request(`https://project.supabase.co?action=manifest&unit=${UNIT}`));const manifest=await response.json();expect(manifest.start_url).toBe(`https://loja.com/pedir/${UNIT}`);expect(manifest.icons[1].sizes).toBe("512x512");expect(manifest.start_url).not.toContain("acesso");});
 });

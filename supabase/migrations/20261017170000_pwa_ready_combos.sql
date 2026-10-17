@@ -31,7 +31,7 @@ begin
      order by s.sort_order, s.id
   loop
     if r.name is null or r.price is null or r.price < 0 then return null; end if;
-    v_list := v_list + round(r.price * 100) + round(r.extra_price * 100);
+    v_list := v_list + (case when r.is_free then 0 else round(r.price * 100) end) + round(r.extra_price * 100);
     v_extras := v_extras + round(r.extra_price * 100);
     if not r.is_free then v_base := v_base + round(r.price * 100); end if;
     v_parts := v_parts || jsonb_build_array(jsonb_build_object('menu_item_id', r.menu_item_id, 'name', r.name, 'label', r.label,
@@ -80,7 +80,9 @@ begin
   if not exists (select 1 from integrations where business_unit_id = p_unit and provider = 'own-pwa' and status = 'CONNECTED' and config->>'enabled' = 'true')
     then raise exception 'Pedidos online indisponíveis'; end if;
   if p_items is null or jsonb_typeof(p_items) is distinct from 'array' or jsonb_array_length(p_items) not between 1 and 30 then raise exception 'Carrinho inválido'; end if;
-  if (select count(distinct coalesce(value->>'id', 'combo:' || (value->>'combo_id'))) from jsonb_array_elements(p_items)) <> jsonb_array_length(p_items)
+  -- Combo é identificado só pelo combo_id (um "id" extra não abre brecha para repetir o combo).
+  if (select count(distinct case when value ? 'combo_id' then 'combo:' || (value->>'combo_id') else 'item:' || coalesce(value->>'id', '') end)
+        from jsonb_array_elements(p_items)) <> jsonb_array_length(p_items)
     then raise exception 'Itens duplicados no carrinho'; end if;
   if length(coalesce(p_note, '')) > 500 then raise exception 'Observação muito longa'; end if;
   for v_item in select value from jsonb_array_elements(p_items) loop
@@ -89,6 +91,11 @@ begin
     if v_item ? 'combo_id' then
       if (v_item->>'combo_id') !~ '^[0-9a-f-]{36}$' then raise exception 'Combo indisponível'; end if;
       perform 1 from menu_combos where id = (v_item->>'combo_id')::uuid and business_unit_id = p_unit for share;
+      v_quote := ops_private.ready_combo_quote(p_unit, (v_item->>'combo_id')::uuid);
+      if v_quote is null then raise exception 'Combo indisponível'; end if;
+      -- Trava os itens do combo e recalcula: uma desativação concorrente não passa entre a cotação e a gravação.
+      perform 1 from menu_items where business_unit_id = p_unit
+        and id in (select value->>'menu_item_id' from jsonb_array_elements(v_quote->'components')) order by id for share;
       v_quote := ops_private.ready_combo_quote(p_unit, (v_item->>'combo_id')::uuid);
       if v_quote is null then raise exception 'Combo indisponível'; end if;
       v_line := round((v_quote->>'price')::numeric * v_qty, 2); v_total := v_total + v_line;

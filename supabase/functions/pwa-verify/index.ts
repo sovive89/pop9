@@ -1,8 +1,10 @@
 import {createClient} from "https://esm.sh/@supabase/supabase-js@2.99.2";
 import {json,uuid,sha256} from "../_shared/operational.ts";
-import {normalizeBrPhone,twilioConfigured,startVerification,checkVerification} from "../_shared/twilio.ts";
+import {normalizeBrPhone,loadTwilio,startVerification,checkVerification,fullName} from "../_shared/twilio.ts";
 
-// Verificação do celular do PWA de pedidos: start (envia SMS), check (confere e emite acesso) e profile (formulário).
+// Acesso do cliente ao PWA de pedidos:
+//  start → nome completo + celular, envia o código por SMS (Twilio Verify)
+//  check → confere o código, cria/atualiza o cliente no CRM e emite o acesso de uso único (60 min)
 Deno.serve(async(req:Request)=>{
   if(req.method==="OPTIONS")return json({});
   if(req.method!=="POST")return json({error:"Método inválido"},405);
@@ -13,27 +15,23 @@ Deno.serve(async(req:Request)=>{
     const db=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,{auth:{persistSession:false}});
     const {data:settings}=await db.from("integrations").select("config,status").eq("provider","own-pwa").eq("business_unit_id",unit).maybeSingle();
     if(!settings?.config?.enabled || settings.status==="DISCONNECTED")return json({error:"Pedidos online indisponíveis"},404);
-    if(body.action==="profile"){
-      if(typeof body.access_token!=="string" || !/^[a-f0-9-]{72}$/.test(body.access_token))return json({error:"Confirme seu celular novamente"},401);
-      const {data,error}=await db.rpc("save_pwa_profile",{p_unit:unit,p_token_hash:await sha256(body.access_token),p_name:String(body.name ?? ""),
-        p_email:String(body.email ?? ""),p_bairro:String(body.bairro ?? ""),p_marketing:body.marketing===true});
-      if(error)return json({error:error.code==="P0001" ? error.message : "Não foi possível salvar seus dados"},400);
-      return json({profile:data});
-    }
     const {data:sms}=await db.from("integrations").select("status,config").eq("provider","twilio").eq("business_unit_id",unit).maybeSingle();
-    if(sms?.status!=="CONNECTED" || sms?.config?.enabled===false || !twilioConfigured(Deno.env))return json({error:"Verificação por SMS indisponível. Peça pelo WhatsApp da loja."},503);
+    const twilio=sms?.status==="CONNECTED" && sms?.config?.enabled!==false ? await loadTwilio(Deno.env,db,unit) : null;
+    if(!twilio)return json({error:"Verificação por SMS indisponível. Peça pelo WhatsApp da loja."},503);
+    const name=fullName(body.name);if(!name)return json({error:"Informe nome e sobrenome"},400);
     const phone=normalizeBrPhone(body.phone);if(!phone)return json({error:"Informe um celular válido com DDD"},400);
     if(body.action==="start"){
       const {error}=await db.rpc("register_pwa_sms_send",{p_unit:unit,p_phone:phone});
       if(error)return json({error:error.code==="P0001" ? error.message : "Tente novamente em instantes"},429);
-      if(!await startVerification(Deno.env,phone))return json({error:"Não foi possível enviar o código. Confira o número."},502);
+      if(!await startVerification(twilio,phone))return json({error:"Não foi possível enviar o código. Confira o número."},502);
       return json({sent:true});
     }
     if(body.action==="check"){
       if(typeof body.code!=="string" || !/^\d{4,10}$/.test(body.code))return json({error:"Código inválido"},400);
-      if(!await checkVerification(Deno.env,phone,body.code))return json({error:"Código incorreto ou expirado"},401);
+      if(!await checkVerification(twilio,phone,body.code))return json({error:"Código incorreto ou expirado"},401);
       const token=crypto.randomUUID()+crypto.randomUUID();
-      const {data,error}=await db.rpc("issue_pwa_sms_access",{p_unit:unit,p_phone:phone,p_token_hash:await sha256(token)});
+      const {data,error}=await db.rpc("issue_pwa_sms_access",{p_unit:unit,p_phone:phone,p_token_hash:await sha256(token),p_name:name,
+        p_email:typeof body.email==="string" ? body.email : "",p_bairro:typeof body.bairro==="string" ? body.bairro : "",p_marketing:body.marketing===true});
       if(error)return json({error:error.code==="P0001" ? error.message : "Não foi possível liberar o pedido"},409);
       return json({access_token:token,profile:data});
     }

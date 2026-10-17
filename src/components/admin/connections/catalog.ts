@@ -111,10 +111,14 @@ export const INTEGRATIONS_CATALOG: IntegrationDefinition[] = [
     capabilities: caps({ WRITE: "YES" }),
     description: "Código de verificação por SMS no PWA de pedidos do cliente.",
     whatItEnables:
-      "Ao abrir o link de pedidos, o cliente confirma o celular com um código por SMS (Twilio Verify) antes do cadastro e do cardápio. As chaves ficam só no servidor (Supabase → Edge Functions → Secrets: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_VERIFY_SERVICE_SID).",
+      "Ao abrir o link de pedidos, o cliente confirma o celular com um código por SMS (Twilio Verify) antes do cadastro e do cardápio. As credenciais ficam criptografadas no servidor (Vault) desta unidade e nunca voltam para a tela.",
     configType: "api_key",
     simpleIconSlug: "twilio",
-    fields: [],
+    fields: [
+      { key: "accountSid", label: "Account SID", type: "text", required: true, placeholder: "AC…", helperText: "Console do Twilio › Account Info." },
+      { key: "authToken", label: "Auth Token", type: "password", required: true, helperText: "Guardado criptografado no servidor. Deixe em branco para manter o atual." },
+      { key: "verifyServiceSid", label: "Verify Service SID", type: "text", required: true, placeholder: "VA…", helperText: "Twilio › Verify › Services." },
+    ],
     implemented: true,
     docsUrl: "https://www.twilio.com/docs/verify",
   },

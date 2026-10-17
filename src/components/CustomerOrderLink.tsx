@@ -3,19 +3,34 @@ import QRCode from "qrcode";
 import {toast} from "sonner";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
-import {useOperationalIntegrations} from "@/hooks/useOperationalIntegrations";
 import {orderLink} from "@/utils/operationalLinks";
 
 // Link do PWA de pedidos do cliente (/pedir/:unidade). A página pública aplica a Marca da
-// unidade quando configurada; sem marca, usa o visual padrão. O domínio vem da conexão
-// "PWA próprio" (endereço público) e, se não estiver disponível, do próprio app.
+// unidade quando configurada; sem marca, usa o visual padrão.
+// O domínio vem do manifesto público da loja (mesmo endereço público configurado em Conexões),
+// que qualquer papel consegue ler; 404 significa pedidos online desligados nesta unidade.
+type LinkState={unit:string;status:"loading"|"ready"|"off"|"fallback";origin:string};
 export default function CustomerOrderLink({businessUnitId}:{businessUnitId:string}){
-  const {data,error}=useOperationalIntegrations();
-  const pwa=data?.integrations.find(r=>r.provider==="own-pwa");
-  const configured=pwa?.config.publicOrigin ? orderLink(pwa.config.publicOrigin,businessUnitId,"link") : "";
-  const url=configured || orderLink(`${window.location.origin}/`,businessUnitId,"link");
-  // Só afirma "desativado" quando a configuração foi lida; atendente/caixa podem não ter acesso a ela.
-  const disabled=Boolean(data) && (!pwa?.config.enabled || pwa?.status==="DISCONNECTED");
+  const [state,setState]=useState<LinkState>({unit:businessUnitId,status:"loading",origin:""});
+  useEffect(()=>{
+    let cancelled=false;setState({unit:businessUnitId,status:"loading",origin:""});
+    const base=import.meta.env.VITE_SUPABASE_URL;
+    const fallback=()=>{if(!cancelled)setState({unit:businessUnitId,status:"fallback",origin:window.location.origin});};
+    if(!base){fallback();return;}
+    void fetch(`${base}/functions/v1/public-order?action=manifest&unit=${encodeURIComponent(businessUnitId)}`,{cache:"no-store",credentials:"omit"})
+      .then(async response=>{
+        if(cancelled)return;
+        if(response.status===404){setState({unit:businessUnitId,status:"off",origin:""});return;}
+        const manifest=await response.json();const origin=new URL(manifest.start_url).origin;
+        setState({unit:businessUnitId,status:"ready",origin});
+      }).catch(fallback);
+    return()=>{cancelled=true;};
+  },[businessUnitId]);
+  const current=state.unit===businessUnitId ? state : {unit:businessUnitId,status:"loading" as const,origin:""};
+  const disabled=current.status==="off";
+  // Sem link enquanto carrega ou com pedidos desligados: nada de compartilhar um endereço errado ou inútil.
+  const url=current.origin && !disabled ? orderLink(`${current.origin}/`,businessUnitId,"link") : "";
+  const error=current.status==="fallback";
   const [qr,setQr]=useState("");const [showQr,setShowQr]=useState(false);
   useEffect(()=>{let cancelled=false;setQr("");if(!url)return;void QRCode.toDataURL(url,{width:220,margin:1}).then(v=>{if(!cancelled)setQr(v);}).catch(()=>{});return()=>{cancelled=true;};},[url]);
   const whatsappShare=`https://wa.me/?text=${encodeURIComponent(`Faça seu pedido para retirada: ${url}`)}`;
@@ -34,7 +49,8 @@ export default function CustomerOrderLink({businessUnitId}:{businessUnitId:strin
       <Button size="sm" variant="outline" disabled={!qr} onClick={()=>setShowQr(v=>!v)}>{showQr ? "Ocultar QR" : "QR Code"}</Button>
     </div>
     {showQr && qr && <div className="space-y-1"><img src={qr} alt="QR Code do link de pedidos para retirada" className="h-44 w-44 rounded-md bg-white p-2"/><p className="text-xs text-muted-foreground">Para cartaz, vitrine ou post. Não use nas mesas.</p></div>}
+    {current.status==="loading" && <p role="status" className="text-xs text-muted-foreground">Carregando link...</p>}
     {disabled && <p role="alert" className="text-sm text-amber-500">Pedidos online estão desativados nesta unidade. Um administrador pode ativar em Admin › Conexões (PWA próprio).</p>}
-    {!data && error && <p className="text-xs text-muted-foreground">Usando o endereço deste app.</p>}
+    {error && <p className="text-xs text-muted-foreground">Não foi possível confirmar o endereço público; usando o endereço deste app.</p>}
   </section>;
 }
