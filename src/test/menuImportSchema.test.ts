@@ -60,6 +60,16 @@ describe("menu import draft sanitization", () => {
     expect(draft.items[0].recipe[0].preparation).toBeNull();
   });
 
+  it("accepts bounded photo-crop coordinates and rejects out-of-image boxes", () => {
+    const { draft, warnings } = sanitizeDraft({ items: [
+      { name: "Burger", category: "lanches", imageCrop: { fileIndex: 1, x: 0.1, y: 0.2, width: 0.6, height: 0.5 } },
+      { name: "Pizza", category: "lanches", imageCrop: { fileIndex: 1, x: 0.8, y: 0.2, width: 0.4, height: 0.5 } },
+    ] });
+    expect(draft.items[0].imageCrop).toEqual({ fileIndex: 1, x: 0.1, y: 0.2, width: 0.6, height: 0.5 });
+    expect(draft.items[1].imageCrop).toBeUndefined();
+    expect(warnings.some(message => message.includes("coordenadas inválidas"))).toBe(true);
+  });
+
   it("detects unit conflicts with existing materials", () => {
     const { draft } = sanitizeDraft({ items: [{ name: "Salada", category: "pratos", price: 20, recipe: [{ material: "Tomate", unit: "g", quantity: 80 }] }] });
     expect(findUnitConflicts(draft, [{ name: "tomate", unit: "kg" }])).toEqual(['Tomate: cadastrado em "kg", arquivo em "g"']);

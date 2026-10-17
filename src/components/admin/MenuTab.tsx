@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from "react";
-import { Flame, Plus, Trash2, Pencil, Save, X, ChevronDown, ChevronUp, Tags, ImagePlus, Image, Sparkles } from "lucide-react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { Flame, Plus, Trash2, Pencil, Save, X, ChevronDown, ChevronUp, Tags, ImagePlus, Image, Sparkles, FileUp, MessageSquareText, PenLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAdminData, type DbMenuItem, type DbIngredient, type DbVariant, type DbMenuCategory } from "@/hooks/useAdminData";
@@ -17,6 +17,9 @@ import { useMenuSuggestionCatalog } from '@/hooks/useMenuSuggestionCatalog';
 import { useAuth } from '@/hooks/useAuth';
 import { useUnitRoles } from '@/hooks/useUnitRoles';
 import { usePrintSectors, sectorName } from '@/hooks/usePrintSectors';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import MenuItemAiAssistantDialog from "@/components/admin/MenuItemAiAssistantDialog";
+import type { MenuImportItem, MenuImportRecipeLine } from "@/lib/menuImport";
 
 // ── Image Upload Helper ──
 // O nome do arquivo é gerado aqui (não depende do ID do item, que só existe
@@ -64,6 +67,15 @@ type MenuItemInput = Omit<DbMenuItem, "id" | "sku" | "sort_order" | "ingredients
   recipe: MenuRecipeDraft[];
 };
 type MenuItemSaveResult = string | false;
+
+const recipeDraftFromImport = (line: MenuImportRecipeLine): MenuRecipeDraft => ({
+  rawMaterialId: "", newName: line.material, newUnit: line.unit, stockUnit: line.unit, quantity: line.quantity,
+  transformation: line.preparation ? "producao" : "desconto_direto",
+  preparation: line.preparation ? {
+    outputQuantity: line.preparation.outputQuantity, outputUnit: line.unit,
+    inputs: line.preparation.inputs.map(input => ({ rawMaterialId: "", newName: input.material, newUnit: input.unit, stockUnit: input.unit, quantity: input.quantity })),
+  } : null,
+});
 
 // ── Category Editor ──
 interface CategoryEditorProps {
@@ -207,12 +219,14 @@ const CategoryEditor = ({ category, existingKeys = [], onSave, onCancel }: Categ
 // ── Menu Item Editor ──
 interface MenuEditorProps {
   item?: DbMenuItem;
+  initialDraft?: MenuImportItem | null;
+  initialImage?: File | null;
   categories: DbMenuCategory[];
   onSave: (item: MenuItemInput, isNew: boolean) => Promise<MenuItemSaveResult>;
   onCancel: () => void;
 }
 
-const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps) => {
+const MenuItemEditor = ({ item, initialDraft, initialImage, categories, onSave, onCancel }: MenuEditorProps) => {
   // Stable across network retries; the atomic RPC never leaves a partial item.
   const newItemId = useRef(crypto.randomUUID());
   const isNew = !item;
@@ -223,23 +237,25 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   const persistedImage = useRef<string | null>(null);
   // Editor fechado: upload/geração que terminar depois disso é apagado na hora.
   const closed = useRef(false);
-  const trackImage = (url: string): boolean => {
+  const trackImage = useCallback((url: string): boolean => {
     if (closed.current) {
       // O arquivo permanece no acervo, mesmo após o editor ser fechado.
       return false;
     }
     sessionImages.current.push(url);
     return true;
-  };
-  const [name, setName] = useState(item?.name ?? "");
-  const [price, setPrice] = useState(item?.price?.toString() ?? "");
-  const [category, setCategory] = useState(item?.category ?? (categories[0]?.key ?? ""));
+  }, []);
+  const [name, setName] = useState(item?.name ?? initialDraft?.name ?? "");
+  const [price, setPrice] = useState(item?.price?.toString() ?? initialDraft?.price?.toString() ?? "");
+  const categorySuggestion = initialDraft && categories.some(row => row.key === initialDraft.category) ? initialDraft.category : categories[0]?.key ?? "";
+  const [category, setCategory] = useState(item?.category ?? categorySuggestion);
   const [destinationOverride, setDestinationOverride] = useState(item?.destination ?? "");
   const { sectors } = usePrintSectors();
   const categoryDestination = categories.find((c) => c.key === category)?.destination ?? null;
   const effectiveDestination = destinationOverride || categoryDestination || undefined;
   const destinationOptions = sectors.filter((sector) => sector.slug !== "cashier" && (sector.active || sector.slug === destinationOverride));
-  const [description, setDescription] = useState(item?.description ?? "");
+  const [description, setDescription] = useState(item?.description ?? initialDraft?.description ?? "");
+  const initialRecipeDraft = useMemo(() => initialDraft?.recipe.map(recipeDraftFromImport), [initialDraft]);
   const [imageUrl, setImageUrl] = useState(item?.image_url ?? "");
   const [libraryPhotos, setLibraryPhotos] = useState<string[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
@@ -269,6 +285,17 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
   const isPublished = savedStatus === "published";
   const [uploading, setUploading] = useState(false);
   const { businessUnitId, units } = useCurrentBusinessUnit();
+  useEffect(() => {
+    if (!initialImage || !businessUnitId) return;
+    let cancelled = false;
+    setUploading(true);
+    void uploadMenuImage(initialImage, businessUnitId).then(url => {
+      if (cancelled) return;
+      if (url && trackImage(url)) { setImageUrl(url); setImageFailed(false); }
+    }).catch(error => toast.error("Não foi possível usar a foto recortada: " + (error instanceof Error ? error.message : String(error))))
+      .finally(() => { if (!cancelled) setUploading(false); });
+    return () => { cancelled = true; };
+  }, [initialImage, businessUnitId, trackImage]);
   const { user } = useAuth();
   // Exportação: unidades (além desta) onde o usuário é admin. O servidor revalida.
   const [adminUnitIds, setAdminUnitIds] = useState<string[]>([]);
@@ -311,7 +338,9 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
 
   const [generating, setGenerating] = useState(false);
   const [ingredients, setIngredients] = useState<Omit<DbIngredient, "id">[]>(
-    item?.ingredients?.map(({ id: _, ...rest }) => rest) ?? []
+    item?.ingredients?.map(({ id: _, ...rest }) => rest) ?? initialDraft?.ingredients?.map((ingredient, sort_order) => ({
+      name: ingredient.name, removable: ingredient.removable, extra_price: ingredient.extraPrice, sort_order,
+    })) ?? []
   );
   const visibleIngredients=ingredients.map(i=>i.name.trim()).filter(Boolean);
   const suggestedAssembly=visibleIngredients.length ? visibleIngredients.join(" → ") : "";
@@ -695,7 +724,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
         <Button type="button" variant="outline" disabled={saving || documentPickerBusy}
           onClick={() => void openDocumentPicker()}>Puxar ficha de Documentos</Button>
         <p className="text-xs text-muted-foreground">Selecione uma ficha técnica já salva nesta unidade. A importação só será vinculada após salvar o item.</p>
-        <RecipeBuilder ref={recipeBuilderRef} menuItemId={item?.id}
+        <RecipeBuilder ref={recipeBuilderRef} menuItemId={item?.id} initialDraft={initialRecipeDraft}
           menuItemName={name} destination={effectiveDestination} disabled={saving || uploading || generating} />
       </div>
       {documentPickerOpen && <div role="dialog" aria-label="Puxar ficha técnica de Documentos"
@@ -769,6 +798,7 @@ const MenuItemEditor = ({ item, categories, onSave, onCancel }: MenuEditorProps)
 // ── Menu Tab ──
 const UnitMenuTab = () => {
   const { sectors } = usePrintSectors();
+  const { businessUnitId } = useCurrentBusinessUnit();
   const { menuItems, categories, loadingMenu, loadingCategories, saveMenuItem, deleteMenuItem, saveCategory, deleteCategory, refreshMenu, refreshCategories } = useAdminData();
   const [searchParams, setSearchParams] = useSearchParams();
   const importOpen = searchParams.get("import") === "1";
@@ -779,6 +809,11 @@ const UnitMenuTab = () => {
   });
   const [editingItem, setEditingItem] = useState<DbMenuItem | null>(null);
   const [creating, setCreating] = useState(false);
+  const [sourceChoiceOpen, setSourceChoiceOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantMode, setAssistantMode] = useState<"files" | "chat">("chat");
+  const [initialAiDraft, setInitialAiDraft] = useState<MenuImportItem | null>(null);
+  const [initialAiPhoto, setInitialAiPhoto] = useState<File | null>(null);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [showCategories, setShowCategories] = useState(false);
@@ -793,9 +828,11 @@ const UnitMenuTab = () => {
     return (
       <MenuItemEditor
         item={editingItem ?? undefined}
+        initialDraft={editingItem ? null : initialAiDraft}
+        initialImage={editingItem ? null : initialAiPhoto}
         categories={categories}
         onSave={saveMenuItem}
-        onCancel={() => { setEditingItem(null); setCreating(false); }}
+        onCancel={() => { setEditingItem(null); setCreating(false); setInitialAiDraft(null); setInitialAiPhoto(null); }}
       />
     );
   }
@@ -803,7 +840,7 @@ const UnitMenuTab = () => {
   return (
     <div className="space-y-4">
       <div className="flex gap-2 flex-wrap">
-        <Button data-tooltip="Monte um novo item do cardápio e sua ficha técnica." onClick={() => setCreating(true)} className="gap-2">
+        <Button data-tooltip="Escolha criar manualmente, importar um documento/foto ou usar o assistente de IA." onClick={() => setSourceChoiceOpen(true)} className="gap-2">
           <Plus className="h-4 w-4" /> Novo Item
         </Button>
         <Button data-tooltip="Abra ou recolha o cadastro das categorias do cardápio." variant="outline" onClick={() => setShowCategories(!showCategories)} className="gap-2">
@@ -813,6 +850,38 @@ const UnitMenuTab = () => {
           <Sparkles className="h-4 w-4" /> Importar com IA
         </Button>
       </div>
+      <Dialog open={sourceChoiceOpen} onOpenChange={setSourceChoiceOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Como deseja criar o item?</DialogTitle>
+            <DialogDescription>Você revisará os dados e a foto antes de salvar. A IA não publica nem movimenta estoque automaticamente.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <Button type="button" variant="outline" className="h-auto justify-start gap-3 p-4 text-left" onClick={() => { setInitialAiDraft(null); setInitialAiPhoto(null); setSourceChoiceOpen(false); setCreating(true); }}>
+              <PenLine className="h-5 w-5 shrink-0 text-primary" /><span><strong className="block">Criar manualmente</strong><span className="text-xs text-muted-foreground">Preencha o item e a ficha técnica do zero.</span></span>
+            </Button>
+            <Button type="button" variant="outline" className="h-auto justify-start gap-3 p-4 text-left" onClick={() => { setAssistantMode("files"); setSourceChoiceOpen(false); setAssistantOpen(true); }}>
+              <FileUp className="h-5 w-5 shrink-0 text-primary" /><span><strong className="block">Usar documento ou foto</strong><span className="text-xs text-muted-foreground">PDF, JPG, PNG, WebP, Word, planilhas e arquivos de texto. A IA monta um rascunho e tenta recortar a foto do produto.</span></span>
+            </Button>
+            <Button type="button" variant="outline" className="h-auto justify-start gap-3 p-4 text-left" onClick={() => { setAssistantMode("chat"); setSourceChoiceOpen(false); setAssistantOpen(true); }}>
+              <MessageSquareText className="h-5 w-5 shrink-0 text-primary" /><span><strong className="block">Conversar com o assistente de IA</strong><span className="text-xs text-muted-foreground">Descreva o item, peça ajustes e revise nome, preço, ingredientes e ficha antes de gravar.</span></span>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <MenuItemAiAssistantDialog
+        businessUnitId={businessUnitId}
+        open={assistantOpen}
+        initialMode={assistantMode}
+        onOpenChange={setAssistantOpen}
+        onUseDraft={(draft, photo) => {
+          const key = draft.category.replace(/-/g, "_");
+          const matched = categories.find(category => category.key === draft.category || category.key === key);
+          if (!matched && categories[0]) toast.info(`A categoria “${draft.category}” não existe nesta unidade; selecione a categoria correta no formulário.`);
+          setInitialAiDraft({ ...draft, category: matched?.key ?? categories[0]?.key ?? draft.category });
+          setInitialAiPhoto(photo); setAssistantOpen(false); setCreating(true);
+        }}
+      />
       <MenuImportDialog open={importOpen} onOpenChange={setImportOpen} onImported={() => { void refreshMenu(); void refreshCategories(); }} />
 
       {/* Categories Management */}
