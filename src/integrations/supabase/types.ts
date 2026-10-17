@@ -489,6 +489,7 @@ export type Database = {
           business_unit_id: string
           category: string
           created_at: string
+          destination: string | null
           description: string | null
           external_id: string | null
           id: string
@@ -506,6 +507,7 @@ export type Database = {
           business_unit_id: string
           category: string
           created_at?: string
+          destination?: string | null
           description?: string | null
           external_id?: string | null
           id?: string
@@ -523,6 +525,7 @@ export type Database = {
           business_unit_id?: string
           category?: string
           created_at?: string
+          destination?: string | null
           description?: string | null
           external_id?: string | null
           id?: string

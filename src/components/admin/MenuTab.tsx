@@ -249,6 +249,11 @@ const MenuItemEditor = ({ item, initialDraft, initialImage, categories, onSave, 
   const [price, setPrice] = useState(item?.price?.toString() ?? initialDraft?.price?.toString() ?? "");
   const categorySuggestion = initialDraft && categories.some(row => row.key === initialDraft.category) ? initialDraft.category : categories[0]?.key ?? "";
   const [category, setCategory] = useState(item?.category ?? categorySuggestion);
+  const [destinationOverride, setDestinationOverride] = useState(item?.destination ?? "");
+  const { sectors } = usePrintSectors();
+  const categoryDestination = categories.find((c) => c.key === category)?.destination ?? null;
+  const effectiveDestination = destinationOverride || categoryDestination || undefined;
+  const destinationOptions = sectors.filter((sector) => sector.slug !== "cashier" && (sector.active || sector.slug === destinationOverride));
   const [description, setDescription] = useState(item?.description ?? initialDraft?.description ?? "");
   const initialRecipeDraft = useMemo(() => initialDraft?.recipe.map(recipeDraftFromImport), [initialDraft]);
   const [imageUrl, setImageUrl] = useState(item?.image_url ?? "");
@@ -485,6 +490,7 @@ const MenuItemEditor = ({ item, initialDraft, initialImage, categories, onSave, 
         name: name.trim(),
         price: Number(price),
         category,
+        destination: destinationOverride.trim() || null,
         description: description.trim() || null,
         image_url: finalImage,
         active,
@@ -575,6 +581,15 @@ const MenuItemEditor = ({ item, initialDraft, initialImage, categories, onSave, 
           </select>
           <MenuPrefixField label="Buscar categoria pelo início" placeholder="Digite o início da categoria" value={categorySearch} onChange={setCategorySearch} mode="whole" suggestions={catalog.suggestions.categories}
             onPick={suggestion => { const found = catalog.categories.find(row => row.id === suggestion.id); if (found) setCategory(found.key); setCategorySearch(''); }} />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor="menu-item-destination" className="text-xs font-medium text-muted-foreground">Setor de preparo</label>
+          <select id="menu-item-destination" aria-label="Setor de preparo" value={destinationOverride} onChange={event => setDestinationOverride(event.target.value)}
+            className="w-full h-9 rounded-md border border-border bg-muted px-3 text-sm text-foreground">
+            <option value="">Usar setor da categoria ({sectorName(sectors, categoryDestination) || "não definido"})</option>
+            {destinationOptions.map((sector) => <option key={sector.slug} value={sector.slug}>{sector.name}</option>)}
+          </select>
+          <p className="text-[11px] text-muted-foreground">O item herda o setor da categoria por padrão. O setor controla o encaminhamento; a baixa direta ou produção é definida separadamente na ficha técnica.</p>
         </div>
       </div>
 
@@ -710,7 +725,7 @@ const MenuItemEditor = ({ item, initialDraft, initialImage, categories, onSave, 
           onClick={() => void openDocumentPicker()}>Puxar ficha de Documentos</Button>
         <p className="text-xs text-muted-foreground">Selecione uma ficha técnica já salva nesta unidade. A importação só será vinculada após salvar o item.</p>
         <RecipeBuilder ref={recipeBuilderRef} menuItemId={item?.id} initialDraft={initialRecipeDraft}
-          menuItemName={name} disabled={saving || uploading || generating} />
+          menuItemName={name} destination={effectiveDestination} disabled={saving || uploading || generating} />
       </div>
       {documentPickerOpen && <div role="dialog" aria-label="Puxar ficha técnica de Documentos"
         className="space-y-3 rounded-lg border border-border bg-card p-3">

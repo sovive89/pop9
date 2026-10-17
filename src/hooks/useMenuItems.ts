@@ -9,6 +9,7 @@ import {
   barCategories as staticBarCategories,
   categoryLabels as staticCategoryLabels,
 } from "@/data/menu";
+import { resolveMenuItemDestination } from "@/lib/menuDestination";
 
 interface DbCategory {
   key: string;
@@ -51,7 +52,7 @@ export const useMenuItems = () => {
       setDbCategories(cats ?? []);
 
       const [itemsRes, ingredientsRes, variantsRes] = await Promise.all([
-        supabase.from("menu_items").select("id, name, price, category, description, image_url, sort_order").eq("active", true).eq("status", "published").eq("business_unit_id",unitId).order("sort_order"),
+        supabase.from("menu_items").select("id, name, price, category, destination, description, image_url, sort_order").eq("active", true).eq("status", "published").eq("business_unit_id",unitId).order("sort_order"),
         supabase.from("menu_item_ingredients").select("menu_item_id, name, removable, extra_price, sort_order").order("sort_order"),
         supabase.from("menu_item_variants").select("menu_item_id, name, sort_order").order("sort_order"),
       ]);
@@ -72,6 +73,7 @@ export const useMenuItems = () => {
         name: item.name,
         price: Number(item.price),
         category: item.category as MenuCategory,
+        destination: item.destination ?? null,
         description: item.description ?? undefined,
         imageUrl: item.image_url ?? undefined,
         ingredients: (dbIngredients ?? [])
@@ -118,17 +120,21 @@ export const useMenuItems = () => {
   const isKitchenItem = useCallback(
     (menuItemId: string): boolean => {
       const item = items.find((m) => m.id === menuItemId);
-      return item ? kitchenCategories.includes(item.category) : true;
+      if (!item) return true;
+      const destination = resolveMenuItemDestination(item.destination, dbCategories?.find((c) => c.key === item.category)?.destination);
+      return destination ? destination === "kitchen" : kitchenCategories.includes(item.category);
     },
-    [items, kitchenCategories]
+    [items, dbCategories, kitchenCategories]
   );
 
   const isBarItem = useCallback(
     (menuItemId: string): boolean => {
       const item = items.find((m) => m.id === menuItemId);
-      return item ? barCategories.includes(item.category) : false;
+      if (!item) return false;
+      const destination = resolveMenuItemDestination(item.destination, dbCategories?.find((c) => c.key === item.category)?.destination);
+      return destination ? destination === "bar" : barCategories.includes(item.category);
     },
-    [items, barCategories]
+    [items, dbCategories, barCategories]
   );
 
   return { menuItems: items, loading, error, categories: dbCategories ?? [], isKitchenItem, isBarItem, categoryLabels };
