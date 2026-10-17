@@ -22,7 +22,8 @@ export async function stockDatabase() {
     alter table suppliers add business_unit_id uuid;
     alter table production_recipes add business_unit_id uuid,add tipo text default 'producao',add perda_esperada numeric,add tempo_producao integer;
     alter table production_batches add business_unit_id uuid;
-    alter table stock_movements add business_unit_id uuid,add constraint stock_quantity_positive check(quantity>0);
+    alter table stock_movements add business_unit_id uuid,add constraint stock_quantity_positive check(quantity>0),
+      add constraint stock_movements_reason_check check(reason in('compra','producao_consumo','producao_output','venda','estorno_cancelamento','ajuste','perda'));
     create table lotes(id uuid primary key default gen_random_uuid(),business_unit_id uuid,raw_material_id uuid references raw_materials(id),numero_lote text,origem text,
       quantidade_entrada numeric check(quantidade_entrada>0),validade date,data_entrada timestamptz default now(),created_at timestamptz default now(),fornecedor_id uuid references suppliers(id),
       preco_unitario numeric,receita_id uuid references production_recipes(id),batch_id uuid references production_batches(id),unidade_compra text,quantidade_compra numeric,
@@ -42,6 +43,10 @@ export async function stockDatabase() {
   await db.exec(readFileSync('supabase/migrations/20261013180000_fix_production_stock_movements_business_unit.sql','utf8'));
   await db.exec(readFileSync('supabase/migrations/20261013230958_produced_yield_and_material_units.sql','utf8'));
   await db.exec(readFileSync('supabase/migrations/20261017130000_transfer_partial_stock_lot.sql','utf8'));
+  // Reproduz o grant padrão encontrado no projeto antes do ajuste de privilégios.
+  await db.exec('grant select on public.stock_transfers to anon');
+  await db.exec(readFileSync('supabase/migrations/20261017170000_stock_transfer_movement_reason.sql','utf8'));
+  await db.exec(readFileSync('supabase/migrations/20261017171000_stock_transfer_api_privileges.sql','utf8'));
   await db.exec('create trigger cancel_stock after update on orders for each row execute function order_cancel_reverts_stock()');
   return db;
 }

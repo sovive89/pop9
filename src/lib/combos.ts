@@ -12,6 +12,10 @@ export type Combo = {
 export type ComboMenuItem = { id: string; name: string; price: number; comboEligible?: boolean };
 export type OnTheFlyDiscount = { mode: "percent" | "amount"; value: number };
 
+/** A composição é inferida das etapas; não duplica o modelo persistido. */
+export const isReadyCombo = (combo: Combo) =>
+  combo.slots.length > 0 && combo.slots.every((slot) => slot.options.length === 1);
+
 const cents = (v: number) => Math.round(v * 100);
 const eligible = (item: ComboMenuItem | undefined): item is ComboMenuItem => Boolean(item && item.comboEligible !== false);
 
@@ -31,7 +35,16 @@ export const comboListPrice = (chosen: ComboOption[], items: Map<string, ComboMe
   chosen.reduce((s, o) => s + cents(items.get(o.menuItemId)?.price ?? 0) + cents(o.extraPrice), 0) / 100;
 
 /** Opção padrão de cada etapa (a primeira). */
-export const defaultChoice = (combo: Combo) => combo.slots.map((s) => s.options[0]).filter(Boolean);
+export const defaultChoice = (combo: Combo, items?: Map<string, ComboMenuItem>) => combo.slots
+  .map((s) => s.options.find((option) => !items || eligible(items.get(option.menuItemId))))
+  .filter((option): option is ComboOption => Boolean(option));
+
+/** Exige exatamente uma opção cadastrada por etapa e itens elegíveis. */
+export const comboChoiceValid = (combo: Combo, chosen: ComboOption[], items: Map<string, ComboMenuItem>) =>
+  combo.slots.length > 0 && chosen.length === combo.slots.length && chosen.every((option, i) =>
+    combo.slots[i].options.some((registered) => registered.id === option.id && registered.menuItemId === option.menuItemId
+      && registered.extraPrice === option.extraPrice && registered.isFree === option.isFree)
+    && eligible(items.get(option.menuItemId)));
 
 /** Combo montável: todas as etapas têm opção e todos os itens existem no cardápio. */
 export const comboAvailable = (combo: Combo, items: Map<string, ComboMenuItem>) =>
@@ -85,7 +98,7 @@ export function onTheFlyComboToOrderItems(
 export function comboToOrderItems(
   combo: Combo, chosen: ComboOption[], items: Map<string, ComboMenuItem>, groupId: string,
 ): OrderItem[] {
-  if (chosen.some((option) => !eligible(items.get(option.menuItemId)))) return [];
+  if (!combo.active || !comboChoiceValid(combo, chosen, items)) return [];
   const total = cents(comboPrice(combo, chosen, items));
   const weights = chosen.map((o) => (o.isFree ? 0 : cents(items.get(o.menuItemId)?.price ?? 0)) + cents(o.extraPrice));
   const weightSum = weights.reduce((a, b) => a + b, 0);
