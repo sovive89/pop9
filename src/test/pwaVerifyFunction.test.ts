@@ -7,9 +7,9 @@ import * as twilio from "../../supabase/functions/_shared/twilio";
 const UNIT="00000000-0000-0000-0000-000000000001";
 const SID="AC"+"1".repeat(32),SERVICE="VA"+"2".repeat(32),TOKEN="t".repeat(32);
 const SECRETS={TWILIO_ACCOUNT_SID:SID,TWILIO_AUTH_TOKEN:TOKEN,TWILIO_VERIFY_SERVICE_SID:SERVICE};
-function endpoint(options:{secrets?:Record<string,string>;pwaEnabled?:boolean;rpcError?:{code:string;message:string};vault?:Record<string,string>|null;twilioStatus?:string}={}){
+function endpoint(options:{secrets?:Record<string,string>;pwaEnabled?:boolean;rpcError?:{code:string;message:string};vault?:Record<string,string>|null;twilioStatus?:string;unitActive?:boolean}={}){
   const rpc=vi.fn(async(name:string,_args?:Record<string,unknown>)=>name==="twilio_credentials" ? {data:options.vault ?? null,error:null} : options.rpcError ? {data:null,error:options.rpcError} : {data:name==="issue_pwa_sms_access" ? {name:null,email:null,bairro:null,marketing:false} : null,error:null});
-  const db={rpc,from:()=>{const filters:Record<string,unknown>={};const query={select:()=>query,eq:(key:string,value:unknown)=>{filters[key]=value;return query;},maybeSingle:async()=>({data:filters.provider==="twilio" ? {status:options.twilioStatus ?? "CONNECTED",config:{enabled:true}} : {status:"CONNECTED",config:{enabled:options.pwaEnabled!==false}},error:null})};return query;}};
+  const db={rpc,from:(table:string)=>{const filters:Record<string,unknown>={};const query={select:()=>query,eq:(key:string,value:unknown)=>{filters[key]=value;return query;},maybeSingle:async()=>table==="business_units" ? {data:options.unitActive===false ? null : {id:filters.id},error:null} : ({data:filters.provider==="twilio" ? {status:options.twilioStatus ?? "CONNECTED",config:{enabled:true}} : {status:"CONNECTED",config:{enabled:options.pwaEnabled!==false}},error:null})};return query;}};
   let handler!:(request:Request)=>Promise<Response>;
   const source=readFileSync("supabase/functions/pwa-verify/index.ts","utf8").replace(/^import .*;\r?\n/gm,"");
   const code=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
@@ -80,5 +80,28 @@ describe("pwa-verify (Twilio Verify)",()=>{
     await api.post({action:"check",business_unit_id:UNIT,phone:"61987654321",name:"Ana Souza",code:"123456",email:"ana@x.com",marketing:"true"});
     const args=api.rpc.mock.calls.find(([name])=>name==="issue_pwa_sms_access")![1] as Record<string,unknown>;
     expect(args).toMatchObject({p_phone:"5561987654321",p_name:"Ana Souza",p_email:"ana@x.com",p_marketing:false});
+  });
+  it("unidade inativa não envia SMS nem emite acesso",async()=>{
+    const fetch=vi.fn();vi.stubGlobal("fetch",fetch);const api=endpoint({unitActive:false});
+    for(const body of [{action:"start"},{action:"check",code:"123456"}])expect((await api.post({...body,business_unit_id:UNIT,phone:"61987654321",name:"Ana Souza"})).status).toBe(404);
+    expect(fetch).not.toHaveBeenCalled();expect(api.rpc).not.toHaveBeenCalledWith("register_pwa_sms_send",expect.anything());expect(api.rpc).not.toHaveBeenCalledWith("issue_pwa_sms_access",expect.anything());
+  });
+  it("se o Twilio recusa o envio, devolve a vaga do limite",async()=>{
+    vi.stubGlobal("fetch",vi.fn().mockResolvedValue(new Response("{}",{status:400})));const api=endpoint();
+    expect((await api.post({action:"start",business_unit_id:UNIT,phone:"61987654321",name:"Ana Souza"})).status).toBe(502);
+    expect(api.rpc).toHaveBeenCalledWith("release_pwa_sms_send",{p_unit:UNIT,p_phone:"5561987654321"});
+  });
+  it("Twilio fora do ar ou lento: 502, vaga devolvida e chamada com tempo limite",async()=>{
+    const fetch=vi.fn().mockRejectedValue(new DOMException("timeout","TimeoutError"));vi.stubGlobal("fetch",fetch);const api=endpoint();
+    expect((await api.post({action:"start",business_unit_id:UNIT,phone:"61987654321",name:"Ana Souza"})).status).toBe(502);
+    expect(api.rpc).toHaveBeenCalledWith("release_pwa_sms_send",{p_unit:UNIT,p_phone:"5561987654321"});
+    expect(fetch.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+    expect((await api.post({action:"check",business_unit_id:UNIT,phone:"61987654321",name:"Ana Souza",code:"123456"})).status).toBe(502);
+    expect(api.rpc).not.toHaveBeenCalledWith("issue_pwa_sms_access",expect.anything());
+  });
+  it("falha inesperada do banco vira 5xx (só erro de regra vira 429/409)",async()=>{
+    const fetch=vi.fn().mockResolvedValue(new Response(JSON.stringify({status:"approved"}),{status:200}));vi.stubGlobal("fetch",fetch);const api=endpoint({rpcError:{code:"XX000",message:"connection lost"}});
+    expect((await api.post({action:"start",business_unit_id:UNIT,phone:"61987654321",name:"Ana Souza"})).status).toBe(500);expect(fetch).not.toHaveBeenCalled();
+    expect((await api.post({action:"check",business_unit_id:UNIT,phone:"61987654321",name:"Ana Souza",code:"123456"})).status).toBe(500);
   });
 });

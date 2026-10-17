@@ -35,9 +35,9 @@ export default function CustomerAccess({unit,whatsappUrl,onVerified}:{unit:strin
   return <section aria-label="Seus dados" className="space-y-3 rounded-xl border bg-card p-4">
     <h2 className="text-lg font-semibold">Identifique-se para pedir</h2>
     <p className="text-sm text-muted-foreground">Vamos enviar um código por SMS para confirmar seu celular.</p>
-    <label className="block space-y-1 text-sm">Nome completo<Input autoComplete="name" maxLength={80} placeholder="Nome e sobrenome" value={info.name} disabled={busy} onChange={e=>set("name",e.target.value)}/></label>
+    <label className="block space-y-1 text-sm">Nome completo<Input required aria-required="true" autoComplete="name" maxLength={80} placeholder="Nome e sobrenome" value={info.name} disabled={busy} onChange={e=>set("name",e.target.value)}/></label>
     {info.name.trim() && !nameOk && <p className="text-xs text-muted-foreground">Informe nome e sobrenome.</p>}
-    <label className="block space-y-1 text-sm">Celular com DDD<Input inputMode="tel" autoComplete="tel-national" placeholder="(61) 98765-4321" value={formatPhone(info.phone)} disabled={busy} onChange={e=>set("phone",e.target.value.replace(/\D/g,"").slice(0,11))}/></label>
+    <label className="block space-y-1 text-sm">Celular com DDD<Input required aria-required="true" inputMode="tel" autoComplete="tel-national" placeholder="(61) 98765-4321" value={formatPhone(info.phone)} disabled={busy} onChange={e=>set("phone",e.target.value.replace(/\D/g,"").slice(0,11))}/></label>
     {!more ? <button type="button" className="text-sm text-primary underline" onClick={()=>setMore(true)}>Adicionar e-mail e bairro (opcional)</button> : <>
       <label className="block space-y-1 text-sm">E-mail (opcional)<Input type="email" autoComplete="email" maxLength={120} value={info.email} disabled={busy} onChange={e=>set("email",e.target.value)}/></label>
       <label className="block space-y-1 text-sm">Bairro (opcional)<Input autoComplete="address-level3" maxLength={80} value={info.bairro} disabled={busy} onChange={e=>set("bairro",e.target.value)}/></label>
