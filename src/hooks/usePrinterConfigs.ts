@@ -4,6 +4,9 @@ import { toast } from "sonner";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import { useAuth } from "@/hooks/useAuth";
 
+import { normalizeLayouts } from "../../print-server/src/layout.mjs";
+import type { PrintLayout } from "@/lib/printLayout";
+
 export type PrinterTipo = "termica" | "etiqueta";
 export type PrinterGatilho =
   | "comanda_cozinha"
@@ -27,6 +30,7 @@ export interface PrinterConfig {
   /** Todos os momentos em que esta impressora imprime. */
   gatilhos: PrinterGatilho[];
   connectionType: PrinterConnectionType;
+  layouts: Partial<Record<PrinterGatilho, PrintLayout>>;
   deviceIdentifier: string | null;
   active: boolean;
   /** IP/nome da térmica de rede usada pelo print server (porta 9100). */
@@ -123,6 +127,7 @@ export const usePrinterConfigs = () => {
         gatilhos: normalizeGatilhos(p.gatilhos?.length ? p.gatilhos : [p.gatilho]),
         // TCP uses the existing transport column; connection_type keeps its legacy values.
         connectionType: p.transport === "tcp" && p.host ? "tcp" : p.connection_type as PrinterConnectionType,
+        layouts: normalizeLayouts(p.print_layouts),
         deviceIdentifier: p.device_identifier,
         active: p.active,
         host: p.host ?? null,
@@ -146,6 +151,7 @@ export const usePrinterConfigs = () => {
     tipo: PrinterTipo;
     gatilhos: PrinterGatilho[];
     connectionType: PrinterConnectionType;
+    layouts?: Partial<Record<PrinterGatilho, PrintLayout>>;
     deviceIdentifier?: string | null;
   } & Partial<PrinterNetworkInput>) => {
     if (!user || !businessUnitId) return false;
@@ -163,6 +169,7 @@ export const usePrinterConfigs = () => {
       gatilhos,
       ...printerConnectionColumns(input.connectionType),
       device_identifier: input.deviceIdentifier || null,
+      print_layouts: normalizeLayouts(input.layouts),
       business_unit_id: businessUnitId,
       ...networkColumns(input),
     });
@@ -184,6 +191,7 @@ export const usePrinterConfigs = () => {
       tipo: PrinterTipo;
       gatilhos: PrinterGatilho[];
       connectionType: PrinterConnectionType;
+      layouts: Partial<Record<PrinterGatilho, PrintLayout>>;
       deviceIdentifier: string | null;
       active: boolean;
     } & PrinterNetworkInput>
@@ -203,6 +211,7 @@ export const usePrinterConfigs = () => {
         ...(input.tipo !== undefined && { tipo: input.tipo }),
         ...(gatilhos && { gatilho: gatilhos[0], gatilhos }),
         ...(input.connectionType !== undefined && printerConnectionColumns(input.connectionType)),
+        ...(input.layouts !== undefined && { print_layouts: normalizeLayouts(input.layouts) }),
         ...(input.deviceIdentifier !== undefined && { device_identifier: input.deviceIdentifier }),
         ...(input.active !== undefined && { active: input.active }),
         ...networkColumns(input),

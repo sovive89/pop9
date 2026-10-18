@@ -1,3 +1,4 @@
+import { applyPrintLayout, type PrintLayout } from "./printLayout";
 import type { PrinterGatilho, PrinterSector, PrinterTipo, PrinterDestino } from "@/hooks/usePrinterConfigs";
 import { buildStationTickets, buildWaiterReceipt, buildClientBillReceipt, buildTableBillReceipt, buildReadyReceipt, escapeHtml } from "@/utils/thermal-print";
 import type { ClientOrder, OrderItem } from "@/utils/orders";
@@ -19,7 +20,7 @@ export function receiptPrintSettings(html: string, paperWidth: number, copies: n
 }
 
 /** Uses the same builders as operational printing; examples are never persisted. */
-export function printerPreview(gatilho: PrinterGatilho, destinos: PrinterDestino[], unitName: string, paperWidth: number, copies: number) {
+export function printerPreview(gatilho: PrinterGatilho, destinos: PrinterDestino[], unitName: string, paperWidth: number, copies: number, layout?: PrintLayout) {
   const items: OrderItem[] = [{ menuItemId: "example-burger", name: "Hambúrguer de exemplo", quantity: 1, price: 29.9, observation: "Sem cebola", ingredientMods: [{ name: "Queijo", action: "extra", extraPrice: 2 }] }, { menuItemId: "example-drink", name: "Suco de exemplo", quantity: 1, price: 8 }];
   const client = { id: "example-client", name: "Cliente de exemplo", addedAt: new Date(), phone: "" };
   const order: ClientOrder = { clientId: client.id, cart: [], orders: [{ id: "example-order", status: "ready", placedAt: new Date(), items }] };
@@ -33,5 +34,5 @@ export function printerPreview(gatilho: PrinterGatilho, destinos: PrinterDestino
     case "etiqueta_producao": html = '<!DOCTYPE html><html><head><style>body{font-family:monospace;padding:4mm;color:#000;background:#fff}</style></head><body><h3>ETIQUETA DE EXEMPLO</h3><p>Molho da casa — lote TESTE</p><p>Produção e validade: conferir no lote real</p><p>Quantidade: 1 kg</p></body></html>';break;
   }
   html = html.split("CONFIT BURGUER").join(escapeHtml(unitName || "PØP9")).split("Artesanal · Brasília-DF").join("MODELO PREDEFINIDO").replace("<body>", '<body><div style="text-align:center;font-weight:bold;border-bottom:1px dashed;margin-bottom:4mm">TESTE DE IMPRESSÃO — SEM VALOR FISCAL</div>');
-  return receiptPrintSettings(html, paperWidth, copies);
+  return receiptPrintSettings(applyPrintLayout(html, layout), paperWidth, copies);
 }

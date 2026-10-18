@@ -14,6 +14,7 @@ beforeAll(async () => {
     grant usage on schema auth,app_private to authenticated;grant all on printer_configs to authenticated;
     insert into printer_configs(id,business_unit_id,name) values('${a}','${a}','Cozinha A'),('${b}','${b}','Cozinha B');`);
   await db.exec(readFileSync("supabase/migrations/20261013071511_printer_sector_presets.sql", "utf8"));
+  await db.exec(readFileSync("supabase/migrations/20261018213936_printer_layout_models.sql", "utf8"));
   await db.query("select set_config('request.jwt.claim.sub',$1,false)", [actor]);await db.exec("set role authenticated");
 }, 30000);
 afterAll(async () => { await db?.close(); });
@@ -24,6 +25,11 @@ describe("printer sector tenant policies", () => {
     expect((await db.query("delete from printer_configs where id=$1 returning id", [b])).rows).toEqual([]);
     await expect(db.query("insert into printer_configs(business_unit_id,name) values($1,'Bad')", [b])).rejects.toThrow("row-level security");
     await expect(db.query("update printer_configs set business_unit_id=$1 where id=$2", [b, a])).rejects.toThrow("row-level security");
+  });
+  it("keeps custom print models under the existing unit administrator policies", async () => {
+    const model = JSON.stringify({ comanda_cozinha: { header: "Minha unidade" } });
+    expect((await db.query("update printer_configs set print_layouts=$1 where id=$2 returning print_layouts", [model, a])).rows).toHaveLength(1);
+    expect((await db.query("update printer_configs set print_layouts=$1 where id=$2 returning id", [model, b])).rows).toEqual([]);
   });
   it("accepts known sectors in the own unit and rejects invented sectors", async () => {
     expect((await db.query("update printer_configs set setor='cozinha' where id=$1 returning setor", [a])).rows).toEqual([{ setor: "cozinha" }]);

@@ -841,6 +841,7 @@ export type Database = {
       }
       printer_configs: {
         Row: {
+          print_layouts: Json
           active: boolean
           auto_cut: boolean
           copies: number
@@ -862,6 +863,7 @@ export type Database = {
           tipo: string
         }
         Insert: {
+          print_layouts?: Json
           active?: boolean
           auto_cut?: boolean
           copies?: number
@@ -883,6 +885,7 @@ export type Database = {
           tipo: string
         }
         Update: {
+          print_layouts?: Json
           active?: boolean
           auto_cut?: boolean
           copies?: number
