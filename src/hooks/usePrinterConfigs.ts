@@ -12,7 +12,7 @@ export type PrinterGatilho =
   | "conta_individual"
   | "pedido_pronto"
   | "etiqueta_producao";
-export type PrinterConnectionType = "browser" | "qz_tray" | "webusb" | "tcp";
+export type PrinterConnectionType = "browser" | "qz_tray" | "webusb";
 export type PrinterSector = string;
 export const SECTOR_LABELS: Record<PrinterSector, string> = { cozinha: "Cozinha", bar: "Bar", caixa: "Caixa", expedicao: "Expedição", producao: "Produção", geral: "Geral" };
 
@@ -71,18 +71,10 @@ export const GATILHO_LABELS: Record<PrinterGatilho, string> = {
 };
 
 export const CONNECTION_TYPE_LABELS: Record<PrinterConnectionType, string> = {
-  tcp: "Rede/TCP (print server)",
   browser: "Diálogo do navegador",
   qz_tray: "QZ Tray",
   webusb: "WebUSB",
 };
-/** Preserve the legacy connection_type constraint and use transport for the agent. */
-export function printerConnectionColumns(connectionType: PrinterConnectionType) {
-  return {
-    connection_type: connectionType === "tcp" ? "browser" : connectionType,
-    transport: connectionType === "tcp" ? "tcp" : "browser",
-  };
-}
 const EMPTY_PRINTERS: PrinterConfig[] = [];
 
 export const usePrinterConfigs = () => {
@@ -121,8 +113,7 @@ export const usePrinterConfigs = () => {
         gatilho: p.gatilho as PrinterGatilho,
         // Antes da migration de vários gatilhos, a lista não existe: usa o gatilho único.
         gatilhos: normalizeGatilhos(p.gatilhos?.length ? p.gatilhos : [p.gatilho]),
-        // TCP uses the existing transport column; connection_type keeps its legacy values.
-        connectionType: p.transport === "tcp" && p.host ? "tcp" : p.connection_type as PrinterConnectionType,
+        connectionType: p.connection_type as PrinterConnectionType,
         deviceIdentifier: p.device_identifier,
         active: p.active,
         host: p.host ?? null,
@@ -161,7 +152,7 @@ export const usePrinterConfigs = () => {
       tipo: input.tipo,
       gatilho: gatilhos[0],
       gatilhos,
-      ...printerConnectionColumns(input.connectionType),
+      connection_type: input.connectionType,
       device_identifier: input.deviceIdentifier || null,
       business_unit_id: businessUnitId,
       ...networkColumns(input),
@@ -202,7 +193,7 @@ export const usePrinterConfigs = () => {
         ...(input.setor !== undefined && { setor: input.setor }),
         ...(input.tipo !== undefined && { tipo: input.tipo }),
         ...(gatilhos && { gatilho: gatilhos[0], gatilhos }),
-        ...(input.connectionType !== undefined && printerConnectionColumns(input.connectionType)),
+        ...(input.connectionType !== undefined && { connection_type: input.connectionType }),
         ...(input.deviceIdentifier !== undefined && { device_identifier: input.deviceIdentifier }),
         ...(input.active !== undefined && { active: input.active }),
         ...networkColumns(input),
