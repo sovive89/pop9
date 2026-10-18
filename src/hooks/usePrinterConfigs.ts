@@ -91,7 +91,8 @@ const EMPTY_PRINTERS: PrinterConfig[] = [];
 
 export const usePrinterConfigs = () => {
   const { user } = useAuth();
-  const { businessUnitId } = useCurrentBusinessUnit();
+  const { businessUnitId, units = [] } = useCurrentBusinessUnit();
+  const unitName = units.find(unit => unit.id === businessUnitId)?.name ?? "";
   const scope = `${user?.id}:${businessUnitId}`;
   const current = useRef(scope);current.current = scope;
   const generation = useRef(0);
@@ -253,6 +254,7 @@ export const usePrinterConfigs = () => {
 
   return {
     printers,
+    unitName,
     loading,
     error,
     scope,
