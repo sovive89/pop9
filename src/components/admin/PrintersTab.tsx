@@ -420,7 +420,18 @@ const PrintersTab = () => {
               </div>
               {networkError && <p className="text-xs text-destructive">{networkError}</p>}
             </div>
-            <div className="space-y-3 rounded-lg border p-3"><Label htmlFor="printer-preview-model">Prévia da impressão</Label><select id="printer-preview-model" className="w-full rounded-md border bg-background p-2 text-sm" value={previewTrigger ?? ""} onChange={event=>setPreviewGatilho(event.target.value as PrinterGatilho)}>{gatilhos.map(value=><option key={value} value={value}>{GATILHO_LABELS[value]}</option>)}</select><Button type="button" variant="outline" disabled={!previewTrigger || !destinos.length || saving} onClick={()=>setPreviewOpen(value=>!value)}>{previewOpen ? "Ocultar prévia" : "Ver prévia"}</Button>{previewHtml && <><iframe title="Prévia do modelo de impressão" sandbox="" srcDoc={previewHtml} className="h-80 w-full rounded-md border bg-white" /><Button type="button" variant="outline" onClick={()=>printReceipt(previewHtml)}>Imprimir teste no navegador</Button></>}<p className="text-xs text-muted-foreground">Prévia com dados de exemplo, sem registrar pedidos ou pagamentos. O corte é aplicado pelo print server. Contas, avisos e etiquetas são impressos pelo navegador; o servidor automático atende comandas de cozinha/bar.</p></div>
+            <div className="space-y-3 rounded-lg border p-3"><Label htmlFor="printer-preview-model">Prévia visual (navegador)</Label><select id="printer-preview-model" className="w-full rounded-md border bg-background p-2 text-sm" value={previewTrigger ?? ""} onChange={event=>setPreviewGatilho(event.target.value as PrinterGatilho)}>{gatilhos.map(value=><option key={value} value={value}>{GATILHO_LABELS[value]}</option>)}</select><Button type="button" variant="outline" disabled={!previewTrigger || !destinos.length || saving} onClick={()=>setPreviewOpen(value=>!value)}>{previewOpen ? "Ocultar prévia" : "Ver prévia"}</Button>{previewHtml && <><iframe title="Prévia do modelo de impressão" sandbox="" srcDoc={previewHtml} className="h-80 w-full rounded-md border bg-white" /><Button type="button" variant="outline" onClick={()=>printReceipt(previewHtml)}>Imprimir esta prévia no navegador</Button></>}<p className="text-xs text-muted-foreground">Esta prévia abre o diálogo do navegador. Ela não envia dados ao agente TCP nem ao simulador. Usa dados de exemplo, sem registrar pedidos ou pagamentos.</p>
+              {connectionType === "tcp" && (
+                <section aria-label="Teste de conexão pelo agente" className="space-y-2 border-t pt-3">
+                  <p className="text-sm font-medium">Teste de conexão TCP pelo agente</p>
+                  <p className="text-xs text-muted-foreground">Salve o cadastro primeiro. No computador da loja, o teste do agente envia uma comanda TESTE POP9 às impressoras TCP ativas da unidade com gatilho Comanda da cozinha/bar. Não envia a prévia acima e não cria pedidos nem movimenta estoque.</p>
+                  <p className="text-xs text-muted-foreground">No agente em arquivo único, execute na pasta dele:</p>
+                  <code className="block select-all break-all rounded border p-2 text-xs">node .\\pop9-agente.mjs --test</code>
+                  <p className="text-xs text-muted-foreground">Na versão instalada pela pasta print-server do projeto, execute nessa pasta:</p>
+                  <code className="block select-all break-all rounded border p-2 text-xs">npm run test-print</code>
+                  <p className="text-xs text-muted-foreground">Para o simulador, mantenha-o aberto no mesmo computador do agente. Para uma impressora real, use o endereço e a porta dela. Não é necessário ativar a estação do navegador para usar o agente.</p>
+                </section>
+              )}</div>
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
