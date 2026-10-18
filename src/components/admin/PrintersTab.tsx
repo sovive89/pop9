@@ -175,7 +175,9 @@ const PrintersTab = () => {
 
   const portNumber = Number(port);
   const hostValue = host.trim();
-  const networkError = hostValue && !isValidHost(hostValue)
+  const networkError = connectionType === "tcp" && !hostValue
+    ? "Informe o IP ou nome de rede da impressora."
+    : hostValue && !isValidHost(hostValue)
     ? "IP ou nome inválido (ex.: 192.168.0.50, sem http:// nem porta)."
     : !Number.isInteger(portNumber) || portNumber < 1 || portNumber > 65535
       ? "Porta inválida (padrão 9100)."
@@ -365,12 +367,13 @@ const PrintersTab = () => {
               <p className="text-sm font-medium">Impressão direta (print server)</p>
               <p className="text-xs text-muted-foreground">
                 Para a comanda sair sozinha, sem diálogo do navegador: informe o IP da térmica de rede.
-                O POP9 Print Server (pasta print-server do sistema) envia a comanda para cá.
+                Selecione Rede/TCP em Conexão e mantenha o POP9 Print Server ligado no computador da loja.
+                Para simular no mesmo computador do agente, use 127.0.0.1 e a porta do simulador.
               </p>
               <div className="grid grid-cols-[1fr_6rem] gap-2">
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">IP da impressora</Label>
-                  <Input value={host} onChange={(e) => setHost(e.target.value)} placeholder="192.168.0.50" inputMode="decimal" />
+                  <Input value={host} onChange={(e) => setHost(e.target.value)} placeholder="192.168.0.50" type="text" inputMode="text" autoCapitalize="none" autoCorrect="off" spellCheck={false} />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">Porta</Label>
