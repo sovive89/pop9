@@ -9,8 +9,11 @@ describe("printer layout persistence", () => {
     try {
       await db.exec("create table public.printer_configs(id integer primary key);insert into public.printer_configs values(1),(2);");
       await db.exec(readFileSync("supabase/migrations/20261018213936_printer_layout_models.sql", "utf8"));
+      // Reapplying after a schema-only operational repair must preserve the row.
+      await db.exec(readFileSync("supabase/migrations/20261018213936_printer_layout_models.sql", "utf8"));
       expect((await db.query("select print_layouts from printer_configs where id=1")).rows).toEqual([{ print_layouts: {} }]);
       await db.query("update printer_configs set print_layouts=$1 where id=1", [JSON.stringify({ comanda_cozinha: { header: "Cozinha" }, conta_mesa: { header: "Caixa" } })]);
+      await db.exec(readFileSync("supabase/migrations/20261018213936_printer_layout_models.sql", "utf8"));
       expect((await db.query<{print_layouts: unknown}>("select print_layouts from printer_configs where id=1")).rows[0].print_layouts).toEqual({ comanda_cozinha: { header: "Cozinha" }, conta_mesa: { header: "Caixa" } });
       expect((await db.query("select print_layouts from printer_configs where id=2")).rows).toEqual([{ print_layouts: {} }]);
       await expect(db.query("update printer_configs set print_layouts='[]' where id=1")).rejects.toThrow();
