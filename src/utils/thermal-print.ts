@@ -80,16 +80,16 @@ export const buildKitchenReceipts = (
       mods.push(`  OBS: ${escapeHtml(item.observation)}`);
     }
 
-    const modsHtml = mods.map((m) => `<tr><td></td><td class="mod">${m}</td></tr>`).join("");
+    const modsHtml = mods.map((m) => `<tr><td></td><td class="mod" data-print-mod>${m}</td></tr>`).join("");
 
     for (let i = 0; i < item.quantity; i++) {
       receipts.push(wrapReceipt(`
         <div class="center big">🔥 COMANDA</div>
         <div class="center small">${STORE_NAME}</div>
         <div class="line"></div>
-        <div class="row"><span class="bold">${pickupLabel(tableId)}</span><span>${now()}</span></div>
-        <div>Cliente: <span class="bold">${escapeHtml(clientName)}</span></div>
-        ${orderId ? `<div class="small">Pedido: ${escapeHtml(orderId.slice(0, 8))}</div>` : ""}
+        <div class="row"><span class="bold">${pickupLabel(tableId)}</span><span data-print-time>${now()}</span></div>
+        <div data-print-client>Cliente: <span class="bold">${escapeHtml(clientName)}</span></div>
+        ${orderId ? `<div class="small" data-print-order>Pedido: ${escapeHtml(orderId.slice(0, 8))}</div>` : ""}
         ${item.quantity > 1 ? `<div class="small bold">Unidade ${i + 1} de ${item.quantity}</div>` : ""}
         <div class="double-line"></div>
         <table>
@@ -100,7 +100,7 @@ export const buildKitchenReceipts = (
           ${modsHtml}
         </table>
         <div class="double-line"></div>
-        <div class="center small">*** ATENÇÃO ÀS MODIFICAÇÕES ***</div>
+        <div class="center small" data-print-mod>*** ATENÇÃO ÀS MODIFICAÇÕES ***</div>
         <br><br><br>
       `));
     }
@@ -134,7 +134,7 @@ export const buildWaiterReceipt = (
         <td class="qty bold">${item.quantity}x</td>
         <td class="name bold">${escapeHtml(item.name.toUpperCase())}</td>
       </tr>
-      ${mods.map((m) => `<tr><td></td><td class="mod">${m}</td></tr>`).join("")}
+      ${mods.map((m) => `<tr><td></td><td class="mod" data-print-mod>${m}</td></tr>`).join("")}
     `;
   }).join("");
 
@@ -142,9 +142,9 @@ export const buildWaiterReceipt = (
     <div class="center big">📋 PEDIDO</div>
     <div class="center small">${STORE_NAME}</div>
     <div class="line"></div>
-    <div class="row"><span class="bold">${pickupLabel(tableId)}</span><span>${now()}</span></div>
-    <div>Cliente: <span class="bold">${escapeHtml(clientName)}</span></div>
-    ${orderId ? `<div class="small">Pedido: ${orderId.slice(0, 8)}</div>` : ""}
+    <div class="row"><span class="bold">${pickupLabel(tableId)}</span><span data-print-time>${now()}</span></div>
+    <div data-print-client>Cliente: <span class="bold">${escapeHtml(clientName)}</span></div>
+    ${orderId ? `<div class="small" data-print-order>Pedido: ${orderId.slice(0, 8)}</div>` : ""}
     <div class="double-line"></div>
     <table>${itemsHtml}</table>
     <div class="double-line"></div>
@@ -173,7 +173,7 @@ export const buildClientBillReceipt = (
         </tr>
         ${(item.ingredientMods ?? [])
           .filter((m) => m.action === "extra" && m.extraPrice)
-          .map((m) => `<tr><td></td><td class="mod">+ ${escapeHtml(m.name)}</td><td class="price small">${formatCurrency(m.extraPrice! * item.quantity)}</td></tr>`)
+          .map((m) => `<tr><td></td><td class="mod" data-print-mod>+ ${escapeHtml(m.name)}</td><td class="price small">${formatCurrency(m.extraPrice! * item.quantity)}</td></tr>`)
           .join("")}
       `;
     }).join("");
@@ -191,8 +191,8 @@ export const buildClientBillReceipt = (
     <div class="line"></div>
     <div class="center bold">CONTA INDIVIDUAL</div>
     <div class="line"></div>
-    <div class="row"><span><span class="bold">${pickupLabel(tableId)}</span></span><span>${now()}</span></div>
-    <div>Cliente: <span class="bold">${escapeHtml(client.name)}</span></div>
+    <div class="row"><span><span class="bold">${pickupLabel(tableId)}</span></span><span data-print-time>${now()}</span></div>
+    <div data-print-client>Cliente: <span class="bold">${escapeHtml(client.name)}</span></div>
     <div class="double-line"></div>
     ${ordersHtml}
     <div class="double-line"></div>
@@ -250,7 +250,7 @@ export const buildTableBillReceipt = (
     <div class="line"></div>
     <div class="center bold">CONTA DA MESA</div>
     <div class="line"></div>
-    <div class="row"><span><span class="bold">${pickupLabel(tableId)}</span></span><span>${now()}</span></div>
+    <div class="row"><span><span class="bold">${pickupLabel(tableId)}</span></span><span data-print-time>${now()}</span></div>
     <div>Clientes: <span class="bold">${clients.length}</span></div>
     <div class="double-line"></div>
     ${clientsHtml}
@@ -286,9 +286,9 @@ export const buildReadyReceipt = (
     <div class="center big">✅ PEDIDO PRONTO</div>
     <div class="center small">${STORE_NAME}</div>
     <div class="line"></div>
-    <div class="row"><span class="bold">${pickupLabel(tableId)}</span><span>${now()}</span></div>
-    <div>Cliente: <span class="bold">${escapeHtml(clientName)}</span></div>
-    ${orderId ? `<div class="small">Pedido: ${orderId.slice(0, 8)}</div>` : ""}
+    <div class="row"><span class="bold">${pickupLabel(tableId)}</span><span data-print-time>${now()}</span></div>
+    <div data-print-client>Cliente: <span class="bold">${escapeHtml(clientName)}</span></div>
+    ${orderId ? `<div class="small" data-print-order>Pedido: ${orderId.slice(0, 8)}</div>` : ""}
     <div class="double-line"></div>
     <table>${itemsHtml}</table>
     <div class="double-line"></div>
@@ -327,21 +327,21 @@ export const buildStationTickets = (
     const mods = [
       ...(item.ingredientMods ?? []).map((m) => (m.action === "remove" ? `  S/ ${escapeHtml(m.name)}` : `  C/ EXTRA ${escapeHtml(m.name)}`)),
       ...(item.observation ? [`  OBS: ${escapeHtml(item.observation)}`] : []),
-    ].map((m) => `<tr><td></td><td class="mod">${m}</td></tr>`).join("");
+    ].map((m) => `<tr><td></td><td class="mod" data-print-mod>${m}</td></tr>`).join("");
     const quantity = Math.max(1, Math.min(50, Math.floor(item.quantity || 1)));
     for (let i = 0; i < quantity; i++) {
       tickets.push(wrapReceipt(`
         <div class="center big">${item.destination === "bar" ? "🍹 BAR" : "🔥 COMANDA"}</div>
         <div class="center small">${STORE_NAME}</div>
         <div class="line"></div>
-        <div class="row"><span class="bold">${escapeHtml(label)}</span><span>${now()}</span></div>
-        <div>Cliente: <span class="bold">${escapeHtml(clientName)}</span></div>
-        <div class="small">Pedido: ${escapeHtml(orderId.slice(0, 8))}${origin ? ` · <span class="bold">${escapeHtml(origin.toUpperCase())}</span>` : ""}</div>
+        <div class="row"><span class="bold">${escapeHtml(label)}</span><span data-print-time>${now()}</span></div>
+        <div data-print-client>Cliente: <span class="bold">${escapeHtml(clientName)}</span></div>
+        <div class="small" data-print-order>Pedido: ${escapeHtml(orderId.slice(0, 8))}${origin ? ` · <span class="bold">${escapeHtml(origin.toUpperCase())}</span>` : ""}</div>
         ${quantity > 1 ? `<div class="small bold">Unidade ${i + 1} de ${quantity}</div>` : ""}
         <div class="double-line"></div>
         <table><tr><td class="qty bold">1x</td><td class="name bold">${escapeHtml(item.name.toUpperCase())}</td></tr>${mods}</table>
         <div class="double-line"></div>
-        <div class="center small">*** ATENÇÃO ÀS MODIFICAÇÕES ***</div>
+        <div class="center small" data-print-mod>*** ATENÇÃO ÀS MODIFICAÇÕES ***</div>
         <br><br><br>
       `));
     }

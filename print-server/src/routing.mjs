@@ -1,3 +1,4 @@
+import { normalizeLayouts } from "./layout.mjs";
 // Decide qual impressora recebe cada comanda. Código puro, testável.
 
 const HOST = /^[A-Za-z0-9.-]{1,253}$/;
@@ -19,6 +20,7 @@ export function kitchenPrinters(rows) {
     paperWidth: p.paper_width ?? 80,
     copies: Math.max(1, Math.min(5, Number(p.copies) || 1)),
     autoCut: p.auto_cut !== false,
+    layouts: normalizeLayouts(p.print_layouts),
   }));
 }
 

@@ -1,3 +1,6 @@
+import PrinterModelEditor from "./PrinterModelEditor";
+import { type PrintLayout } from "@/lib/printLayout";
+import { useUnitRoles } from "@/hooks/useUnitRoles";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { PAGE_HELP } from "@/lib/page-help";
@@ -71,6 +74,10 @@ const CONNECTION_OPTIONS = Object.entries(CONNECTION_TYPE_LABELS) as [PrinterCon
 const PrintersTab = () => {
   const { printers, loading, error, scope, reload, createPrinter, updatePrinter, deletePrinter } = usePrinterConfigs();
   const { businessUnitId, units } = useCurrentBusinessUnit();
+  const { roles } = useUnitRoles();
+  const canEditModel = roles.includes("admin");
+  const [modelOpen, setModelOpen] = useState(false);
+  const [layouts, setLayouts] = useState<Partial<Record<PrinterGatilho, PrintLayout>>>({});
   const unitName = units.find(unit => unit.id === businessUnitId)?.name ?? "";
   const currentScope = useRef(scope);currentScope.current = scope;
   const savingLock = useRef(false);
@@ -126,6 +133,7 @@ const PrintersTab = () => {
 
   const resetForm = useCallback(() => {
     setName("");
+    setModelOpen(false);setLayouts({});
     setSetor("cozinha");setPreset("cozinha");setPreviewGatilho("comanda_cozinha");setPreviewOpen(false);
     setTipo("termica");
     setGatilhos(["comanda_cozinha"]);
@@ -155,6 +163,7 @@ const PrintersTab = () => {
 
   const openEdit = (p: PrinterConfig) => {
     setEditingId(p.id);
+    setLayouts(p.layouts ?? {});
     setName(p.name);
     setSetor(p.setor);setPreset(PRINTER_PRESETS.some(option => option.id === p.setor) ? p.setor : "cozinha");setPreviewGatilho(p.gatilhos[0]);setPreviewOpen(false);
     setTipo(p.tipo);
@@ -196,6 +205,7 @@ const PrintersTab = () => {
       tipo,
       gatilhos,
       connectionType,
+      layouts,
       deviceIdentifier: deviceIdentifier.trim() || null,
       host: hostValue || null,
       port: portNumber,
@@ -219,7 +229,7 @@ const PrintersTab = () => {
   if (error) return <div role="alert" className="space-y-3"><p>Não foi possível carregar as impressoras desta unidade.</p><Button variant="outline" onClick={()=>void reload()}>Tentar novamente</Button></div>;
   if (!businessUnitId) return <p>Selecione uma unidade para configurar as impressoras.</p>;
   const previewTrigger = gatilhos.includes(previewGatilho) ? previewGatilho : gatilhos[0];
-  const previewHtml = previewOpen && previewTrigger && destinos.length ? printerPreview(previewTrigger, destinos, unitName, paperWidth, copies) : "";
+  const previewHtml = previewOpen && previewTrigger && destinos.length ? printerPreview(previewTrigger, destinos, unitName, paperWidth, copies, layouts[previewTrigger]) : "";
 
   return (
     <div className="space-y-4">
@@ -314,7 +324,7 @@ const PrintersTab = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-2 rounded-lg border p-3"><Label htmlFor="printer-preset">Modelo predefinido</Label><select id="printer-preset" className="w-full rounded-md border bg-background p-2 text-sm" value={preset} onChange={event=>setPreset(event.target.value)}>{PRINTER_PRESETS.map(option=><option key={option.id} value={option.id}>{option.label}</option>)}</select><p className="text-xs text-muted-foreground">{PRINTER_PRESETS.find(option=>option.id===preset)?.description}</p><Button type="button" variant="outline" disabled={saving} onClick={applyPreset}>Aplicar modelo</Button><p className="text-xs text-muted-foreground">Preenche tipo, impressões, destinos, papel, cópias e corte. A conexão e o endereço do equipamento são preservados.</p></div>
+            <div className="space-y-2 rounded-lg border p-3"><Label htmlFor="printer-preset">Modelo predefinido</Label><select id="printer-preset" className="w-full rounded-md border bg-background p-2 text-sm" value={preset} onChange={event=>setPreset(event.target.value)}>{PRINTER_PRESETS.map(option=><option key={option.id} value={option.id}>{option.label}</option>)}</select><p className="text-xs text-muted-foreground">{PRINTER_PRESETS.find(option=>option.id===preset)?.description}</p><Button type="button" variant="outline" disabled={saving} onClick={applyPreset}>Aplicar modelo</Button>{canEditModel && <Button type="button" variant="outline" size="icon" aria-label="Editar modelo" title="Editar modelo" disabled={saving || !gatilhos.length} onClick={() => setModelOpen(true)}><Pencil className="h-4 w-4" /></Button>}<p className="text-xs text-muted-foreground">Preenche tipo, impressões, destinos, papel, cópias e corte. A conexão e o endereço do equipamento são preservados.</p></div>
             <div className="space-y-2"><Label htmlFor="printer-sector">Setor da impressora</Label><select id="printer-sector" value={setor} onChange={event=>setSetor(event.target.value as PrinterSector)} className="w-full rounded-md border bg-background p-2 text-sm">{Object.entries({ ...SECTOR_LABELS, ...Object.fromEntries(sectors.filter(sector => sector.active || sector.slug === setor).map(sector => [sector.slug, sector.name])) }).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
             <div className="space-y-2">
               <Label htmlFor="printer-name" className="text-sm text-muted-foreground">Nome</Label>
@@ -443,6 +453,7 @@ const PrintersTab = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {canEditModel && previewTrigger && <PrinterModelEditor open={modelOpen} onOpenChange={setModelOpen} trigger={previewTrigger} value={layouts[previewTrigger]} onApply={layout => setLayouts(previous => ({ ...previous, [previewTrigger]: layout }))} preview={layout => printerPreview(previewTrigger, destinos, unitName, paperWidth, copies, layout)} />}
     </div>
   );
 };

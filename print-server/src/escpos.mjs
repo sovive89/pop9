@@ -1,3 +1,4 @@
+import { normalizeLayout } from "./layout.mjs";
 // Montagem das comandas em ESC/POS (bytes que a térmica entende).
 // Código puro: sem rede nem Supabase, para ser testado isoladamente.
 
@@ -78,7 +79,8 @@ export function buildKitchenTickets({ label, clientName, orderId, channel, items
 }
 
 /** Converte uma comanda em bytes ESC/POS. */
-export function renderTicket(ticket, { paperWidth = 80, autoCut = true } = {}) {
+export function renderTicket(ticket, { paperWidth = 80, autoCut = true, layouts = {} } = {}) {
+  const layout = normalizeLayout(layouts.comanda_cozinha);
   const cols = columnsFor(paperWidth);
   const bytes = [];
   const raw = (...b) => bytes.push(...b);
@@ -90,36 +92,46 @@ export function renderTicket(ticket, { paperWidth = 80, autoCut = true } = {}) {
   raw(ESC, 0x74, 2);         // página de código 850
   raw(ESC, 0x61, 1);         // centralizado
   raw(GS, 0x21, 0x11);       // fonte dupla (altura e largura)
+  if (layout.logo) {
+    raw(GS, 0x21, 0);
+    const { width, height, hex } = layout.logo;
+    raw(GS, 0x76, 0x30, 0, width / 8, 0, height, 0);
+    for (let i = 0; i < hex.length; i += 2) raw(parseInt(hex.slice(i, i + 2), 16));
+    raw(0x0a);
+    raw(GS, 0x21, 0x11);
+  }
+  if (layout.header) for (const l of wrap(layout.header, Math.floor(cols / 2))) line(l);
   line(ticket.title);
   raw(GS, 0x21, 0x00);
   raw(ESC, 0x61, 0);         // à esquerda
   rule();
   raw(ESC, 0x45, 1); text(ticket.label); raw(ESC, 0x45, 0);
   const gap = Math.max(1, cols - ticket.label.length - ticket.time.length);
-  line(" ".repeat(gap) + ticket.time);
-  line(`Cliente: ${ticket.clientName}`);
-  line(`Pedido: ${ticket.orderRef}${ticket.channel ? ` - ${ticket.channel.toUpperCase()}` : ""}`);
+  line(layout.showTime ? " ".repeat(gap) + ticket.time : "");
+  if (layout.showClient) line(`Cliente: ${ticket.clientName}`);
+  if (layout.showOrder) line(`Pedido: ${ticket.orderRef}${ticket.channel ? ` - ${ticket.channel.toUpperCase()}` : ""}`);
   if (ticket.unit) line(ticket.unit);
   rule("=");
-  raw(GS, 0x21, 0x01);       // altura dupla para o item
+  raw(GS, 0x21, layout.itemSize === "large" ? 0x01 : 0);
   raw(ESC, 0x45, 1);
   for (const l of wrap(`1x ${ticket.name}`, cols)) line(l);
   raw(ESC, 0x45, 0);
   raw(GS, 0x21, 0x00);
-  for (const mod of ticket.mods) for (const l of wrap(`  ${mod}`, cols)) line(l);
+  for (const mod of layout.showModifications ? ticket.mods : []) for (const l of wrap(`  ${mod}`, cols)) line(l);
   rule("=");
-  if (ticket.mods.length) { raw(ESC, 0x61, 1); line("*** ATENCAO AS MODIFICACOES ***"); raw(ESC, 0x61, 0); }
+  if (layout.showModifications && ticket.mods.length) { raw(ESC, 0x61, 1); line("*** ATENCAO AS MODIFICACOES ***"); raw(ESC, 0x61, 0); }
+  if (layout.footer) { raw(ESC, 0x61, 1); for (const l of wrap(layout.footer, cols)) line(l); raw(ESC, 0x61, 0); }
   raw(ESC, 0x64, 4);         // avança 4 linhas
   if (autoCut) raw(GS, 0x56, 0x42, 0x00); // corte parcial
   return Uint8Array.from(bytes);
 }
 
 /** Página de teste para conferir conexão, acentos e corte. */
-export function renderTestPage(printerName, { paperWidth = 80, autoCut = true, now = new Date() } = {}) {
+export function renderTestPage(printerName, { paperWidth = 80, autoCut = true, now = new Date(), layouts = {} } = {}) {
   return renderTicket({
     title: "TESTE POP9", label: printerName, clientName: "Teste de impressão",
     time: now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }),
     orderRef: "--------", channel: null, unit: null,
     name: "Ação, pão, coração, çãõé", mods: [`Papel ${paperWidth} mm`],
-  }, { paperWidth, autoCut });
+  }, { paperWidth, autoCut, layouts });
 }

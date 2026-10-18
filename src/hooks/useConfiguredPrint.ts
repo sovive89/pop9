@@ -1,3 +1,4 @@
+import { applyPrintLayout } from "@/lib/printLayout";
 import { usePrinterConfigs, type PrinterGatilho } from "@/hooks/usePrinterConfigs";
 import { receiptPrintSettings } from "@/lib/printerPresets";
 import { printReceipt } from "@/utils/thermal-print";
@@ -10,7 +11,7 @@ export function useConfiguredPrint() {
     if (!printers.length) { printReceipt(html);return html; }
     let preview = html;
     for (const [index, printer] of printers.entries()) {
-      const prepared = receiptPrintSettings(html, printer.paperWidth, printer.copies);
+      const prepared = receiptPrintSettings(applyPrintLayout(html, printer.layouts?.[gatilho]), printer.paperWidth, printer.copies);
       if (index === 0) preview = prepared;
       printReceipt(prepared);
     }
