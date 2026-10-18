@@ -58,9 +58,10 @@ async function loadOrder(orderId) {
     .select("id, origin, source, external_id, client_id, session_id, order_items(name, quantity, observation, ingredient_mods, destination)")
     .eq("id", orderId).single();
   if (error || !order) throw new Error("Pedido não encontrado");
-  const [{ data: session }, { data: client }] = await Promise.all([
+  const [{ data: session }, { data: client }, { data: unit }] = await Promise.all([
     order.session_id ? supabase.from("sessions").select("table_number").eq("id", order.session_id).maybeSingle() : Promise.resolve({ data: null }),
     order.client_id ? supabase.from("session_clients").select("name").eq("id", order.client_id).maybeSingle() : Promise.resolve({ data: null }),
+    supabase.from("business_units").select("name").eq("id", unitId).maybeSingle(),
   ]);
   const channel = channelLabel(order);
   const n = session?.table_number;
@@ -70,7 +71,7 @@ async function loadOrder(orderId) {
   const items = (order.order_items ?? []).map((i) => ({
     name: i.name, quantity: i.quantity, observation: i.observation, ingredientMods: i.ingredient_mods, destination: i.destination,
   }));
-  return { label, clientName: client?.name ?? "Cliente", orderId: order.id, channel, items };
+  return { label, unitName: unit?.name ?? "", clientName: client?.name ?? "Cliente", orderId: order.id, channel, items };
 }
 
 const busy = new Set();

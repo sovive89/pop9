@@ -85,9 +85,9 @@ export const buildKitchenReceipts = (
     for (let i = 0; i < item.quantity; i++) {
       receipts.push(wrapReceipt(`
         <div class="center big">🔥 COMANDA</div>
-        <div class="center small">${STORE_NAME}</div>
+        <div class="center small" data-print-unit>${STORE_NAME}</div>
         <div class="line"></div>
-        <div class="row"><span class="bold">${pickupLabel(tableId)}</span><span data-print-time>${now()}</span></div>
+        <div class="row"><span class="bold"><span data-print-location>${pickupLabel(tableId)}</span></span><span data-print-time>${now()}</span></div>
         <div data-print-client>Cliente: <span class="bold">${escapeHtml(clientName)}</span></div>
         ${orderId ? `<div class="small" data-print-order>Pedido: ${escapeHtml(orderId.slice(0, 8))}</div>` : ""}
         ${item.quantity > 1 ? `<div class="small bold">Unidade ${i + 1} de ${item.quantity}</div>` : ""}
@@ -140,9 +140,9 @@ export const buildWaiterReceipt = (
 
   return wrapReceipt(`
     <div class="center big">📋 PEDIDO</div>
-    <div class="center small">${STORE_NAME}</div>
+    <div class="center small" data-print-unit>${STORE_NAME}</div>
     <div class="line"></div>
-    <div class="row"><span class="bold">${pickupLabel(tableId)}</span><span data-print-time>${now()}</span></div>
+    <div class="row"><span class="bold"><span data-print-location>${pickupLabel(tableId)}</span></span><span data-print-time>${now()}</span></div>
     <div data-print-client>Cliente: <span class="bold">${escapeHtml(clientName)}</span></div>
     ${orderId ? `<div class="small" data-print-order>Pedido: ${orderId.slice(0, 8)}</div>` : ""}
     <div class="double-line"></div>
@@ -186,12 +186,12 @@ export const buildClientBillReceipt = (
   const total = subtotal + serviceCharge;
 
   return wrapReceipt(`
-    <div class="center big">${STORE_NAME}</div>
+    <div class="center big" data-print-unit>${STORE_NAME}</div>
     <div class="center small">${STORE_LINE2}</div>
     <div class="line"></div>
     <div class="center bold">CONTA INDIVIDUAL</div>
     <div class="line"></div>
-    <div class="row"><span><span class="bold">${pickupLabel(tableId)}</span></span><span data-print-time>${now()}</span></div>
+    <div class="row"><span><span class="bold"><span data-print-location>${pickupLabel(tableId)}</span></span></span><span data-print-time>${now()}</span></div>
     <div data-print-client>Cliente: <span class="bold">${escapeHtml(client.name)}</span></div>
     <div class="double-line"></div>
     ${ordersHtml}
@@ -201,7 +201,7 @@ export const buildClientBillReceipt = (
     <div class="total-row"><span>TOTAL</span><span>${formatCurrency(total)}</span></div>
     <div class="line"></div>
     <div class="center small">Obrigado pela preferência!</div>
-    <div class="center small">${STORE_NAME}</div>
+    <div class="center small" data-print-unit>${STORE_NAME}</div>
     <br><br><br>
   `);
 };
@@ -233,7 +233,7 @@ export const buildTableBillReceipt = (
     ).join("");
 
     return `
-      <div class="bold">${escapeHtml(client.name)}</div>
+      <div class="bold" data-print-client>${escapeHtml(client.name)}</div>
       <table>${itemsHtml}</table>
       <div class="row-indent"><span></span><span class="bold">${formatCurrency(clientTotal)}</span></div>
       <div class="line"></div>
@@ -245,12 +245,12 @@ export const buildTableBillReceipt = (
   const total = subtotal + serviceCharge;
 
   return wrapReceipt(`
-    <div class="center big">${STORE_NAME}</div>
+    <div class="center big" data-print-unit>${STORE_NAME}</div>
     <div class="center small">${STORE_LINE2}</div>
     <div class="line"></div>
     <div class="center bold">CONTA DA MESA</div>
     <div class="line"></div>
-    <div class="row"><span><span class="bold">${pickupLabel(tableId)}</span></span><span data-print-time>${now()}</span></div>
+    <div class="row"><span><span class="bold"><span data-print-location>${pickupLabel(tableId)}</span></span></span><span data-print-time>${now()}</span></div>
     <div>Clientes: <span class="bold">${clients.length}</span></div>
     <div class="double-line"></div>
     ${clientsHtml}
@@ -260,7 +260,7 @@ export const buildTableBillReceipt = (
     <div class="total-row"><span>TOTAL MESA</span><span>${formatCurrency(total)}</span></div>
     <div class="line"></div>
     <div class="center small">Obrigado pela preferência!</div>
-    <div class="center small">${STORE_NAME}</div>
+    <div class="center small" data-print-unit>${STORE_NAME}</div>
     <br><br><br>
   `);
 };
@@ -284,9 +284,9 @@ export const buildReadyReceipt = (
 
   return wrapReceipt(`
     <div class="center big">✅ PEDIDO PRONTO</div>
-    <div class="center small">${STORE_NAME}</div>
+    <div class="center small" data-print-unit>${STORE_NAME}</div>
     <div class="line"></div>
-    <div class="row"><span class="bold">${pickupLabel(tableId)}</span><span data-print-time>${now()}</span></div>
+    <div class="row"><span class="bold"><span data-print-location>${pickupLabel(tableId)}</span></span><span data-print-time>${now()}</span></div>
     <div data-print-client>Cliente: <span class="bold">${escapeHtml(clientName)}</span></div>
     ${orderId ? `<div class="small" data-print-order>Pedido: ${orderId.slice(0, 8)}</div>` : ""}
     <div class="double-line"></div>
@@ -332,11 +332,12 @@ export const buildStationTickets = (
     for (let i = 0; i < quantity; i++) {
       tickets.push(wrapReceipt(`
         <div class="center big">${item.destination === "bar" ? "🍹 BAR" : "🔥 COMANDA"}</div>
-        <div class="center small">${STORE_NAME}</div>
+        <div class="center small" data-print-unit>${STORE_NAME}</div>
         <div class="line"></div>
-        <div class="row"><span class="bold">${escapeHtml(label)}</span><span data-print-time>${now()}</span></div>
+        <div class="row"><span class="bold"><span data-print-location>${escapeHtml(label)}</span></span><span data-print-time>${now()}</span></div>
         <div data-print-client>Cliente: <span class="bold">${escapeHtml(clientName)}</span></div>
-        <div class="small" data-print-order>Pedido: ${escapeHtml(orderId.slice(0, 8))}${origin ? ` · <span class="bold">${escapeHtml(origin.toUpperCase())}</span>` : ""}</div>
+        <div class="small" data-print-order>Pedido: ${escapeHtml(orderId.slice(0, 8))}</div>
+        ${origin ? `<div class="small" data-print-origin>Origem: <span class="bold">${escapeHtml(origin.toUpperCase())}</span></div>` : ""}
         ${quantity > 1 ? `<div class="small bold">Unidade ${i + 1} de ${quantity}</div>` : ""}
         <div class="double-line"></div>
         <table><tr><td class="qty bold">1x</td><td class="name bold">${escapeHtml(item.name.toUpperCase())}</td></tr>${mods}</table>

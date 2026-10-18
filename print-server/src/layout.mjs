@@ -1,6 +1,6 @@
 /** Shared, bounded print layout contract for browser previews and ESC/POS. */
 export const DEFAULT_LAYOUT = Object.freeze({
-  header: "", footer: "", showClient: true, showOrder: true,
+  header: "", footer: "", showUnit: true, showLocation: true, showOrigin: true, showClient: true, showOrder: true,
   showTime: true, showModifications: true, itemSize: "large", logo: null,
 });
 export const PRINT_TRIGGERS = ["comanda_cozinha", "comanda_garcom", "conta_mesa", "conta_individual", "pedido_pronto", "etiqueta_producao"];
@@ -9,7 +9,7 @@ const cleanText = (value, limit) => typeof value === "string"
 export function normalizeLayout(value) {
   const v = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   const result = { ...DEFAULT_LAYOUT, header: cleanText(v.header, 80), footer: cleanText(v.footer, 240) };
-  for (const key of ["showClient", "showOrder", "showTime", "showModifications"])
+  for (const key of ["showUnit", "showLocation", "showOrigin", "showClient", "showOrder", "showTime", "showModifications"])
     result[key] = typeof v[key] === "boolean" ? v[key] : true;
   result.itemSize = v.itemSize === "normal" ? "normal" : "large";
   const logo = v.logo;

@@ -53,7 +53,7 @@ export const columnsFor = (paperWidth) => (Number(paperWidth) <= 58 ? 32 : 48);
  * Uma comanda por unidade de item, igual à Estação de impressão do navegador:
  * cada cozinheiro pega o papel do que vai preparar.
  */
-export function buildKitchenTickets({ label, clientName, orderId, channel, items, now = new Date() }) {
+export function buildKitchenTickets({ label, unitName = "", clientName, orderId, channel, items, now = new Date() }) {
   const tickets = [];
   const time = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
   for (const item of items) {
@@ -66,7 +66,7 @@ export function buildKitchenTickets({ label, clientName, orderId, channel, items
       tickets.push({
         destination: item.destination || "kitchen",
         title: item.destination === "bar" ? "BAR" : (item.destination && item.destination !== "kitchen" ? String(item.destination).replace(/_/g, " ").toUpperCase() : "COMANDA"),
-        label, clientName, time,
+        label, unitName, clientName, time,
         orderRef: String(orderId).slice(0, 8),
         channel: channel ?? null,
         unit: quantity > 1 ? `Unidade ${i + 1} de ${quantity}` : null,
@@ -101,15 +101,17 @@ export function renderTicket(ticket, { paperWidth = 80, autoCut = true, layouts 
     raw(GS, 0x21, 0x11);
   }
   if (layout.header) for (const l of wrap(layout.header, Math.floor(cols / 2))) line(l);
+  if (layout.showUnit && ticket.unitName) for (const l of wrap(ticket.unitName, Math.floor(cols / 2))) line(l);
   line(ticket.title);
   raw(GS, 0x21, 0x00);
   raw(ESC, 0x61, 0);         // à esquerda
   rule();
-  raw(ESC, 0x45, 1); text(ticket.label); raw(ESC, 0x45, 0);
-  const gap = Math.max(1, cols - ticket.label.length - ticket.time.length);
+  raw(ESC, 0x45, 1); text(layout.showLocation ? ticket.label : ""); raw(ESC, 0x45, 0);
+  const gap = Math.max(1, cols - (layout.showLocation ? ticket.label.length : 0) - ticket.time.length);
   line(layout.showTime ? " ".repeat(gap) + ticket.time : "");
   if (layout.showClient) line(`Cliente: ${ticket.clientName}`);
-  if (layout.showOrder) line(`Pedido: ${ticket.orderRef}${ticket.channel ? ` - ${ticket.channel.toUpperCase()}` : ""}`);
+  if (layout.showOrder) line(`Pedido: ${ticket.orderRef}`);
+  if (layout.showOrigin && ticket.channel) line(`Origem: ${ticket.channel.toUpperCase()}`);
   if (ticket.unit) line(ticket.unit);
   rule("=");
   raw(GS, 0x21, layout.itemSize === "large" ? 0x01 : 0);

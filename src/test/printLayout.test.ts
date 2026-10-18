@@ -38,3 +38,19 @@ describe("structured printer layouts", () => {
     expect(defaultPrintLayout().header).toBe("");expect(defaultPrintLayout().logo).toBeNull();
   });
 });
+
+describe("order identity fields", () => {
+  it("keeps unit, location and origin independently configurable in ESC/POS", () => {
+    const ticket = buildKitchenTickets({ label: "Mesa 42", unitName: "UNIDADE_TESTE", clientName: "CLIENTE_TESTE", orderId: "REF_TESTE", channel: "iFood", items: [{ name: "Burger", quantity: 1 }] })[0];
+    const layout = { ...defaultPrintLayout(), showUnit: false, showLocation: false, showOrder: false, showOrigin: true };
+    const text = Buffer.from(renderTicket(ticket, { layouts: { comanda_cozinha: layout } })).toString("latin1");
+    expect(text).not.toContain("UNIDADE_TESTE");expect(text).not.toContain("Mesa 42");expect(text).not.toContain("REF_TESTE");expect(text).toContain("IFOOD");expect(text).toContain("CLIENTE_TESTE");
+    const visible = Buffer.from(renderTicket(ticket)).toString("latin1");
+    expect(visible).toContain("UNIDADE_TESTE");expect(visible).toContain("Mesa 42");
+  });
+  it("hides only selected fields in browser receipts and uses the actual unit name", () => {
+    const html = '<html><head></head><body><div data-print-unit>OLD_UNIT</div><span data-print-location>Mesa 42</span><div data-print-client>Ana</div><div data-print-order>REF_TESTE</div><div data-print-origin>IFOOD</div></body></html>';
+    const result = applyPrintLayout(html, { ...defaultPrintLayout(), showLocation: false, showOrder: false }, "UNIDADE_REAL");
+    expect(result).toContain("UNIDADE_REAL");expect(result).not.toContain("OLD_UNIT");expect(result).not.toContain("Mesa 42");expect(result).not.toContain("REF_TESTE");expect(result).toContain("IFOOD");expect(result).toContain("Ana");
+  });
+});

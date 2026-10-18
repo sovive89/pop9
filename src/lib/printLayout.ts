@@ -4,6 +4,9 @@ export type PrintLogo = { width: number; height: number; hex: string };
 export type PrintLayout = {
   header: string;
   footer: string;
+  showUnit: boolean;
+  showLocation: boolean;
+  showOrigin: boolean;
   showClient: boolean;
   showOrder: boolean;
   showTime: boolean;
@@ -15,11 +18,15 @@ export type PrintLayout = {
 export const defaultPrintLayout = (): PrintLayout => normalizeLayout(null);
 
 /** Apply only bounded structured fields; never accept arbitrary HTML or CSS. */
-export function applyPrintLayout(html: string, value?: PrintLayout): string {
-  if (!value) return html;
+export function applyPrintLayout(html: string, value?: PrintLayout, unitName?: string): string {
+  if (!value && !unitName) return html;
   const layout: PrintLayout = normalizeLayout(value);
   const doc = new DOMParser().parseFromString(html, "text/html");
+  if (unitName) doc.querySelectorAll("[data-print-unit]").forEach(node => { node.textContent = unitName; });
   for (const [show, selector] of [
+    [layout.showUnit, "[data-print-unit]"],
+    [layout.showLocation, "[data-print-location]"],
+    [layout.showOrigin, "[data-print-origin]"],
     [layout.showClient, "[data-print-client]"],
     [layout.showOrder, "[data-print-order]"],
     [layout.showTime, "[data-print-time]"],

@@ -33,6 +33,7 @@ export default function PrinterModelEditor({ open, onOpenChange, trigger, value,
           }} /><p className="text-xs text-muted-foreground">Até 2 MB. A imagem é convertida para a impressão térmica, sem buscar arquivos externos.</p>{draft.logo && <Button type="button" variant="outline" onClick={() => change({ logo: null })}>Remover logo</Button>}</div>
           <div className="space-y-1"><Label htmlFor="model-size">Texto dos itens</Label><select id="model-size" value={draft.itemSize} className="w-full rounded-md border bg-background p-2" onChange={event => change({ itemSize: event.target.value as PrintLayout["itemSize"] })}><option value="normal">Normal</option><option value="large">Grande</option></select></div>
           {([
+            ["showUnit", "Mostrar unidade"], ["showLocation", "Mostrar mesa ou retirada"], ["showOrigin", "Mostrar origem do pedido"],
             ["showClient", "Mostrar cliente"], ["showOrder", "Mostrar referência do pedido"],
             ["showTime", "Mostrar horário"], ["showModifications", "Mostrar modificações e observações"],
           ] as const).map(([key, label]) => <label key={key} className="flex items-center gap-2 text-sm"><Checkbox checked={draft[key]} onCheckedChange={checked => change({ [key]: checked === true })} />{label}</label>)}
