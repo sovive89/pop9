@@ -1,6 +1,6 @@
 import { PAGE_HELP } from "@/lib/page-help";
 import { useEffect, useState } from "react";
-import QRCode from "qrcode";
+import { qrWithLogo } from "@/lib/qrWithLogo";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -41,7 +41,13 @@ const QrCodesTab = () => {
       const unit = units?.[0] ?? null;
       setBusinessUnit(unit);
 
-      setGeneralQr(await QRCode.toDataURL(`${baseUrl}/m`, { width: 200, margin: 1 }));
+      // Logo da aba Marca no centro dos QRs (sem logo ou sem permissão: QR simples).
+      const { data: brand } = unit
+        ? await (supabase as unknown as { from: (t: string) => any }).from("brand_settings").select("logo_url").eq("business_unit_id", unit.id).maybeSingle() // eslint-disable-line @typescript-eslint/no-explicit-any
+        : { data: null };
+      const logo: string | null = brand?.logo_url ?? null;
+
+      setGeneralQr(await qrWithLogo(`${baseUrl}/m`, logo, 400));
 
       if (unit && unit.table_count) {
         const { data: existing } = await supabase
@@ -78,7 +84,7 @@ const QrCodesTab = () => {
           const token = existingMap.get(n);
           if (!token) continue;
           const url = `${baseUrl}/m/t/${token}`;
-          qrs.push({ tableNumber: n, url, dataUrl: await QRCode.toDataURL(url, { width: 200, margin: 1 }) });
+          qrs.push({ tableNumber: n, url, dataUrl: await qrWithLogo(url, logo, 400) });
         }
         setTableQrs(qrs);
       }
@@ -145,7 +151,7 @@ const QrCodesTab = () => {
         <p className="text-xs text-muted-foreground">O cliente escaneia e digita o número da mesa manualmente.</p>
         {generalQr && (
           <div className="flex items-center gap-4">
-            <img src={generalQr} alt="QR Code geral" className="rounded-lg border border-border" />
+            <img src={generalQr} alt="QR Code geral" className="h-[200px] w-[200px] rounded-lg border border-border" />
             <Button variant="outline" size="sm" className="gap-2" onClick={() => download(generalQr, "qr-geral.png")}>
               <Download className="h-3.5 w-3.5" /> Baixar
             </Button>
@@ -164,7 +170,7 @@ const QrCodesTab = () => {
             {tableQrs.map((q) => (
               <div key={q.tableNumber} className="flex flex-col items-center gap-2 rounded-lg border border-border p-3">
                 <p className="text-xs font-semibold text-foreground">Mesa {String(q.tableNumber).padStart(2, "0")}</p>
-                <img src={q.dataUrl} alt={`QR mesa ${q.tableNumber}`} className="rounded" />
+                <img src={q.dataUrl} alt={`QR mesa ${q.tableNumber}`} className="h-[200px] w-[200px] rounded" />
                 <Button
                   variant="outline"
                   size="sm"
