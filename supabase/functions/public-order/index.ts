@@ -14,7 +14,9 @@ Deno.serve(async(req:Request)=>{
     const {data:settings,error:settingsError}=await db.from("integrations").select("config,status").eq("provider","own-pwa").eq("business_unit_id",unit).maybeSingle();
     const {data:store}=await db.from("business_units").select("name,disabled_modules").eq("id",unit).eq("active",true).maybeSingle();
     if(settingsError)throw settingsError;
-    if(!store || (store.disabled_modules ?? []).includes("pwa_publica") || !settings?.config?.enabled || settings.status==="DISCONNECTED")return json({error:"Pedidos online indisponíveis"},404);
+    // Desligar o PWA fecha cardápio e novos pedidos, mas quem já pediu continua acompanhando: "status" só exige loja ativa e o token do pedido (o RPC filtra por unidade + hash).
+    const ordering=Boolean(store) && !(store.disabled_modules ?? []).includes("pwa_publica") && Boolean(settings?.config?.enabled) && settings.status!=="DISCONNECTED";
+    if(!store || (!ordering && body.action!=="status"))return json({error:"Pedidos online indisponíveis"},404);
     if(body.action==="manifest"){
       const origin=publicOrigin(settings.config.publicOrigin);const path=`/pedir/${unit}`;
       return new Response(JSON.stringify({id:path,name:`${store.name} — Pedidos`,short_name:"Pedidos",description:"Cardápio e pedidos para retirada",start_url:`${origin}${path}`,scope:`${origin}${path}`,display:"standalone",theme_color:"#0f172a",background_color:"#0f172a",icons:[{src:`${origin}/pwa-icon-192.png`,sizes:"192x192",type:"image/png"},{src:`${origin}/pwa-icon-512.png`,sizes:"512x512",type:"image/png",purpose:"any maskable"}]}),{headers:{"Content-Type":"application/manifest+json","Access-Control-Allow-Origin":"*","Cache-Control":"no-store"}});
