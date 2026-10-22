@@ -59,5 +59,11 @@ Deno.serve(async(req:Request)=>{
     const {data,error}=await db.rpc("submit_pwa_order",{p_unit:unit,p_token_hash:await sha256(body.access_token),p_items:body.items,p_note:typeof body.note==="string" ? body.note : ""});
     if(error)return json({error:error.message?.includes("Operação fechada") ? "A loja está fechada para novos pedidos. Tente novamente quando abrir." : error.code==="P0001" ? error.message : "Não foi possível registrar o pedido"},409);
     return json(data);
-  }catch{return json({error:"Não foi possível processar a solicitação"},400);}
+  }catch(error){
+    // JSON malformado é erro do cliente; qualquer outra falha (banco, rede, bug) é nossa e não deve induzir retry como se fosse payload ruim.
+    if(error instanceof SyntaxError)return json({error:"Pedido inválido"},400);
+    const requestId=crypto.randomUUID();
+    console.error("public-order",requestId,(error as {code?:string})?.code ?? (error as Error)?.name);
+    return json({error:"Não foi possível processar a solicitação",request_id:requestId},500);
+  }
 });

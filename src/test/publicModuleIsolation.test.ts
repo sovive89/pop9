@@ -71,17 +71,17 @@ function makeQuery(table: string, state: ModuleState, filters: Record<string, un
   return query;
 }
 
-function publicOrder(state: ModuleState) {
+function publicOrder(state: ModuleState, rpc: () => Promise<{ data: unknown; error: unknown }> = async () => ({ data: [], error: null })) {
   let handler!: (request: Request) => Promise<Response>;
   const source = readFileSync("supabase/functions/public-order/index.ts", "utf8").replace(/^import[\s\S]*?;\r?\n/gm, "");
   const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-  const db = { from: (table: string) => makeQuery(table, state), rpc: async () => ({ data: [], error: null }) };
+  const db = { from: (table: string) => makeQuery(table, state), rpc };
   new Function(...Object.keys(publicHelpers), "createClient", "Deno", code)(
     ...Object.values(publicHelpers),
     () => db,
     { env: { get: (key: string) => key === "SUPABASE_URL" ? "https://project.supabase.co" : "service" }, serve: (fn: typeof handler) => { handler = fn; } },
   );
-  return (body: unknown) => handler(new Request("https://project.supabase.co/functions/v1/public-order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
+  return (body: unknown, raw = false) => handler(new Request("https://project.supabase.co/functions/v1/public-order", { method: "POST", headers: { "Content-Type": "application/json" }, body: raw ? String(body) : JSON.stringify(body) }));
 }
 
 function customerCheckin(state: ModuleState) {
@@ -139,5 +139,18 @@ describe("isolamento dos módulos públicos", () => {
 
     const qrResponse = await customerCheckin({ qrLookupError: true })({ action: "get_table_info", token: "qr-unit-1" });
     expect(qrResponse.status).not.toBe(200);
+  });
+
+  it("separa JSON inválido (400) de falha interna (500) sem vazar detalhes", async () => {
+    const handlerOf = publicOrder({});
+    const invalid = await handlerOf("{ não é json", true);
+    expect(invalid.status).toBe(400);
+
+    const failing = publicOrder({}, async () => { throw new Error("connection refused: postgres://secret"); });
+    const response = await failing({ action: "submit", business_unit_id: UNIT, access_token: "a".repeat(72), items: [{ id: "burger", quantity: 1 }] });
+    const body = await json(response);
+    expect(response.status).toBe(500);
+    expect(JSON.stringify(body)).not.toContain("postgres");
+    expect(typeof body.request_id).toBe("string");
   });
 });
