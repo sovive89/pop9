@@ -4,6 +4,8 @@ import { Users, Flame, Plus, Check, Pencil, Link2, Unlink, Trash2, X, Armchair }
 import { toast } from "sonner";
 import TableSessionPanel, { type TableSession, type ClientInfo } from "./TableSessionPanel";
 import ClientOrderPanel from "./ClientOrderPanel";
+import TableQrPanel from "./TableQrPanel";
+import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { type ClientOrder, type OrderItem } from "@/utils/orders";
@@ -199,6 +201,8 @@ const TableMap = () => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]); // edição e união
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const { units, businessUnitId: currentUnitId } = useCurrentBusinessUnit();
+  const unitName = units.find((u) => u.id === currentUnitId)?.name ?? "";
   const [seatsInput, setSeatsInput] = useState("");
   const [confirmSplit, setConfirmSplit] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -715,6 +719,10 @@ const TableMap = () => {
             )
           )}
         </div>
+      )}
+
+      {mode === "edit" && selectedTables.length === 1 && (
+        <TableQrPanel tableId={selectedTables[0].id} tableNumber={selectedTables[0].number} unitName={unitName} />
       )}
 
       {/* União: instruções e confirmação */}
