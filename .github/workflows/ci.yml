@@ -19,9 +19,12 @@ jobs:
 
       - run: npm ci
 
-      # 34 erros pré-existentes no lint (não relacionados a este workflow) —
-      # não-bloqueante por enquanto, só informativo até virarem dívida paga.
+      # Lint bloqueante: hoje tem 0 erros (só avisos), então um erro novo derruba o CI.
       - run: npm run lint
+
+      # Alertas altos/críticos de dependências de produção ficam visíveis no log, mas ainda não
+      # bloqueiam: há dívida pré-existente (ver docs/seguranca-dependencias.md).
+      - run: npm audit --omit=dev --audit-level=high
         continue-on-error: true
 
       - run: npm run test

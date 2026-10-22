@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
         );
       if (insertRoleError) {
         const { error: rollbackError } = await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);
-        if (rollbackError) console.error("Erro ao desfazer cadastro sem permissões:", rollbackError);
+        if (rollbackError) console.error("Erro ao desfazer cadastro sem permissões:", (rollbackError as { code?: string }).code ?? rollbackError.name);
         throw insertRoleError;
       }
 

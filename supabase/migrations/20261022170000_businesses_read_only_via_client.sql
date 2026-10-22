@@ -1,0 +1,11 @@
+-- Conflito entre duas migrations sobre public.businesses:
+--   20261017150000 removeu de propósito a escrita de admins ("businesses são metadados de rede; leitura só
+--   é necessária..."), e src/test/businessUnitScopeRls.test.ts documenta isso ("keeps businesses read-only").
+--   20261022040000 recriou "Admin manages businesses" FOR ALL, devolvendo o UPDATE/INSERT/DELETE ao admin de
+--   qualquer unidade do negócio. Num negócio com várias unidades isso deixa o admin de uma unidade alterar uma
+--   linha compartilhada com as outras, o que contraria o isolamento por unidade que a própria 040000 busca.
+-- Nenhum código do app escreve em businesses pelo cliente (grep em src/), então voltar a somente leitura não
+-- quebra tela alguma. Quem precisar alterar um negócio usa service_role / função dedicada.
+-- Esta migration NÃO mexe em 20261022040000 (pode já estar aplicada); só remove a policy de escrita.
+-- A leitura por papel e unidade ("Staff can read businesses") continua como está.
+drop policy if exists "Admin manages businesses" on public.businesses;

@@ -390,10 +390,11 @@ serve(async (req) => {
           } else if (resp.status === 404 || resp.status === 410) {
             staleIds.push(sub.id);
           } else {
-            console.error(`Push failed for ${sub.id}: ${resp.status} ${await resp.text()}`);
+            // O corpo da resposta do serviço de push é de terceiro e pode trazer dados: registra só o status.
+            console.error(`Push failed for ${sub.id}: ${resp.status}`);
           }
         } catch (err) {
-          console.error(`Push error for ${sub.id}:`, err);
+          console.error(`Push error for ${sub.id}:`, (err as Error)?.name);
         }
       }
 
@@ -412,8 +413,8 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("Push notify error:", err);
-    return new Response(JSON.stringify({ error: String(err) }), {
+    console.error("Push notify error:", (err as Error)?.name);
+    return new Response(JSON.stringify({ error: "Não foi possível enviar a notificação" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
