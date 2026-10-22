@@ -133,6 +133,19 @@ describe("isolamento dos módulos públicos", () => {
     })]);
   });
 
+  it("mantém o status de pedido existente com o PWA desligado, mas bloqueia menu e novos pedidos", async () => {
+    const api = publicOrder({ pwaDisabled: true }, async () => ({ data: { status: "preparing" }, error: null }));
+    const status = await api({ action: "status", business_unit_id: UNIT, access_token: "a".repeat(72) });
+    expect(status.status).toBe(200);
+    expect((await api({ action: "menu", business_unit_id: UNIT })).status).toBe(404);
+    expect((await api({ action: "submit", business_unit_id: UNIT, access_token: "a".repeat(72), items: [{ id: "burger", quantity: 1 }] })).status).toBe(404);
+  });
+
+  it("não expõe status em unidade inativa ou inexistente", async () => {
+    const response = await publicOrder({})({ action: "status", business_unit_id: "00000000-0000-0000-0000-000000000099", access_token: "a".repeat(72) });
+    expect(response.status).toBe(404);
+  });
+
   it("falha fechado quando a unidade não pode ser consultada", async () => {
     const pwaResponse = await publicOrder({ unitLookupError: true })({ action: "menu", business_unit_id: UNIT });
     expect(pwaResponse.status).not.toBe(200);
