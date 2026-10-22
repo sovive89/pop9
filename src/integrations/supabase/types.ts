@@ -610,6 +610,8 @@ export type Database = {
           price: number
           quantity: number
           ready_quantity: number
+          variant_id: string | null
+          variant_name: string | null
         }
         Insert: {
           claimed_at?: string | null
@@ -622,8 +624,10 @@ export type Database = {
           observation?: string | null
           order_id: string
           price: number
-          quantity?: number
+          quantity: number
           ready_quantity?: number
+          variant_id?: string | null
+          variant_name?: string | null
         }
         Update: {
           claimed_at?: string | null
@@ -638,6 +642,8 @@ export type Database = {
           price?: number
           quantity?: number
           ready_quantity?: number
+          variant_id?: string | null
+          variant_name?: string | null
         }
         Relationships: [
           {

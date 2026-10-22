@@ -3,7 +3,7 @@ import {readFileSync} from "node:fs";
 import {PGlite} from "@electric-sql/pglite";
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from "vitest";
 const UNIT="00000000-0000-0000-0000-000000000001",OTHER="00000000-0000-0000-0000-000000000002";
-const READY="00000000-0000-0000-0000-0000000000c1",CHOICE="00000000-0000-0000-0000-0000000000c2",PCT="00000000-0000-0000-0000-0000000000c3";
+const READY="00000000-0000-0000-0000-0000000000c1",CHOICE="00000000-0000-0000-0000-0000000000c2",PCT="00000000-0000-0000-0000-0000000000c3",BACON="00000000-0000-0000-0000-0000000000d1",DUplo="00000000-0000-0000-0000-0000000000d2",LETTUCE="00000000-0000-0000-0000-0000000000d3",ONION="00000000-0000-0000-0000-0000000000d4";
 let db:PGlite;
 beforeAll(async()=>{
   db=new PGlite();await db.exec(`
@@ -13,12 +13,15 @@ beforeAll(async()=>{
     create function auth.jwt() returns jsonb language sql stable as $$select '{"role":"service_role"}'::jsonb$$;
     create table public.profiles(user_id uuid,full_name text);
     create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('test.user',true),'')::uuid$$;
-    create table public.business_units(id uuid primary key,active boolean default true,name text);
+    create table public.business_units(id uuid primary key,active boolean default true,name text,disabled_modules text[] not null default '{}');
     create table public.user_roles(user_id uuid,role text,business_unit_id uuid);
     create table public.integrations(id uuid primary key default gen_random_uuid(),business_unit_id uuid,provider text unique,status text default 'NOT_CONNECTED',config jsonb default '{}',connected_at timestamptz,last_sync_at timestamptz,error_message text,created_at timestamptz default now(),updated_at timestamptz default now());
     alter table public.integrations enable row level security;
     create table public.menu_categories(key text,business_unit_id uuid,destination text);
     create table public.menu_items(id text primary key,business_unit_id uuid,name text,price numeric,active boolean default true,status text default 'published',category text,combo_eligible boolean default true);
+    create table public.menu_item_ingredients(id uuid primary key default gen_random_uuid(),menu_item_id text,name text,removable boolean default false,extra_price numeric,sort_order integer default 0);
+    create table public.menu_item_variants(id uuid primary key default gen_random_uuid(),menu_item_id text,name text,sort_order integer default 0);
+    create table public.operation_periods(id uuid primary key default gen_random_uuid(),business_unit_id uuid,closed_at timestamptz);
     create table public.sessions(id uuid primary key default gen_random_uuid(),business_unit_id uuid,table_number integer,zone text,origin text,status text default 'active',ended_at timestamptz,created_by uuid);
     create table public.session_clients(id uuid primary key default gen_random_uuid(),session_id uuid,business_unit_id uuid,name text,phone text,email text,bairro text,left_at timestamptz);
     create table public.orders(id uuid primary key default gen_random_uuid(),business_unit_id uuid,session_id uuid,client_id uuid,origin text,source text,external_id text,subtotal numeric,total numeric,status text default 'pending');
@@ -28,7 +31,7 @@ beforeAll(async()=>{
     create table public.menu_combo_slots(id uuid primary key default gen_random_uuid(),combo_id uuid,business_unit_id uuid,label text,sort_order integer default 0);
     create table public.menu_combo_options(id uuid primary key default gen_random_uuid(),slot_id uuid,business_unit_id uuid,menu_item_id text,extra_price numeric default 0,is_free boolean default false,sort_order integer default 0);
   `);
-  for(const f of ["20261009113035_session_cashier_closure","20261009123609_whatsapp_pwa_crm","20261009130729_harden_operational_function_paths","20261017170000_pwa_ready_combos"])
+  for(const f of ["20261009113035_session_cashier_closure","20261009123609_whatsapp_pwa_crm","20261009130729_harden_operational_function_paths","20261017170000_pwa_ready_combos","20261022010000_unit_modules_qr_pwa","20261022140000_pwa_public_options_contract"])
     await db.exec(readFileSync(`supabase/migrations/${f}.sql`,"utf8"));
 },30000);
 async function slot(combo:string,label:string,order:number,items:[string,number?,boolean?][]){
@@ -36,11 +39,14 @@ async function slot(combo:string,label:string,order:number,items:[string,number?
   for(const [item,extra=0,free=false] of items)await db.query("insert into menu_combo_options(slot_id,business_unit_id,menu_item_id,extra_price,is_free) values($1,$2,$3,$4,$5)",[rows[0].id,UNIT,item,extra,free]);
 }
 beforeEach(async()=>{
-  await db.exec("truncate ops_private.order_access,public.whatsapp_events,public.whatsapp_contacts,public.order_items,public.orders,public.session_clients,public.sessions,public.menu_combo_options,public.menu_combo_slots,public.menu_combos,public.menu_items,public.menu_categories,public.integrations,public.business_units cascade;");
+  await db.exec("truncate ops_private.order_access,public.whatsapp_events,public.whatsapp_contacts,public.order_items,public.orders,public.session_clients,public.sessions,public.operation_periods,public.menu_item_ingredients,public.menu_item_variants,public.menu_combo_options,public.menu_combo_slots,public.menu_combos,public.menu_items,public.menu_categories,public.integrations,public.business_units cascade;");
   await db.query("insert into business_units values($1,true,'Confit'),($2,true,'Outra')",[UNIT,OTHER]);
   await db.query("insert into integrations(business_unit_id,provider,status,config) values($1,'whatsapp','CONNECTING',$2),($1,'own-pwa','CONNECTED',$3)",[UNIT,JSON.stringify({phoneNumberId:"11111",botMode:"crm"}),JSON.stringify({enabled:true,publicOrigin:"https://example.com"})]);
+  await db.query("insert into operation_periods(business_unit_id) values($1)",[UNIT]);
   await db.query("insert into menu_categories values('burger',$1,'kitchen'),('drink',$1,'bar')",[UNIT]);
   await db.query("insert into menu_items(id,business_unit_id,name,price,category) values('burger',$1,'Burger',25,'burger'),('fries',$1,'Fritas',12,'burger'),('coke',$1,'Coca',8,'drink'),('juice',$1,'Suco',9,'drink')",[UNIT]);
+  await db.query("insert into menu_item_ingredients(id,menu_item_id,name,removable,extra_price,sort_order) values($1,'burger','Bacon',true,4,0),($2,'burger','Alface',false,0,1),($3,'burger','Cebola',true,0,2)",[BACON,LETTUCE,ONION]);
+  await db.query("insert into menu_item_variants(id,menu_item_id,name,sort_order) values($1,'burger','Duplo',0)",[DUplo]);
   // Pronto, preço fixo R$ 39,90: Burger + Fritas + Coca (soma avulsa R$ 45,00).
   await db.query("insert into menu_combos values($1,$2,'Combo Clássico','Lanche, fritas e bebida','fixed',39.90,0,true,0)",[READY,UNIT]);
   await slot(READY,"Lanche",0,[["burger"]]);await slot(READY,"Acompanhamento",1,[["fries"]]);await slot(READY,"Bebida",2,[["coke"]]);
@@ -109,5 +115,17 @@ describe("combos prontos no PWA",()=>{
   });
   it("mantém o pedido avulso como antes",async()=>{
     const order=await submit([{id:"burger",quantity:2}]);expect(Number(order.total)).toBe(50);
+  });
+  it("recalcula opções no servidor e persiste o snapshot escolhido",async()=>{
+    const order=await submit([{id:"burger",quantity:1,variant_id:DUplo,additions:[BACON],removals:[ONION],observation:"Pouco molho",price:0.01}]);
+    expect(Number(order.total)).toBe(29);
+    const row=(await db.query<{price:string;variant_id:string;variant_name:string;ingredient_mods:unknown;observation:string}>("select price,variant_id,variant_name,ingredient_mods,observation from order_items")).rows[0];
+    expect(Number(row.price)).toBe(29);expect(row.variant_id).toBe(DUplo);expect(row.variant_name).toBe("Duplo");expect(row.observation).toBe("Pouco molho");
+    expect(row.ingredient_mods).toEqual(expect.arrayContaining([expect.objectContaining({id:BACON,action:"extra",extraPrice:4}),expect.objectContaining({id:ONION,action:"remove",extraPrice:0})]));
+  });
+  it("recusa variante ou adicional de outro item e ingrediente não removível",async()=>{
+    await expect(submit([{id:"fries",quantity:1,variant_id:DUplo}])).rejects.toThrow("Variante não pertence ao item");
+    await expect(submit([{id:"fries",quantity:1,additions:[BACON]}])).rejects.toThrow("Adicional não pertence ao item");
+    await expect(submit([{id:"burger",quantity:1,removals:[LETTUCE]}])).rejects.toThrow("Ingrediente não pode ser removido");
   });
 });
