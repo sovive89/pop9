@@ -16,6 +16,7 @@ vi.mock("@/integrations/supabase/client", () => ({
     }),
   },
 }));
+vi.mock("@/hooks/useUnitRoles", () => ({ useUnitRoles: () => ({ roles: ["admin"], error: false, loading: false, canCashier: true }) }));
 vi.mock("@/hooks/useCurrentBusinessUnit", () => ({ useCurrentBusinessUnit: () => ({ businessUnitId: "unit", units: [{ id: "unit", name: "Loja teste" }] }) }));
 vi.mock("@/hooks/usePrinterConfigs", async () => {
   const actual = await vi.importActual<typeof import("@/hooks/usePrinterConfigs")>("@/hooks/usePrinterConfigs");
