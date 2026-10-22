@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Banknote, ChefHat, Contact, FolderOpen, Gift, Printer, Sparkles } from "lucide-react";
+import { Banknote, ChefHat, Contact, FolderOpen, Gift, Globe, Printer, QrCode, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { PAGE_HELP } from "@/lib/page-help";
@@ -15,6 +15,8 @@ const OPTIONAL: { key: OptionalModule; icon: typeof ChefHat; title: string; on: 
   { key: "crm", icon: Contact, title: "CRM", on: "Consulta e organização dos clientes.", off: "A seção CRM some do menu. Os cadastros continuam salvos." },
   { key: "documents", icon: FolderOpen, title: "Central de Documentos", on: "Exportação do cardápio, fichas e documentos.", off: "A seção Documentos some do menu. Os arquivos continuam salvos." },
   { key: "assistente", icon: Sparkles, title: "Assistente de IA", on: "Sugestões, importação e geração de fotos e fichas com IA.", off: "Os botões de IA somem do cardápio e dos documentos. Nada já salvo é apagado." },
+  { key: "autoatendimento_qr", icon: QrCode, title: "Autoatendimento por QR", on: "Porta da mesa: o cliente lê o QR, confirma o celular e o atendente aprova a comanda.", off: "O QR some do editar mesas e o link do QR para de funcionar (o PWA mostra indisponível). Atendente continua abrindo mesa e lançando pedido." },
+  { key: "pwa_publica", icon: Globe, title: "PWA pública", on: "Site público com cardápio e pedido de retirada ou entrega.", off: "O site mostra indisponível e o pedido online é recusado. Nada já salvo é apagado." },
 ];
 
 type ModuleProps = {
