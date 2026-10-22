@@ -45,6 +45,7 @@ beforeAll(async()=>{
   `);
   await db.exec(readFileSync("supabase/migrations/20261009113004_cashier_role.sql","utf8"));
   await db.exec(readFileSync("supabase/migrations/20261009113035_session_cashier_closure.sql","utf8"));
+  await db.exec(readFileSync("supabase/migrations/20260903050000_canonical_step4_payments_order_status.sql","utf8"));
 },30000);
 beforeEach(async()=>{
   await db.exec("reset role; select set_config('test.user','',false); truncate public.session_closures,public.payments,public.order_items,public.orders,public.session_clients,public.sessions,public.profiles,public.user_roles,public.business_units,auth.users cascade;");

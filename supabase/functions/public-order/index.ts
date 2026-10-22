@@ -25,6 +25,16 @@ Deno.serve(async(req:Request)=>{
       if(periodError)throw periodError;
       const {data:items,error}=await db.from("menu_items").select("id,name,description,price,image_url,category").eq("business_unit_id",unit).eq("active",true).eq("status","published").order("name");
       if(error)throw error;
+      const itemIds=(items ?? []).map((item:{id:string})=>item.id);
+      const [{data:ingredients,error:ingredientsError},{data:variants,error:variantsError}]=await Promise.all([
+        db.from("menu_item_ingredients").select("id,menu_item_id,name,removable,extra_price,sort_order").in("menu_item_id",itemIds).order("sort_order"),
+        db.from("menu_item_variants").select("id,menu_item_id,name,sort_order").in("menu_item_id",itemIds).order("sort_order"),
+      ]);
+      if(ingredientsError)throw ingredientsError;
+      if(variantsError)throw variantsError;
+      const ingredientsByItem=new Map<string,unknown[]>();for(const ingredient of ingredients ?? []){const key=ingredient.menu_item_id;ingredientsByItem.set(key,[...(ingredientsByItem.get(key) ?? []),{id:ingredient.id,name:ingredient.name,removable:Boolean(ingredient.removable),extra_price:Number(ingredient.extra_price ?? 0)}]);}
+      const variantsByItem=new Map<string,unknown[]>();for(const variant of variants ?? []){const key=variant.menu_item_id;variantsByItem.set(key,[...(variantsByItem.get(key) ?? []),{id:variant.id,name:variant.name}]);}
+      const publicItems=(items ?? []).map((item:{id:string})=>({...item,ingredients:ingredientsByItem.get(item.id) ?? [],variants:variantsByItem.get(item.id) ?? []}));
       const {data:whatsapp}=await db.from("integrations").select("config").eq("provider","whatsapp").eq("business_unit_id",unit).maybeSingle();
       // Código por SMS só quando o Twilio está conectado nesta unidade (Admin › Conexões).
       const {data:sms}=await db.from("integrations").select("status,config").eq("provider","twilio").eq("business_unit_id",unit).maybeSingle();
@@ -36,7 +46,13 @@ Deno.serve(async(req:Request)=>{
       // Sem a migration (função ausente) o cardápio segue sem combos; outro erro é registrado para a operação.
       if(combosError && (combosError as {code?:string}).code!=="PGRST202")console.error("list_pwa_ready_combos",combosError);
       const smsVerification=sms?.status==="CONNECTED" && sms?.config?.enabled!==false && Boolean(await loadTwilio(Deno.env,db,unit));
-      return json({name:store.name,items,combos:combosError ? [] : combos ?? [],businessPhone:whatsapp?.config?.businessPhone ?? "",pickupOnly:true,brand,acceptingOrders:Boolean(period),smsVerification});
+      return json({name:store.name,items:publicItems,combos:combosError ? [] : combos ?? [],businessPhone:whatsapp?.config?.businessPhone ?? "",pickupOnly:true,brand,acceptingOrders:Boolean(period),smsVerification});
+    }
+    if(body.action==="status"){
+      if(typeof body.access_token!=="string" || !/^[a-f0-9-]{72}$/.test(body.access_token))return json({error:"Acesso inválido"},401);
+      const {data,error}=await db.rpc("get_pwa_order_status",{p_unit:unit,p_token_hash:await sha256(body.access_token)});
+      if(error)return json({error:error.message?.includes("ainda não") ? "Pedido ainda não registrado" : "Não foi possível consultar o pedido"},404);
+      return json(data);
     }
     if(body.action!=="submit")return json({error:"Ação inválida"},400);
     if(typeof body.access_token!=="string" || !/^[a-f0-9-]{72}$/.test(body.access_token))return json({error:"Valide seu número enviando PEDIR no WhatsApp da loja"},401);
