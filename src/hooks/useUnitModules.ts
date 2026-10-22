@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
 
-export const OPTIONAL_MODULES = ["financeiro", "combos", "crm", "documents", "assistente"] as const;
+export const OPTIONAL_MODULES = ["financeiro", "combos", "crm", "documents", "assistente", "autoatendimento_qr", "pwa_publica"] as const;
 export type OptionalModule = (typeof OPTIONAL_MODULES)[number];
 const CHANGE_EVENT = "pop9:modules-changed";
 

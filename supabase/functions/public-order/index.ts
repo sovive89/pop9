@@ -12,9 +12,9 @@ Deno.serve(async(req:Request)=>{
     if(!uuid(unit))return json({error:"Loja inválida"},400);
     const db=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,{auth:{persistSession:false}});
     const {data:settings,error:settingsError}=await db.from("integrations").select("config,status").eq("provider","own-pwa").eq("business_unit_id",unit).maybeSingle();
-    const {data:store}=await db.from("business_units").select("name").eq("id",unit).eq("active",true).maybeSingle();
+    const {data:store}=await db.from("business_units").select("name,disabled_modules").eq("id",unit).eq("active",true).maybeSingle();
     if(settingsError)throw settingsError;
-    if(!store || !settings?.config?.enabled || settings.status==="DISCONNECTED")return json({error:"Pedidos online indisponíveis"},404);
+    if(!store || (store.disabled_modules ?? []).includes("pwa_publica") || !settings?.config?.enabled || settings.status==="DISCONNECTED")return json({error:"Pedidos online indisponíveis"},404);
     if(body.action==="manifest"){
       const origin=publicOrigin(settings.config.publicOrigin);const path=`/pedir/${unit}`;
       return new Response(JSON.stringify({id:path,name:`${store.name} — Pedidos`,short_name:"Pedidos",description:"Cardápio e pedidos para retirada",start_url:`${origin}${path}`,scope:`${origin}${path}`,display:"standalone",theme_color:"#0f172a",background_color:"#0f172a",icons:[{src:`${origin}/pwa-icon-192.png`,sizes:"192x192",type:"image/png"},{src:`${origin}/pwa-icon-512.png`,sizes:"512x512",type:"image/png",purpose:"any maskable"}]}),{headers:{"Content-Type":"application/manifest+json","Access-Control-Allow-Origin":"*","Cache-Control":"no-store"}});
