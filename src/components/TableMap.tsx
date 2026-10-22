@@ -183,6 +183,7 @@ const TableMap = () => {
     isAdmin,
     addTable,
     archiveTables,
+    deleteTables,
     moveTablesToArea,
     setSeats,
     createArea,
@@ -197,6 +198,7 @@ const TableMap = () => {
   const [mode, setMode] = useState<Mode>("normal");
   const [selectedIds, setSelectedIds] = useState<string[]>([]); // edição e união
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [seatsInput, setSeatsInput] = useState("");
   const [confirmSplit, setConfirmSplit] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -278,6 +280,7 @@ const TableMap = () => {
     setMode(next);
     setSelectedIds([]);
     setConfirmArchive(false);
+    setConfirmDelete(false);
     setSeatsInput("");
     setConfirmSplit(null);
     setSelectedTableId(null);
@@ -290,6 +293,7 @@ const TableMap = () => {
   const handleTableClick = (table: DiningTable) => {
     if (mode === "edit") {
       setConfirmArchive(false);
+      setConfirmDelete(false);
       toggleSelected(table.id);
       return;
     }
@@ -394,9 +398,21 @@ const TableMap = () => {
     }
   };
 
+  const handleDeleteSelected = async () => {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      setConfirmArchive(false);
+      return;
+    }
+    const ok = await deleteTables(selectedIds);
+    setConfirmDelete(false);
+    if (ok) setSelectedIds([]);
+  };
+
   const handleArchiveSelected = async () => {
     if (!confirmArchive) {
       setConfirmArchive(true);
+      setConfirmDelete(false);
       return;
     }
     const ok = await archiveTables(selectedIds);
@@ -672,18 +688,29 @@ const TableMap = () => {
             <Trash2 className="mr-1.5 h-4 w-4" />
             {confirmArchive ? "Confirmar arquivar?" : "Arquivar"}
           </Button>
+          <Button data-tooltip="Apague as mesas selecionadas de vez. Não dá para desfazer."
+            variant="destructive"
+            size="sm"
+            onClick={handleDeleteSelected}
+            disabled={busy || selectedOccupied.length > 0 || selectedGrouped.length > 0}
+          >
+            <Trash2 className="mr-1.5 h-4 w-4" />
+            {confirmDelete ? "Confirmar apagar?" : "Apagar mesa"}
+          </Button>
           {selectedOccupied.length > 0 ? (
             <span className="text-xs text-warning">
-              Mesa {selectedOccupied.map((t) => pad(t.number)).join(", ")} com conta aberta: feche a conta antes de arquivar.
+              Mesa {selectedOccupied.map((t) => pad(t.number)).join(", ")} com conta aberta: feche a conta antes de arquivar ou apagar.
             </span>
           ) : selectedGrouped.length > 0 ? (
             <span className="text-xs text-warning">
-              Mesa {selectedGrouped.map((t) => pad(t.number)).join(", ")} está unida a outras: separe antes de arquivar.
+              Mesa {selectedGrouped.map((t) => pad(t.number)).join(", ")} está unida a outras: separe antes de arquivar ou apagar.
             </span>
           ) : (
-            confirmArchive && (
+            (confirmArchive || confirmDelete) && (
               <span className="text-xs text-muted-foreground">
-                A mesa some do mapa; o histórico de vendas continua nos relatórios.
+                {confirmDelete
+                  ? "Apagar não dá para desfazer. A mesa some de vez e o número volta a ficar livre; o histórico de sessões e vendas continua nos relatórios."
+                  : "A mesa some do mapa; o histórico de vendas continua nos relatórios."}
               </span>
             )
           )}
