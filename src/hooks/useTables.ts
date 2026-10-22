@@ -205,6 +205,29 @@ export const useTables = () => {
     [load, syncTableCount],
   );
 
+  /**
+   * Apagar de verdade: remove a linha da mesa (função delete_dining_table, só admin da unidade).
+   * Recusa se a mesa tem conta aberta. O histórico fica nas sessões/pedidos, que guardam só o
+   * número da mesa; a próxima mesa criada reaproveita o número mais alto que sobrou.
+   */
+  const deleteTables = useCallback(
+    async (ids: string[]): Promise<boolean> => {
+      if (ids.length === 0) return true;
+      let failed = false;
+      for (const id of ids) {
+        const { error } = await supabase.rpc("delete_dining_table" as never, { p_table_id: id } as never);
+        if (error) {
+          toast.error(error.message || "Não foi possível apagar a mesa");
+          failed = true;
+          break;
+        }
+      }
+      await load();
+      return !failed;
+    },
+    [load],
+  );
+
   const moveTablesToArea = useCallback(
     async (ids: string[], areaId: string | null): Promise<boolean> => {
       if (ids.length === 0) return true;
@@ -324,6 +347,7 @@ export const useTables = () => {
     isAdmin,
     addTable,
     archiveTables,
+    deleteTables,
     moveTablesToArea,
     setSeats,
     createArea,
