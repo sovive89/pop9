@@ -6,6 +6,7 @@ import TableSessionPanel, { type TableSession, type ClientInfo } from "./TableSe
 import ClientOrderPanel from "./ClientOrderPanel";
 import TableQrPanel from "./TableQrPanel";
 import { useCurrentBusinessUnit } from "@/hooks/useCurrentBusinessUnit";
+import { useBrandLogo } from "@/hooks/useBrandLogo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { type ClientOrder, type OrderItem } from "@/utils/orders";
@@ -202,6 +203,7 @@ const TableMap = () => {
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const { units, businessUnitId: currentUnitId } = useCurrentBusinessUnit();
+  const { logo: brandLogo } = useBrandLogo(currentUnitId);
   const unitName = units.find((u) => u.id === currentUnitId)?.name ?? "";
   const [seatsInput, setSeatsInput] = useState("");
   const [confirmSplit, setConfirmSplit] = useState<string | null>(null);
@@ -722,7 +724,7 @@ const TableMap = () => {
       )}
 
       {mode === "edit" && selectedTables.length === 1 && (
-        <TableQrPanel tableId={selectedTables[0].id} tableNumber={selectedTables[0].number} unitName={unitName} />
+        <TableQrPanel tableId={selectedTables[0].id} tableNumber={selectedTables[0].number} unitName={unitName} logoUrl={brandLogo} />
       )}
 
       {/* União: instruções e confirmação */}

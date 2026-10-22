@@ -1,20 +1,22 @@
 import { useEffect, useState } from "react";
-import QRCode from "qrcode";
 import { toast } from "sonner";
 import { Printer, RefreshCw, QrCode } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { qrWithLogo } from "@/lib/qrWithLogo";
 
 interface Props {
   tableId: string;
   tableNumber: number;
   unitName: string;
+  /** Logo da aba Marca; vai no centro do QR e no topo da folha impressa. */
+  logoUrl?: string | null;
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 /** QR da mesa no editor: mostra, imprime e regenera (o antigo para de funcionar). */
-const TableQrPanel = ({ tableId, tableNumber, unitName }: Props) => {
+const TableQrPanel = ({ tableId, tableNumber, unitName, logoUrl = null }: Props) => {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
@@ -28,7 +30,7 @@ const TableQrPanel = ({ tableId, tableNumber, unitName }: Props) => {
       return;
     }
     const url = `${window.location.origin}/m/t/${data}`;
-    setDataUrl(await QRCode.toDataURL(url, { width: 512, margin: 2 }));
+    setDataUrl(await qrWithLogo(url, logoUrl, 512));
     if (regenerate) toast.success("QR novo gerado. O QR impresso antigo não funciona mais.");
     setConfirm(false);
     setBusy(false);
@@ -39,7 +41,7 @@ const TableQrPanel = ({ tableId, tableNumber, unitName }: Props) => {
     setConfirm(false);
     void load(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tableId]);
+  }, [tableId, logoUrl]);
 
   const print = () => {
     if (!dataUrl) return;
@@ -50,9 +52,10 @@ const TableQrPanel = ({ tableId, tableNumber, unitName }: Props) => {
     }
     w.document.write(
       `<!doctype html><title>Mesa ${tableNumber}</title><body style="font-family:sans-serif;text-align:center;margin:24px">` +
+        (logoUrl ? `<img src="${esc(logoUrl)}" alt="" style="max-height:80px;max-width:240px;object-fit:contain">` : "") +
         `<h2 style="margin:0">${esc(unitName)}</h2><h1 style="font-size:64px;margin:8px 0">Mesa ${String(tableNumber).padStart(2, "0")}</h1>` +
         `<img src="${dataUrl}" style="width:320px;height:320px"><p>Aponte a câmera para pedir</p>` +
-        `<script>window.onload=()=>{window.print()}<\/script></body>`,
+        `<script>window.onload=()=>{window.print()}</script></body>`,
     );
     w.document.close();
   };
