@@ -12,6 +12,14 @@ dist
 dist-ssr
 *.local
 
+# Variáveis de ambiente: nunca versionar arquivos reais; só os .env.example com placeholders.
+# ATENÇÃO: o .env da raiz já está rastreado (só URL e chave publicável do Supabase) e o build da
+# Vercel ainda depende dele. Estas linhas só protegem arquivos novos; para parar de rastrear o
+# existente, primeiro cadastre VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY na Vercel.
+.env
+.env.*
+!.env.example
+
 .vercel
 
 # Editor directories and files

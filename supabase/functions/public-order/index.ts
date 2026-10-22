@@ -46,7 +46,7 @@ Deno.serve(async(req:Request)=>{
       // Combos prontos são opcionais: sem a migration, o cardápio segue só com itens avulsos.
       const {data:combos,error:combosError}=await db.rpc("list_pwa_ready_combos",{p_unit:unit});
       // Sem a migration (função ausente) o cardápio segue sem combos; outro erro é registrado para a operação.
-      if(combosError && (combosError as {code?:string}).code!=="PGRST202")console.error("list_pwa_ready_combos",combosError);
+      if(combosError && (combosError as {code?:string}).code!=="PGRST202")console.error("list_pwa_ready_combos",(combosError as {code?:string}).code);
       const smsVerification=sms?.status==="CONNECTED" && sms?.config?.enabled!==false && Boolean(await loadTwilio(Deno.env,db,unit));
       return json({name:store.name,items:publicItems,combos:combosError ? [] : combos ?? [],businessPhone:whatsapp?.config?.businessPhone ?? "",pickupOnly:true,brand,acceptingOrders:Boolean(period),smsVerification});
     }

@@ -1,0 +1,17 @@
+version: 2
+updates:
+  # Dependências do app. Semanal e agrupado para não gerar uma enxurrada de PRs.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      patch-and-minor:
+        update-types: [patch, minor]
+  # Versões das actions usadas nos workflows.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
