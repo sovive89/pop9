@@ -68,6 +68,14 @@ async function resolveBusinessUnitId(supabase: ReturnType<typeof admin>, tableNu
   return bu?.id ?? null;
 }
 
+// Módulo "autoatendimento_qr" desligado na unidade (Configurações → Módulos): o cliente não entra por QR.
+// O atendente continua abrindo mesa e liberando acesso normalmente.
+async function qrModuleDisabled(supabase: ReturnType<typeof admin>, unitId: string | null): Promise<boolean> {
+  if (!unitId) return false;
+  const { data } = await supabase.from("business_units").select("disabled_modules").eq("id", unitId).maybeSingle();
+  return ((data?.disabled_modules as string[] | null) ?? []).includes("autoatendimento_qr");
+}
+
 async function requireStaff(req: Request) {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
@@ -136,6 +144,10 @@ async function getTableInfo(body: GetTableInfoRequest) {
     return json({ enabled: false, message: "Check-in pelo cliente está desativado. Chame o garçom." });
   }
 
+  if (await qrModuleDisabled(supabase, businessUnitId)) {
+    return json({ enabled: false, message: "Check-in pelo cliente está desativado. Chame o garçom." });
+  }
+
   const { data: activeSession } = await supabase
     .from("sessions")
     .select("id")
@@ -198,6 +210,9 @@ async function requestCode(body: RequestCodeRequest) {
   const code = randomCode(6);
   const expiresAt = new Date(Date.now() + CODE_TTL_MINUTES * 60_000).toISOString();
   const businessUnitId = await resolveBusinessUnitId(supabase, tableNumber);
+  if (await qrModuleDisabled(supabase, businessUnitId)) {
+    return json({ error: "Check-in pelo cliente está desativado. Chame o garçom." }, 403);
+  }
 
   const { error } = await supabase.from("checkin_verifications").insert({
     method: "whatsapp_otp",
@@ -292,6 +307,9 @@ async function verifyCode(body: VerifyCodeRequest) {
 
   let sessionId = verification.session_id as string | null;
   let businessUnitId = verification.business_unit_id as string | null;
+  if (await qrModuleDisabled(supabase, businessUnitId)) {
+    return json({ error: "Check-in pelo cliente está desativado. Chame o garçom." }, 403);
+  }
 
   if (!sessionId) {
     const { data: activeSession } = await supabase
