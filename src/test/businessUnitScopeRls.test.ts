@@ -120,6 +120,11 @@ beforeAll(async () => {
       ('40000000-0000-0000-0000-000000000002','${UNIT_B}',2);
   `);
   await db.exec(readFileSync("supabase/migrations/20261017150000_scope_unit_metadata_rls.sql", "utf8"));
+  // A correção de isolamento de business_units/businesses (issue #103) entra por cima: os testes abaixo
+  // passam a provar o estado FINAL das policies, não só o da migration anterior.
+  await db.exec(readFileSync("supabase/migrations/20261022040000_fix_business_unit_rls_isolation.sql", "utf8"));
+  // ...e a 040000 reabriu a escrita em businesses (contra a decisão da 017150000); esta a fecha de novo.
+  await db.exec(readFileSync("supabase/migrations/20261022170000_businesses_read_only_via_client.sql", "utf8"));
 }, 30000);
 
 afterAll(async () => { await db?.close(); });

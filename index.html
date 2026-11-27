@@ -8,8 +8,8 @@
 
 <title>Pop9 - Gestão de Pedidos</title>
 
-<!-- PWA -->
-<link rel="manifest" href="/manifest.json"/>
+<!-- PWA: o <link rel="manifest"> é injetado no build pelo VitePWA (vite.config.ts); em /pedir/:unit a página troca
+     o href pelo manifest da loja. Não declare outro aqui: manifests duplicados fazem o instalador escolher errado. -->
 <meta name="theme-color" content="#0f172a"/>
 
 <!-- Android -->
@@ -19,7 +19,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="Pop9"/>
-<link rel="apple-touch-icon" href="/icon-192.png"/>
+<link rel="apple-touch-icon" href="/pwa-icon-192.png"/>
 
 <!-- SEO -->
 <meta name="description" content="Sistema de gestão de mesas e pedidos para restaurantes"/>

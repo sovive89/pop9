@@ -20,14 +20,18 @@ export default defineConfig(({ mode }) => ({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "pwa-icon-192.png", "pwa-icon-512.png"],
       manifest: {
-        name: "TableMate - Gestão de Pedidos",
-        short_name: "TableMate",
+        // Manifest do app interno (equipe). O do cardápio público é gerado por unidade na Edge Function
+        // public-order e substitui este link quando a página /pedir/:unit abre.
+        id: "/",
+        name: "PØP9 - Gestão de Pedidos",
+        short_name: "PØP9",
         description: "Sistema de gestão de mesas e pedidos para restaurantes",
         theme_color: "#0f172a",
         background_color: "#0f172a",
         display: "standalone",
         orientation: "portrait",
         start_url: "/",
+        scope: "/",
         icons: [
           {
             src: "pwa-icon-192.png",

@@ -11,7 +11,7 @@ const publicHelpers = { ...operational, ...brand, ...twilio };
 const UNIT = "00000000-0000-0000-0000-000000000001";
 const OTHER_UNIT = "00000000-0000-0000-0000-000000000002";
 
-type ModuleState = { qrDisabled?: boolean; pwaDisabled?: boolean; qrUnit?: string; unitLookupError?: boolean; qrLookupError?: boolean };
+type ModuleState = { qrDisabled?: boolean; pwaDisabled?: boolean; qrUnit?: string; unitLookupError?: boolean; qrLookupError?: boolean; closed?: boolean; explode?: boolean };
 type Query = {
   select: (...args: unknown[]) => Query;
   eq: (key: string, value: unknown) => Query;
@@ -51,7 +51,7 @@ function makeQuery(table: string, state: ModuleState, filters: Record<string, un
     }
     if (table === "app_config") return { data: { value: "true" }, error: null };
     if (table === "sessions") return { data: null, error: null };
-    if (table === "operation_periods") return { data: { id: "period" }, error: null };
+    if (table === "operation_periods") return { data: state.closed ? null : { id: "period" }, error: null };
     if (table === "menu_items") return { data: [{ id: "burger", name: "Burger", description: "Clássico", price: 25, image_url: null, category: "burgers" }], error: null };
     if (table === "menu_item_ingredients") return { data: [{ id: "00000000-0000-0000-0000-000000000101", menu_item_id: "burger", name: "Bacon", removable: true, extra_price: 4, sort_order: 0 }], error: null };
     if (table === "menu_item_variants") return { data: [{ id: "00000000-0000-0000-0000-000000000102", menu_item_id: "burger", name: "Duplo", sort_order: 0 }], error: null };
@@ -88,9 +88,9 @@ function customerCheckin(state: ModuleState) {
   let handler!: (request: Request) => Promise<Response>;
   const source = readFileSync("supabase/functions/customer-checkin/index.ts", "utf8").replace(/^import[\s\S]*?;\r?\n/gm, "");
   const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-  const db = { from: (table: string) => makeQuery(table, state) };
+  const db = { from: (table: string) => { if (state.explode) throw new Error("connection to postgres://user:senha@db.interno refused"); return makeQuery(table, state); } };
   new Function("parseCheckinRequest", "createClient", "Deno", code)(parseCheckinRequest, () => db, { env: { get: () => "service" }, serve: (fn: typeof handler) => { handler = fn; } });
-  return (body: unknown) => handler(new Request("https://project.supabase.co/functions/v1/customer-checkin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
+  return (body: unknown, raw = false) => handler(new Request("https://project.supabase.co/functions/v1/customer-checkin", { method: "POST", headers: { "Content-Type": "application/json" }, body: raw ? String(body) : JSON.stringify(body) }));
 }
 
 async function json(response: Response) { return response.json() as Promise<Record<string, unknown>>; }
@@ -147,11 +147,32 @@ describe("isolamento dos módulos públicos", () => {
   });
 
   it("falha fechado quando a unidade não pode ser consultada", async () => {
+    // Falha ao consultar = negar. Status exato: 404 (não "qualquer coisa diferente de 200").
     const pwaResponse = await publicOrder({ unitLookupError: true })({ action: "menu", business_unit_id: UNIT });
-    expect(pwaResponse.status).not.toBe(200);
+    expect(pwaResponse.status).toBe(404);
 
     const qrResponse = await customerCheckin({ qrLookupError: true })({ action: "get_table_info", token: "qr-unit-1" });
-    expect(qrResponse.status).not.toBe(200);
+    expect(qrResponse.status).toBe(404);
+  });
+
+  it("loja fechada: o cardápio avisa que não aceita pedidos e o envio é recusado com mensagem clara", async () => {
+    const closedMessage = "Operação fechada. Tente novamente quando a loja abrir.";
+    const api = publicOrder({ closed: true }, async () => ({ data: null, error: { code: "P0001", message: closedMessage } }));
+    const menu = await api({ action: "menu", business_unit_id: UNIT });
+    expect(menu.status).toBe(200);
+    expect((await json(menu)).acceptingOrders).toBe(false);
+    const submit = await api({ action: "submit", business_unit_id: UNIT, access_token: "a".repeat(72), items: [{ id: "burger", quantity: 1 }] });
+    expect(submit.status).toBe(409);
+    expect((await json(submit)).error).toBe("A loja está fechada para novos pedidos. Tente novamente quando abrir.");
+  });
+
+  it("check-in: JSON inválido é 400; falha interna é 500 genérica, sem vazar o erro", async () => {
+    expect((await customerCheckin({})("{ quebrado", true)).status).toBe(400);
+    const response = await customerCheckin({ explode: true })({ action: "get_table_info", token: "qr-unit-1" });
+    const body = await json(response);
+    expect(response.status).toBe(500);
+    expect(JSON.stringify(body)).not.toMatch(/postgres|senha|db\.interno/);
+    expect(typeof body.request_id).toBe("string");
   });
 
   it("separa JSON inválido (400) de falha interna (500) sem vazar detalhes", async () => {

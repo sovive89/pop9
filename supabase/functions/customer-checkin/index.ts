@@ -404,7 +404,10 @@ Deno.serve(async (req) => {
         return json({ error: "Ação desconhecida" }, 400);
     }
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    return json({ error: message }, 500);
+    // Falha inesperada (banco, rede, bug): o detalhe fica só no log, com um id para a operação achar a linha.
+    // O cliente recebe mensagem genérica; mensagem de erro interna nunca sai na resposta.
+    const requestId = crypto.randomUUID();
+    console.error("customer-checkin", requestId, (error as { code?: string })?.code ?? (error as Error)?.name);
+    return json({ error: "Não foi possível processar a solicitação", request_id: requestId }, 500);
   }
 });
