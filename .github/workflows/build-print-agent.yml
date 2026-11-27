@@ -28,7 +28,7 @@ jobs:
           pip install -r print-agent/requirements.txt pyinstaller
       - name: Build Windows EXE
         run: pyinstaller --onefile --name POP9-Print-Agent --collect-all win32print print-agent/agent.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: POP9-Print-Agent-Windows
           path: dist/POP9-Print-Agent.exe

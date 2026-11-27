@@ -27,7 +27,7 @@ jobs:
       - run: npm run check
       - run: npm install --no-save electron@38 electron-builder@26
       - run: npm run build:windows
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: POP9-Print-Server-Windows
           path: print-server/dist/*.exe
